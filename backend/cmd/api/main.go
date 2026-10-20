@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -102,6 +103,16 @@ func run() error {
 		service.RunRecalcWorker(ctx, pool, func(err error) { log.Printf("recalc worker: %v", err) })
 	}()
 
+	retentionDays, err := auditRetentionDays(os.Getenv("AUDIT_RETENTION_DAYS"))
+	if err != nil {
+		return err
+	}
+	pruneDone := make(chan struct{})
+	go func() {
+		defer close(pruneDone)
+		runAuditRetention(ctx, svc, retentionDays)
+	}()
+
 	// Release mode comes from GIN_MODE=release. No proxy is trusted unless configured,
 	// so client addresses cannot be spoofed with forwarded headers.
 	r := gin.New()
@@ -134,6 +145,7 @@ func run() error {
 	defer cancel()
 	err = srv.Shutdown(shutCtx)
 	<-workerDone
+	<-pruneDone
 	return err
 }
 
@@ -182,5 +194,44 @@ func storageMode(explicit, bucket string) (string, error) {
 		return "", nil
 	default:
 		return "", fmt.Errorf("STORAGE must be %q or %q, got %q", "local", "r2", explicit)
+	}
+}
+
+// auditRetentionDays parses AUDIT_RETENTION_DAYS. Empty or 0 keeps the log forever.
+func auditRetentionDays(v string) (int, error) {
+	if v == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 || n > 36500 {
+		return 0, fmt.Errorf("AUDIT_RETENTION_DAYS must be a whole number of days (0 keeps everything), got %q", v)
+	}
+	return n, nil
+}
+
+// runAuditRetention deletes audit entries older than the retention window, once at start
+// and then hourly, until ctx is cancelled. With days == 0 it does nothing.
+func runAuditRetention(ctx context.Context, svc *service.Service, days int) {
+	if days == 0 {
+		return
+	}
+	prune := func() {
+		cutoff := time.Now().AddDate(0, 0, -days)
+		if n, err := svc.PruneAudit(ctx, cutoff); err != nil {
+			log.Printf("audit retention: %v", err)
+		} else if n > 0 {
+			log.Printf("audit retention: removed %d entries older than %d days", n, days)
+		}
+	}
+	prune()
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			prune()
+		}
 	}
 }

@@ -67,3 +67,20 @@ func TestHealthcheckProbe(t *testing.T) {
 		t.Error("a malformed address must be an error")
 	}
 }
+
+func TestAuditRetentionDays(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    int
+		wantErr bool
+	}{
+		{"", 0, false}, {"0", 0, false}, {"90", 90, false}, {"36500", 36500, false},
+		{"-1", 0, true}, {"abc", 0, true}, {"1.5", 0, true}, {"36501", 0, true}, {" 30", 0, true},
+	}
+	for _, tc := range tests {
+		got, err := auditRetentionDays(tc.in)
+		if got != tc.want || (err != nil) != tc.wantErr {
+			t.Errorf("auditRetentionDays(%q) = %d, %v; want %d, err=%v", tc.in, got, err, tc.want, tc.wantErr)
+		}
+	}
+}

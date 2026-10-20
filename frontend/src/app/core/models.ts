@@ -91,6 +91,29 @@ export interface MetalInput {
   active: boolean;
 }
 
+export interface AuditRecord {
+  id: number;
+  at: string;
+  user_id: number | null;
+  user_email: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  status: number;
+  detail: string;
+}
+
+export interface AuditFilter {
+  /** Matches the start of the action, e.g. "metal." */
+  action?: string;
+  userId?: number | null;
+  /** YYYY-MM-DD, inclusive. */
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface DesignListItem {
   id: number;
   code: string;

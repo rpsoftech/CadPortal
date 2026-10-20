@@ -214,4 +214,35 @@ describe('ApiService', () => {
     api.deleteVariation(9).subscribe();
     expect(http.expectOne('/api/v1/variations/9').request.method).toBe('DELETE');
   });
+
+  it('lists the audit log with filters and reads the total from the header', () => {
+    let page: { items: unknown[]; total: number } | undefined;
+    api
+      .audit({
+        action: 'metal.',
+        userId: 4,
+        from: '2026-10-01',
+        to: '2026-10-31',
+        limit: 50,
+        offset: 100,
+      })
+      .subscribe((p) => (page = p));
+    const req = http.expectOne((r) => r.url === '/api/v1/audit');
+    expect(req.request.params.get('action')).toBe('metal.');
+    expect(req.request.params.get('user_id')).toBe('4');
+    expect(req.request.params.get('from')).toBe('2026-10-01');
+    expect(req.request.params.get('to')).toBe('2026-10-31');
+    expect(req.request.params.get('limit')).toBe('50');
+    expect(req.request.params.get('offset')).toBe('100');
+    req.flush([{ id: 1 }], { headers: { 'X-Total-Count': '321' } });
+    expect(page?.total).toBe(321);
+    expect(page?.items).toHaveLength(1);
+
+    // Empty filters send no parameters; a missing body is an empty list.
+    api.audit({ action: '', userId: null, from: '', to: '' }).subscribe((p) => (page = p));
+    const bare = http.expectOne((r) => r.url === '/api/v1/audit');
+    expect(bare.request.params.keys()).toEqual([]);
+    bare.flush(null);
+    expect(page).toEqual({ items: [], total: 0 });
+  });
 });

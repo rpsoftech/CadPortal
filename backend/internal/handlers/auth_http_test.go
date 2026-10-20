@@ -194,6 +194,7 @@ func TestRoutesByRole(t *testing.T) {
 		{"POST", "/api/v1/exports/job-bag-pdf", all},
 		{"POST", "/api/v1/exports/costing-csv", edit},
 		{"GET", "/api/v1/users", adm},
+		{"GET", "/api/v1/audit", adm},
 		{"POST", "/api/v1/users", adm},
 		{"PUT", "/api/v1/users/1", adm},
 		{"POST", "/api/v1/users/1/password", adm},
