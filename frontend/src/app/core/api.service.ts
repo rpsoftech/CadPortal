@@ -16,6 +16,8 @@ import {
   StoneCode,
   Tag,
   UploadResult,
+  User,
+  UserRole,
   Variation,
 } from './models';
 
@@ -24,6 +26,20 @@ const BASE = '/api/v1';
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly http = inject(HttpClient);
+
+  // ----- users (admin) -----
+  users(): Observable<User[]> {
+    return this.http.get<User[]>(`${BASE}/users`);
+  }
+  createUser(body: { email: string; name: string; password: string; role: UserRole }) {
+    return this.http.post<User>(`${BASE}/users`, body);
+  }
+  updateUser(id: number, body: { name: string; role: UserRole; active: boolean }) {
+    return this.http.put<User>(`${BASE}/users/${id}`, body);
+  }
+  resetUserPassword(id: number, newPassword: string) {
+    return this.http.post<void>(`${BASE}/users/${id}/password`, { new_password: newPassword });
+  }
 
   // ----- masters -----
   categories(): Observable<Category[]> {

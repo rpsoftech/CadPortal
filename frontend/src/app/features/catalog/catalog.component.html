@@ -2,7 +2,9 @@
   <div class="row head">
     <h1>Catalog</h1>
     <span class="spacer"></span>
-    <button mat-flat-button (click)="newDesign()">New design</button>
+    @if (auth.canEdit()) {
+      <button mat-flat-button (click)="newDesign()">New design</button>
+    }
   </div>
 
   <form [formGroup]="form" class="filters" aria-label="Catalog filters">

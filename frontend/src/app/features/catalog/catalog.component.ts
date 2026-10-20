@@ -12,6 +12,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { Router, RouterLink } from '@angular/router';
 import { catchError, debounceTime, from, map, of, startWith, switchMap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { AuthService } from '../../core/auth.service';
 import { toApiError } from '../../core/errors';
 import { fixed } from '../../core/format';
 import { DesignFilter, DesignListItem, TAG_GROUPS } from '../../core/models';
@@ -52,6 +53,7 @@ export class CatalogComponent {
   private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly router = inject(Router);
+  protected readonly auth = inject(AuthService);
 
   protected readonly categories = toSignal(this.api.categories().pipe(catchError(() => of([]))), {
     initialValue: [],

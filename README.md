@@ -39,7 +39,7 @@ CSV.
 ```
 backend/
   cmd/api/          API server
-  cmd/devtoken/     mints dev-only bearer tokens
+  cmd/adduser/      creates users (the first admin)
   migrations/       golang-migrate SQL (the schema source of truth)
   internal/
     calc/           pure weight, BOM and costing math
@@ -49,8 +49,9 @@ backend/
     storage/        R2 client and in-memory test store
     export/         job-bag PDF and costing CSV
     auth/           bearer-token role middleware
+    password/       Argon2id hashing and the password policy
 frontend/
-  src/app/core/     API client, models, token auth, formatting
+  src/app/core/     API client, models, session auth, guards, formatting
   src/app/features/ catalog, design-detail, variation-editor screens
   src/app/shared/   dialogs, upload dropzone, base-input form
 docker-compose.yml  local PostgreSQL
@@ -75,11 +76,16 @@ cd backend
 go run ./cmd/api
 ```
 
-Mint a development token for the role-gated routes:
+Create the first admin (the password is read from the terminal without echo; at least 12
+characters). Everything except login needs a signed-in user:
 
 ```bash
-JWT_SECRET=<your secret> go run ./cmd/devtoken admin
+cd backend
+go run ./cmd/adduser -email you@example.com -name "Your Name" -role admin
 ```
+
+Further users are created by an admin on the **Users** screen. For scripts, pass
+`-password-stdin` and pipe the password in; never put it on the command line.
 
 ### File storage
 
@@ -102,9 +108,9 @@ npm ci
 npm start          # http://localhost:4200, proxies /api to localhost:8080
 ```
 
-There is no login service yet. Click **Sign in** and paste a token from `devtoken`; it is
-kept for the browser tab only (sessionStorage). The UI uses the role only as a hint, and
-the server verifies every token.
+Sign in with the account you created above. The session lives in `sessionStorage`, so it
+ends with the browser tab. The UI only uses the role to hide controls; the server checks
+the token and role on every request.
 
 ## Configuration
 
@@ -121,8 +127,33 @@ See [.env.example](.env.example). Never commit real credentials: `.env` is gitig
 | CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl` |
 | Exports | `POST /exports/job-bag-pdf`, `POST /exports/costing-csv` |
 
-All paths are under `/api/v1`. Roles are `admin`, `designer` and `production`. Currently
-only the CAD vault and export routes require a token.
+All paths are under `/api/v1`. Alongside the routes above:
+
+| Group | Endpoints |
+|---|---|
+| Accounts | `POST /auth/login` (public), `GET /auth/me`, `POST /auth/change-password` |
+| Users (admin) | `GET/POST /users`, `PUT /users/:id`, `POST /users/:id/password` |
+
+### Access control
+
+Every route except login needs `Authorization: Bearer <token>`.
+
+| Role | Can do |
+|---|---|
+| `admin` | Everything, including master data and users |
+| `designer` | Create and edit designs, variations, seats and CAD files; costing export |
+| `production` | Read designs, simulate the BOM, job-bag PDF, CAD downloads. Never sees wastage % or stone rates |
+
+Security behaviour worth knowing:
+
+- Passwords are hashed with Argon2id (12 to 128 characters). Login tokens last 8 hours.
+- Five failed logins lock an account for 15 minutes. Failures are indistinguishable: an
+  unknown email, a wrong password and a locked or disabled account all return the same 401.
+- Tokens are checked against the database on every request, so disabling a user, changing
+  their role, or changing their password takes effect immediately.
+- The last active admin cannot be demoted or disabled, and admins cannot disable themselves.
+- Login attempts are limited per account, not per IP address. Put a rate-limiting proxy in
+  front of a public deployment.
 
 Missing data is never treated as zero: a missing stone-matrix row, wastage % or stone
 rate returns `422` listing exactly what is missing.

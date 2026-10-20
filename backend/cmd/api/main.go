@@ -75,7 +75,9 @@ func main() {
 	go service.RunRecalcWorker(ctx, pool, func(err error) { log.Printf("recalc worker: %v", err) })
 
 	r := gin.Default()
-	(&handlers.H{S: svc, JWTSecret: []byte(jwtSecret), LocalFiles: localStore}).Register(r)
+	(&handlers.H{
+		S: svc, JWTSecret: []byte(jwtSecret), Validate: svc.ValidateToken, LocalFiles: localStore,
+	}).Register(r)
 	go func() {
 		<-ctx.Done()
 		os.Exit(0)

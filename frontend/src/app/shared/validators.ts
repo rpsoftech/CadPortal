@@ -17,3 +17,7 @@ export const positiveInt: ValidatorFn = (c) => {
   if (v === '') return null;
   return /^\d+$/.test(v) && Number(v) >= 1 ? null : { int: 'Whole number, 1 or more' };
 };
+
+/** Password length limits; the server enforces the same policy. */
+export const PASSWORD_MIN = 12;
+export const PASSWORD_MAX = 128;
