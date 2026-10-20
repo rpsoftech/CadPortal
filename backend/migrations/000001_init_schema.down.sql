@@ -1,0 +1,13 @@
+DROP VIEW IF EXISTS v_seat_matrix_gaps;
+DROP TABLE IF EXISTS weight_recalc_jobs;
+DROP TABLE IF EXISTS variation_metal_weights;
+DROP TABLE IF EXISTS variation_stone_seats;
+DROP TABLE IF EXISTS cad_variations;
+DROP TABLE IF EXISTS design_tags;
+DROP TABLE IF EXISTS master_designs;
+DROP TABLE IF EXISTS stone_size_matrix;
+DROP TABLE IF EXISTS stone_codes;
+DROP TABLE IF EXISTS metals;
+DROP TABLE IF EXISTS tags;
+DROP TABLE IF EXISTS categories;
+DROP FUNCTION IF EXISTS set_updated_at();

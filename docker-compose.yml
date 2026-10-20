@@ -1,0 +1,11 @@
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: cad
+      POSTGRES_PASSWORD: cad
+      POSTGRES_DB: cad_portal
+    ports: ["5433:5432"]   # 5433 avoids clashing with any local Postgres
+    volumes: [cadportal_pgdata:/var/lib/postgresql/data]
+volumes:
+  cadportal_pgdata:
