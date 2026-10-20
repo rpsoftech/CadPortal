@@ -41,6 +41,7 @@ describe('toApiError', () => {
     [0, 'Cannot reach the API'],
     [401, 'Sign in'],
     [403, 'role is not permitted'],
+    [429, 'Too many attempts'],
     [503, 'storage is not configured'],
     [500, 'Request failed (500)'],
   ])('falls back to a readable message for status %i', async (status, fragment) => {

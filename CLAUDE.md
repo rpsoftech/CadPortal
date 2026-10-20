@@ -20,7 +20,7 @@ frontend/           Angular 22 app (standalone components, Signals, zoneless, Vi
 docker-compose.yml  Postgres 18 for local dev
 docker-compose.prod.yml  production-style stack: db + api + web (nginx); images from backend/Dockerfile and frontend/Dockerfile
 docker-compose.images.yml  overlay for prod: run the published ghcr.io images instead of building (see README, Releases)
-scripts/            backup.sh, restore.sh, e2e.sh and round-trip/browser tests (run in CI)
+scripts/            backup.sh, restore.sh, e2e.sh, ratelimit_test.sh and their tests (run in CI)
 ```
 
 ## Stack decisions
@@ -137,5 +137,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   14. Design export: catalog CSV in the import format (round-trips into a fresh install)
   15. Release: tag-triggered publish of the api and web images to GHCR, and a compose overlay to run them
   16. Browser smoke tests: Playwright (frontend/e2e) against the production stack in the CI docker job
+  17. Sign-in rate limit in the web container (per client address), tested in CI
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.

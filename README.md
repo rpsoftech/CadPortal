@@ -139,8 +139,10 @@ rewritten into a Windows path.
 What to know before going live:
 
 - **TLS:** the web container speaks plain HTTP. Put a reverse proxy in front that terminates TLS
-  and sends `Strict-Transport-Security`. The proxy should also rate-limit `/api/v1/auth/login`
-  (account lockout is per account, not per IP).
+  and sends `Strict-Transport-Security`. The proxy should pass the client address in
+  `X-Forwarded-For`: the web container believes that header only from private and loopback
+  peers, and uses it for its own sign-in rate limit (10 a minute per client address, burst 20,
+  answered with 429). Without a proxy in front, clients are limited by their own address.
 - **Storage:** use R2 in production. `STORAGE=local` keeps files in a Docker volume with no
   replication or backups and is for development only.
 - **Migrations** run automatically when the API starts (`AUTO_MIGRATE=true`). Run one API
@@ -304,8 +306,11 @@ Security behaviour worth knowing:
 - Tokens are checked against the database on every request, so disabling a user, changing
   their role, or changing their password takes effect immediately.
 - The last active admin cannot be demoted or disabled, and admins cannot disable themselves.
-- Login attempts are limited per account, not per IP address. Put a rate-limiting proxy in
-  front of a public deployment.
+- Login attempts are limited per account (5 failures lock it for 15 minutes) and, in the web
+  container, per client address (10 a minute, burst 20), which also stops one client guessing
+  across many accounts. The address limit trusts `X-Forwarded-For` only from private and
+  loopback peers; the API itself does not see client addresses, so keep it unpublished behind
+  the web container as the compose file does.
 
 Missing data is never treated as zero: a missing stone-matrix row, wastage % or stone
 rate returns `422` listing exactly what is missing.
