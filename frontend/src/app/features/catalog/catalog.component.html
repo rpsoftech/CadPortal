@@ -9,6 +9,11 @@
 
   <form [formGroup]="form" class="filters" aria-label="Catalog filters">
     <div class="row">
+      <mat-form-field appearance="outline" class="search">
+        <mat-label>Search code or name</mat-label>
+        <input matInput type="search" formControlName="q" autocomplete="off" />
+      </mat-form-field>
+
       <mat-form-field appearance="outline">
         <mat-label>Category</mat-label>
         <mat-select formControlName="categoryId">
@@ -81,7 +86,12 @@
   }
 
   @if (!state().loading && !state().error && state().items.length === 0) {
-    <p class="muted">No designs match. Adjust the filters or create a new design.</p>
+    <p class="muted">No designs match. Adjust the search and filters or create a new design.</p>
+  }
+  @if (!state().error && state().total > 0) {
+    <p class="muted small" aria-live="polite">
+      {{ state().total }} design{{ state().total === 1 ? '' : 's' }}
+    </p>
   }
 
   <div class="grid">
@@ -126,4 +136,16 @@
       </mat-card>
     }
   </div>
+
+  @if (state().total > pageSizeOptions[0]) {
+    <mat-paginator
+      [length]="state().total"
+      [pageSize]="pageSize()"
+      [pageIndex]="pageIndex()"
+      [pageSizeOptions]="pageSizeOptions"
+      (page)="onPage($event)"
+      showFirstLastButtons
+      aria-label="Select page of designs"
+    />
+  }
 </div>

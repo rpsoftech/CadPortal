@@ -147,20 +147,27 @@ func TestValidateToken(t *testing.T) {
 	admin := mkUser(t, s, "root@example.com", "admin")
 	u := mkUser(t, s, "fay@example.com", "designer")
 	now := time.Now()
+	valid := func(c auth.Claims) bool {
+		ok, err := s.ValidateToken(ctx, c)
+		if err != nil {
+			t.Fatalf("ValidateToken: %v", err)
+		}
+		return ok
+	}
 
-	if !s.ValidateToken(ctx, claimsFor(u, "designer", now)) {
+	if !valid(claimsFor(u, "designer", now)) {
 		t.Fatal("fresh token rejected")
 	}
-	if s.ValidateToken(ctx, claimsFor(u, "admin", now)) {
+	if valid(claimsFor(u, "admin", now)) {
 		t.Error("token claiming a different role accepted")
 	}
-	if s.ValidateToken(ctx, auth.Claims{Role: "designer", RegisteredClaims: jwt.RegisteredClaims{Subject: itoa(u.ID)}}) {
+	if valid(auth.Claims{Role: "designer", RegisteredClaims: jwt.RegisteredClaims{Subject: itoa(u.ID)}}) {
 		t.Error("token without issued-at accepted")
 	}
-	if s.ValidateToken(ctx, claimsFor(UserView{ID: 999999}, "designer", now)) {
+	if valid(claimsFor(UserView{ID: 999999}, "designer", now)) {
 		t.Error("unknown user accepted")
 	}
-	if s.ValidateToken(ctx, auth.Claims{Role: "designer", RegisteredClaims: jwt.RegisteredClaims{Subject: "abc", IssuedAt: jwt.NewNumericDate(now)}}) {
+	if valid(auth.Claims{Role: "designer", RegisteredClaims: jwt.RegisteredClaims{Subject: "abc", IssuedAt: jwt.NewNumericDate(now)}}) {
 		t.Error("non-numeric subject accepted")
 	}
 
@@ -168,10 +175,10 @@ func TestValidateToken(t *testing.T) {
 	if _, err := s.UpdateUser(ctx, admin.ID, u.ID, "Fay", "production", true); err != nil {
 		t.Fatal(err)
 	}
-	if s.ValidateToken(ctx, claimsFor(u, "designer", now)) {
+	if valid(claimsFor(u, "designer", now)) {
 		t.Error("token for the old role accepted")
 	}
-	if !s.ValidateToken(ctx, claimsFor(u, "production", now)) {
+	if !valid(claimsFor(u, "production", now)) {
 		t.Error("token for the new role rejected")
 	}
 
@@ -179,10 +186,10 @@ func TestValidateToken(t *testing.T) {
 	if err := s.SetPassword(ctx, u.ID, "a brand new password"); err != nil {
 		t.Fatal(err)
 	}
-	if s.ValidateToken(ctx, claimsFor(u, "production", now.Add(-10*time.Second))) {
+	if valid(claimsFor(u, "production", now.Add(-10*time.Second))) {
 		t.Error("token issued before the password change accepted")
 	}
-	if !s.ValidateToken(ctx, claimsFor(u, "production", time.Now())) {
+	if !valid(claimsFor(u, "production", time.Now())) {
 		t.Error("token issued after the password change rejected")
 	}
 
@@ -190,7 +197,7 @@ func TestValidateToken(t *testing.T) {
 	if _, err := s.UpdateUser(ctx, admin.ID, u.ID, "Fay", "production", false); err != nil {
 		t.Fatal(err)
 	}
-	if s.ValidateToken(ctx, claimsFor(u, "production", time.Now())) {
+	if valid(claimsFor(u, "production", time.Now())) {
 		t.Error("disabled user's token accepted")
 	}
 }
@@ -258,5 +265,17 @@ func TestChangePassword(t *testing.T) {
 	}
 	if _, err := s.Authenticate(ctx, "gus@example.com", "another long password"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Error("account should be locked after repeated wrong current passwords")
+	}
+}
+
+// A database failure is not "invalid token": the caller must answer 503, not 401, so a
+// brief outage does not sign everyone out.
+func TestValidateTokenDatabaseFailureIsAnError(t *testing.T) {
+	s := newTestService(t)
+	u := mkUser(t, s, "hal@example.com", "designer")
+	s.Pool.Close()
+	ok, err := s.ValidateToken(context.Background(), claimsFor(u, "designer", time.Now()))
+	if err == nil || ok {
+		t.Fatalf("want (false, error) when the database is unreachable, got (%v, %v)", ok, err)
 	}
 }

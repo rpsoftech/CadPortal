@@ -167,8 +167,8 @@ publish images anywhere.
 | Group | Endpoints |
 |---|---|
 | Masters | `GET/POST /masters/categories`, `PUT /masters/categories/:id`, `GET/POST /masters/tags`, `PUT /masters/tags/:id`, `GET/POST /masters/metals`, `PUT /masters/metals/:id`, `GET/POST /masters/stone-codes`, `PUT /masters/stone-codes/:id`, `GET/PUT/DELETE /masters/stone-matrix`, `GET /masters/matrix-gaps`, `GET /masters/recalc-status` |
-| Designs | `POST/GET /designs`, `GET /designs/:code`, `PUT/DELETE /designs/:id` |
-| Variations | `POST /designs/:id/variations`, `PUT /variations/:id/base-input` |
+| Designs | `POST/GET /designs` (`q` search, `limit`/`offset`, total in `X-Total-Count`), `GET /designs/:code`, `PUT/DELETE /designs/:id` |
+| Variations | `POST /designs/:id/variations`, `PUT /variations/:id/base-input`, `DELETE /variations/:id` |
 | Seats and BOM | `GET/PUT /variations/:id/seats`, `POST /variations/:id/clone-seats`, `GET /variations/:id/simulate-bom?code=2HD` |
 | CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl` |
 | Exports | `POST /exports/job-bag-pdf`, `POST /exports/costing-csv` |

@@ -6,6 +6,8 @@ services:
       POSTGRES_PASSWORD: cad
       POSTGRES_DB: cad_portal
     ports: ["5433:5432"]   # 5433 avoids clashing with any local Postgres
-    volumes: [cadportal_pgdata:/var/lib/postgresql/data]
+    # Postgres 18 keeps its data in a versioned subdirectory, so the volume is mounted one
+    # level up (/var/lib/postgresql), not at .../data as with older images.
+    volumes: [pgdata18:/var/lib/postgresql]
 volumes:
-  cadportal_pgdata:
+  pgdata18:

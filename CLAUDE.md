@@ -6,7 +6,7 @@ Internal manufacturing catalog, CAD/CAM file vault, and dynamic Job-Bag spec gen
 
 ## Environment
 - **Go 1.23+**, **Angular CLI 22** (needs Node 22.22.3+ or 24.15+), and **Docker** are installed locally.
-- **Local dev/test DB:** run Postgres 16 in Docker (see `docker-compose.yml`). All automated tests run against this.
+- **Local dev/test DB:** run Postgres 18 (alpine) in Docker (see `docker-compose.yml`). All automated tests run against this.
 - **Shared testing Postgres on the server:** reached via `TEST_SERVER_DATABASE_URL` in `.env` (never commit credentials).
   - Read-only checks are fine. **Ask before** running migrations, seeds, `DROP`, `TRUNCATE`, or bulk writes against it.
 - Secrets live in `.env` (gitignored); keep `.env.example` up to date.
@@ -17,7 +17,7 @@ backend/            Go service (Gin, pgx, sqlc, golang-migrate)
   migrations/       000001_init_schema, 000002_seed_masters (up/down)
   internal/         handlers, services, db (sqlc output), storage (S3/R2)
 frontend/           Angular 22 app (standalone components, Signals, zoneless, Vitest); package manager: Yarn 4 (`yarn.lock`, release pinned via `.yarnrc.yml`)
-docker-compose.yml  Postgres 16 for local dev
+docker-compose.yml  Postgres 18 for local dev
 docker-compose.prod.yml  production-style stack: db + api + web (nginx); images from backend/Dockerfile and frontend/Dockerfile
 ```
 
@@ -88,8 +88,8 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
 |---|---|
 | Auth & users | `POST /api/v1/auth/login`, `GET /api/v1/auth/me`, `POST /api/v1/auth/change-password`, `GET/POST /api/v1/users`, `PUT /api/v1/users/:id`, `POST /api/v1/users/:id/password` |
 | Masters | `GET/POST/PUT /api/v1/masters/categories[/:id]`, `GET/POST/PUT /api/v1/masters/tags[/:id]`, `GET/POST /api/v1/masters/metals`, `PUT /api/v1/masters/metals/:id`, `GET/POST /api/v1/masters/stone-codes`, `PUT /api/v1/masters/stone-codes/:id`, `GET/PUT/DELETE /api/v1/masters/stone-matrix`, `GET /api/v1/masters/matrix-gaps`, `GET /api/v1/masters/recalc-status` (writes admin only) |
-| Designs | `POST/GET /api/v1/designs`, `GET /api/v1/designs/:code`, `PUT/DELETE /api/v1/designs/:id` |
-| Variations & CAD vault | `POST /api/v1/designs/:id/variations`, `POST /api/v1/variations/:id/upload-cad`, `POST /api/v1/variations/:id/clone-seats`, `PUT /api/v1/variations/:id/seats`, `GET /api/v1/variations/:id/download` |
+| Designs | `POST/GET /api/v1/designs` (`q` text search, `limit`/`offset` paging, total in `X-Total-Count`), `GET /api/v1/designs/:code`, `PUT/DELETE /api/v1/designs/:id` (soft delete; the code stays reserved) |
+| Variations & CAD vault | `POST /api/v1/designs/:id/variations`, `POST /api/v1/variations/:id/upload-cad`, `POST /api/v1/variations/:id/clone-seats`, `PUT /api/v1/variations/:id/seats`, `DELETE /api/v1/variations/:id`, `GET /api/v1/variations/:id/download` |
 | BOM & exports | `GET /api/v1/variations/:id/simulate-bom?code=2HD`, `POST /api/v1/exports/job-bag-pdf`, `POST /api/v1/exports/costing-csv` |
 
 `GET /api/v1/designs` filter parameters: `category_id`, `tag_ids[]`, `metal_code`, `min_net_wt`, `max_net_wt`, `min_gross_wt`, `max_gross_wt`, `max_stone_cts`.
@@ -126,5 +126,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   6. Login (users, Argon2id, lockout) and a protected API
   7. Admin screens for master data (alloys, stone matrix with CSV import, categories, tags)
   8. Deployment: container images, production compose, health checks, CI image build and smoke test
+  9. Catalog management: text search, paging, edit/delete designs, delete variations
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.
