@@ -1,0 +1,10 @@
+# Every change needs the owner's review once "Require review from Code Owners" is on.
+*                        @keyurboss
+
+# Extra-sensitive paths (same owner today; split when the team grows)
+/.github/                @keyurboss
+/backend/migrations/     @keyurboss
+/backend/internal/auth/  @keyurboss
+/backend/internal/storage/ @keyurboss
+/LICENSE                 @keyurboss
+/SECURITY.md             @keyurboss

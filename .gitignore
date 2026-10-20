@@ -1,2 +1,29 @@
+# Secrets and local config (keep the example file)
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Go
 *.exe
+*.test
+*.out
+coverage.*
+/backend/bin/
+
+# Frontend (Angular, planned)
+node_modules/
+/frontend/dist/
+/frontend/.angular/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings (project CLAUDE.md stays tracked)
+.claude/settings.local.json

@@ -1,0 +1,28 @@
+name: Bug report
+description: Something behaves incorrectly (not a security issue - see SECURITY.md)
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Include the request (without tokens or secrets) and any weights or stone values involved.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+  - type: checkboxes
+    id: secrets
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed all tokens, secrets and private data from this report.
+          required: true

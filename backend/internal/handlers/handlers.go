@@ -2,7 +2,9 @@
 package handlers
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/rpsoftech/cad-portal/backend/internal/auth"
 	"github.com/rpsoftech/cad-portal/backend/internal/calc"
+	"github.com/rpsoftech/cad-portal/backend/internal/export"
 	"github.com/rpsoftech/cad-portal/backend/internal/service"
 )
 
@@ -53,6 +56,9 @@ func (h *H) Register(r *gin.Engine) {
 
 	// CAD vault: uploads by admin/designer, downloads also by production.
 	v1.POST("/variations/:id/upload-cad", auth.Require(h.JWTSecret, auth.Admin, auth.Designer), h.uploadCAD)
+	// Exports: job bags for every role; costing exposes money, so admin/designer only.
+	v1.POST("/exports/job-bag-pdf", auth.Require(h.JWTSecret, auth.Admin, auth.Designer, auth.Production), h.jobBagPDF)
+	v1.POST("/exports/costing-csv", auth.Require(h.JWTSecret, auth.Admin, auth.Designer), h.costingCSV)
 	v1.GET("/variations/:id/download", auth.Require(h.JWTSecret, auth.Admin, auth.Designer, auth.Production), h.downloadCAD)
 }
 
@@ -60,6 +66,12 @@ func fail(c *gin.Context, err error) {
 	var mme *calc.MissingMatrixError
 	if errors.As(err, &mme) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": mme.Error(), "missing": mme.Pairs})
+		return
+	}
+	var mci *service.MissingCostInputsError
+	if errors.As(err, &mci) {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": mci.Error(),
+			"metals_missing_wastage": mci.Wastage, "stone_rates_missing": mci.StoneRates})
 		return
 	}
 	status := http.StatusInternalServerError
@@ -455,4 +467,62 @@ func (h *H) downloadCAD(c *gin.Context) {
 	}
 	out, err := h.S.DownloadCAD(c, id, c.DefaultQuery("kind", "3dm"))
 	respond(c, http.StatusOK, out, err)
+}
+
+// ---------- Exports ----------
+
+func (h *H) jobBagPDF(c *gin.Context) {
+	var in struct {
+		VariationID int64  `json:"variation_id"`
+		MetalCode   string `json:"metal_code"`
+		StoneCode   string `json:"stone_code"`
+	}
+	if c.ShouldBindJSON(&in) != nil || in.VariationID <= 0 {
+		badRequest(c, "variation_id, metal_code and stone_code are required")
+		return
+	}
+	jb, err := h.S.JobBag(c, in.VariationID, in.MetalCode, in.StoneCode)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	pdf, err := export.RenderJobBagPDF(jb)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", "jobbag-"+jb.VariationCode+".pdf"))
+	c.Data(http.StatusOK, "application/pdf", pdf)
+}
+
+func (h *H) costingCSV(c *gin.Context) {
+	var in struct {
+		Items []struct {
+			VariationID int64  `json:"variation_id"`
+			MetalCode   string `json:"metal_code"`
+			StoneCode   string `json:"stone_code"`
+		} `json:"items"`
+		GoldRatePerG     decimal.Decimal `json:"gold_rate_per_g"`
+		SettingRatePerPc decimal.Decimal `json:"setting_rate_per_pc"`
+	}
+	if c.ShouldBindJSON(&in) != nil {
+		badRequest(c, "invalid JSON body")
+		return
+	}
+	req := service.CostingRequest{GoldRatePerG: in.GoldRatePerG, SettingRatePerPc: in.SettingRatePerPc}
+	for _, it := range in.Items {
+		req.Items = append(req.Items, service.CostingItem(it))
+	}
+	rows, err := h.S.CostingRows(c, req)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	var buf bytes.Buffer
+	if err := export.WriteCostingCSV(&buf, rows); err != nil {
+		fail(c, err)
+		return
+	}
+	c.Header("Content-Disposition", `attachment; filename="costing.csv"`)
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", buf.Bytes())
 }
