@@ -5,6 +5,7 @@
 /tmp
 /out-tsc
 /bazel-out
+install-state.gz
 
 # Node
 /node_modules
