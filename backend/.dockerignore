@@ -1,0 +1,10 @@
+# Keep the build context small and free of secrets or local state.
+.git
+.env
+.env.*
+*.exe
+bin/
+data/
+**/*_test.go
+Dockerfile
+.dockerignore

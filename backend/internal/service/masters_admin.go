@@ -60,7 +60,9 @@ func (s *Service) UpdateCategory(ctx context.Context, id int64, name, prefix str
 }
 
 // ListAllTags includes deactivated tags (for the admin screen).
-func (s *Service) ListAllTags(ctx context.Context) ([]db.Tag, error) { return s.Q.ListAllTags(ctx) }
+func (s *Service) ListAllTags(ctx context.Context) ([]db.Tag, error) {
+	return nonNil(s.Q.ListAllTags(ctx))
+}
 
 func (s *Service) UpdateTag(ctx context.Context, id int64, name, group string, active bool) (db.Tag, error) {
 	name = strings.TrimSpace(name)

@@ -1,6 +1,6 @@
 import { HttpClient, HttpEvent, HttpParams, HttpRequest } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import {
   BaseInput,
   BomResult,
@@ -35,7 +35,7 @@ export class ApiService {
 
   // ----- users (admin) -----
   users(): Observable<User[]> {
-    return this.http.get<User[]>(`${BASE}/users`);
+    return this.http.get<User[]>(`${BASE}/users`).pipe(orEmpty());
   }
   createUser(body: { email: string; name: string; password: string; role: UserRole }) {
     return this.http.post<User>(`${BASE}/users`, body);
@@ -49,11 +49,11 @@ export class ApiService {
 
   // ----- masters -----
   categories(): Observable<Category[]> {
-    return this.http.get<Category[]>(`${BASE}/masters/categories`);
+    return this.http.get<Category[]>(`${BASE}/masters/categories`).pipe(orEmpty());
   }
   tags(includeInactive = false): Observable<Tag[]> {
     const params = includeInactive ? new HttpParams().set('include_inactive', 'true') : undefined;
-    return this.http.get<Tag[]>(`${BASE}/masters/tags`, { params });
+    return this.http.get<Tag[]>(`${BASE}/masters/tags`, { params }).pipe(orEmpty());
   }
   createTag(body: { name: string; tag_group: TagGroup }): Observable<Tag> {
     return this.http.post<Tag>(`${BASE}/masters/tags`, body);
@@ -80,7 +80,7 @@ export class ApiService {
     return this.http.put<StoneCode>(`${BASE}/masters/stone-codes/${id}`, { active });
   }
   stoneMatrix(): Observable<StoneMatrixRow[]> {
-    return this.http.get<StoneMatrixRow[]>(`${BASE}/masters/stone-matrix`);
+    return this.http.get<StoneMatrixRow[]>(`${BASE}/masters/stone-matrix`).pipe(orEmpty());
   }
   /** Upserts rows and/or moves the baseline code. Weights are rebuilt in the background. */
   saveStoneMatrix(rows: MatrixRowInput[], baselineCode = ''): Observable<unknown> {
@@ -91,24 +91,33 @@ export class ApiService {
     return this.http.delete<void>(`${BASE}/masters/stone-matrix`, { params });
   }
   matrixGaps(): Observable<MatrixGap[]> {
-    return this.http.get<MatrixGap[]>(`${BASE}/masters/matrix-gaps`);
+    return this.http.get<MatrixGap[]>(`${BASE}/masters/matrix-gaps`).pipe(orEmpty());
   }
   recalcStatus(): Observable<RecalcStatus> {
     return this.http.get<RecalcStatus>(`${BASE}/masters/recalc-status`);
   }
   metals(): Observable<Metal[]> {
-    return this.http.get<Metal[]>(`${BASE}/masters/metals`);
+    return this.http.get<Metal[]>(`${BASE}/masters/metals`).pipe(orEmpty());
   }
   stoneCodes(): Observable<StoneCode[]> {
-    return this.http.get<StoneCode[]>(`${BASE}/masters/stone-codes`);
+    return this.http.get<StoneCode[]>(`${BASE}/masters/stone-codes`).pipe(orEmpty());
   }
 
   // ----- designs -----
   listDesigns(f: DesignFilter): Observable<DesignListItem[]> {
-    return this.http.get<DesignListItem[]>(`${BASE}/designs`, { params: designParams(f) });
+    return this.http.get<DesignListItem[]>(`${BASE}/designs`, { params: designParams(f) }).pipe(
+      orEmpty(),
+      map((items) => items.map((d) => ({ ...d, tag_names: d.tag_names ?? [] }))),
+    );
   }
   getDesign(code: string): Observable<DesignDetail> {
-    return this.http.get<DesignDetail>(`${BASE}/designs/${encodeURIComponent(code)}`);
+    return this.http.get<DesignDetail>(`${BASE}/designs/${encodeURIComponent(code)}`).pipe(
+      map((d) => ({
+        ...d,
+        tags: d.tags ?? [],
+        variations: (d.variations ?? []).map((v) => ({ ...v, weights: v.weights ?? [] })),
+      })),
+    );
   }
   createDesign(body: { code: string; name: string; category_id: number; tag_ids: number[] }) {
     return this.http.post<{ id: number; code: string }>(`${BASE}/designs`, body);
@@ -124,7 +133,7 @@ export class ApiService {
 
   // ----- seats and BOM -----
   seats(variationId: number): Observable<Seat[]> {
-    return this.http.get<Seat[]>(`${BASE}/variations/${variationId}/seats`);
+    return this.http.get<Seat[]>(`${BASE}/variations/${variationId}/seats`).pipe(orEmpty());
   }
   setSeats(variationId: number, seats: SeatInput[]): Observable<Variation> {
     const body = {
@@ -194,4 +203,9 @@ export function designParams(f: DesignFilter): HttpParams {
   set('max_stone_cts', f.maxStoneCts);
   for (const id of f.tagIds ?? []) p = p.append('tag_ids[]', `${id}`);
   return p;
+}
+
+/** Go can serialise an empty list as null; screens expect an array, so normalise it here. */
+export function orEmpty<T>() {
+  return map((v: T[] | null | undefined): T[] => v ?? []);
 }

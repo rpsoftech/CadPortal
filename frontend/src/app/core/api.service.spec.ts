@@ -144,4 +144,33 @@ describe('ApiService', () => {
     api.matrixGaps().subscribe();
     expect(http.expectOne('/api/v1/masters/matrix-gaps').request.method).toBe('GET');
   });
+
+  it('turns null lists into empty arrays so screens never crash on a fresh database', () => {
+    const results: Record<string, unknown> = {};
+    api.tags().subscribe((v) => (results['tags'] = v));
+    http.expectOne('/api/v1/masters/tags').flush(null);
+    api.stoneMatrix().subscribe((v) => (results['matrix'] = v));
+    http.expectOne('/api/v1/masters/stone-matrix').flush(null);
+    api.seats(3).subscribe((v) => (results['seats'] = v));
+    http.expectOne('/api/v1/variations/3/seats').flush(null);
+    api.listDesigns({}).subscribe((v) => (results['designs'] = v));
+    http.expectOne((r) => r.url === '/api/v1/designs').flush(null);
+    expect(results).toEqual({ tags: [], matrix: [], seats: [], designs: [] });
+  });
+
+  it('normalises null tags, variations and weights on a design', () => {
+    let design: { tags: unknown[]; variations: { weights: unknown[] }[] } | undefined;
+    api.getDesign('LR001').subscribe((d) => (design = d));
+    http
+      .expectOne('/api/v1/designs/LR001')
+      .flush({ id: 1, code: 'LR001', tags: null, variations: [{ id: 5, weights: null }] });
+    expect(design?.tags).toEqual([]);
+    expect(design?.variations[0].weights).toEqual([]);
+
+    api.getDesign('LR002').subscribe((d) => (design = d));
+    http
+      .expectOne('/api/v1/designs/LR002')
+      .flush({ id: 2, code: 'LR002', tags: null, variations: null });
+    expect(design?.variations).toEqual([]);
+  });
 });

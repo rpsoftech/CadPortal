@@ -18,6 +18,7 @@ backend/            Go service (Gin, pgx, sqlc, golang-migrate)
   internal/         handlers, services, db (sqlc output), storage (S3/R2)
 frontend/           Angular 22 app (standalone components, Signals, zoneless, Vitest); package manager: Yarn 4 (`yarn.lock`, release pinned via `.yarnrc.yml`)
 docker-compose.yml  Postgres 16 for local dev
+docker-compose.prod.yml  production-style stack: db + api + web (nginx); images from backend/Dockerfile and frontend/Dockerfile
 ```
 
 ## Stack decisions
@@ -124,5 +125,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   5. Angular screens 1 → 3
   6. Login (users, Argon2id, lockout) and a protected API
   7. Admin screens for master data (alloys, stone matrix with CSV import, categories, tags)
+  8. Deployment: container images, production compose, health checks, CI image build and smoke test
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.
