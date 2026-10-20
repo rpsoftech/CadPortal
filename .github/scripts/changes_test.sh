@@ -19,7 +19,7 @@ git config commit.gpgsign false
 git config core.autocrlf false
 
 seed=(
-  README.md CLAUDE.md docs/notes.md .github/dependabot.yml docker-compose.yml docker-compose.prod.yml
+  README.md CLAUDE.md docs/notes.md .github/dependabot.yml docker-compose.yml docker-compose.prod.yml docker-compose.images.yml .github/workflows/release.yml
   backend/go.mod backend/go.sum backend/internal/service/x.go backend/internal/service/x_test.go
   backend/internal/db/queries/q.sql backend/migrations/000001_init.up.sql backend/sqlc.yaml
   frontend/package.json frontend/yarn.lock frontend/src/app/a.ts frontend/src/app/a.spec.ts
@@ -87,6 +87,8 @@ check "sqlc config"               "test sqlc docker"       backend/sqlc.yaml
 # Deployment files, and combinations.
 check "production compose"        "docker"  docker-compose.prod.yml
 check "backup scripts"             "docker"  scripts/backup.sh
+check "images compose override"     "docker"  docker-compose.images.yml
+check "release workflow"           "docker"  .github/workflows/release.yml
 check "docs + frontend"           "frontend docker"  README.md frontend/src/app/a.ts
 check "frontend + backend source"    "test frontend docker vulncheck"  frontend/src/app/a.ts backend/internal/service/x.go
 check "backend + sqlc + frontend" "$all"   backend/migrations/000003.up.sql frontend/src/app/a.ts backend/internal/service/x.go

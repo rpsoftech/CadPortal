@@ -177,8 +177,35 @@ scripts/restore.sh backups/cad_portal-20261021-020000.dump
 
 - **Updating:** `git pull`, then `docker compose -f docker-compose.prod.yml up -d --build`.
 
-CI builds both images and validates the compose file on every pull request, but does not
-publish images anywhere.
+CI builds both images and validates the compose files when their inputs change, but does not
+publish anything on a pull request or a merge.
+
+### Releases and published images
+
+Images are published to GitHub Container Registry only when you push a version tag:
+
+```bash
+git checkout main && git pull
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+The **Release** workflow refuses a tag whose commit is not on `main`, then builds and pushes
+`ghcr.io/rpsoftech/cadportal-api` and `ghcr.io/rpsoftech/cadportal-web` tagged `1.2.3` and `1.2`
+(plus `latest` for a stable version; a pre-release such as `v1.2.3-rc1` gets only its own tag).
+Each image carries build provenance and an SBOM. The first publish creates the packages as
+private: open each package's settings on GitHub and set the visibility you want, or log in on
+the server with a token that can read packages.
+
+To run published images on the server instead of building there:
+
+```bash
+CADPORTAL_VERSION=1.2.3 docker compose -f docker-compose.prod.yml -f docker-compose.images.yml up -d
+```
+
+Pin an exact version rather than `latest`, so an update is a deliberate change (edit the
+version, run the command again). Back up first with `scripts/backup.sh`; migrations run when
+the new API starts.
 
 ## API (v1)
 
