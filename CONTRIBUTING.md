@@ -27,6 +27,26 @@ discretion.
    go test ./...
    ```
 
+   and from `frontend/`: `yarn ng test --watch=false` and `yarn ng build`.
+
+## CI
+
+CI runs only the jobs a change needs (`.github/scripts/changes.sh`):
+
+| Changed files | Jobs that run |
+|---|---|
+| `backend/**` | `test`, plus `vulncheck` for non-test Go code or `go.mod`/`go.sum`, `sqlc` for queries, migrations or `sqlc.yaml` |
+| `frontend/**` | `frontend` |
+| image sources (non-test files in `backend/` or `frontend/`) or `docker-compose.prod.yml` | `docker` |
+| docs, README, `.github/dependabot.yml`, the dev `docker-compose.yml` | none |
+| `.github/workflows/ci.yml` or `.github/scripts/` | everything |
+
+Manual runs, the weekly scheduled run, and any push or PR where the base commit cannot be
+found also run everything. A skipped job shows as "skipped", which counts as passing for the
+required checks; the always-running `changes` job is itself required, so a broken change
+detector blocks the merge instead of silently skipping the tests. After editing the
+detector, run `bash .github/scripts/changes_test.sh`.
+
 ## Code conventions
 
 - Money and weights use `shopspring/decimal`, never `float64`. Round only when storing
