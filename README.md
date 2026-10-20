@@ -330,6 +330,25 @@ yarn ng test --watch=false
 The tests wipe databases whose names end in `_test`, and refuse to touch any other
 database.
 
+### Browser smoke tests
+
+CI also drives the real production stack in a browser (Playwright, `frontend/e2e/`): sign in,
+import designs, check the weight matrix against the spec fixtures, upload and remove a CAD
+file, read the audit log, and confirm a production user cannot edit. To run them yourself
+against a **throwaway** stack (the tests create designs `E2E001` and `E2E002` and two users):
+
+```bash
+STORAGE=local WEB_PORT=18080 POSTGRES_PASSWORD=... JWT_SECRET=... \
+  docker compose -f docker-compose.prod.yml up -d --build --wait
+(cd frontend && yarn install && yarn playwright install chromium)
+WEB_PORT=18080 scripts/e2e.sh
+docker compose -f docker-compose.prod.yml down -v     # the next run needs a fresh database
+```
+
+`scripts/e2e.sh` creates the two users with random passwords; pass Playwright options after it
+(for example `--grep "weight matrix"` or `--headed`). On a CI failure the report and traces are
+attached to the run as the `playwright-report` artifact.
+
 ## Regenerating sqlc code
 
 sqlc is run through its official Docker image:

@@ -36,3 +36,7 @@ Thumbs.db
 
 # Database dumps from scripts/backup.sh (they hold password hashes)
 /backups/
+
+# Playwright output
+/frontend/test-results/
+/frontend/playwright-report/
