@@ -15,7 +15,9 @@
         <div class="muted">{{ d.name || 'Unnamed' }} · {{ categoryName() }}</div>
       </div>
       <span class="spacer"></span>
-      <button matButton="filled" (click)="addVariation()">Add variation</button>
+      @if (auth.canEdit()) {
+        <button matButton="filled" (click)="addVariation()">Add variation</button>
+      }
     </div>
 
     @if (d.tags.length) {
@@ -85,10 +87,12 @@
             <mat-button-toggle [value]="v.id" class="mono">{{ v.code }}</mat-button-toggle>
           }
         </mat-button-toggle-group>
-        @if (selected(); as s) {
-          <a matButton [routerLink]="['/designs', d.code, 'variations', s.id, 'edit']">
-            Edit seats & files
-          </a>
+        @if (auth.canEdit()) {
+          @if (selected(); as s) {
+            <a matButton [routerLink]="['/designs', d.code, 'variations', s.id, 'edit']">
+              Edit seats & files
+            </a>
+          }
         }
       </div>
 
@@ -198,37 +202,34 @@
             </button>
           </div>
 
-          <h3>Costing CSV</h3>
-          <form [formGroup]="costing" class="row" (ngSubmit)="costingCsv()">
-            <mat-form-field appearance="outline" class="num-field">
-              <mat-label>Gold rate / g</mat-label>
-              <input matInput formControlName="goldRate" inputmode="decimal" />
-            </mat-form-field>
-            <mat-form-field appearance="outline" class="num-field">
-              <mat-label>Setting rate / pc</mat-label>
-              <input matInput formControlName="settingRate" inputmode="decimal" />
-            </mat-form-field>
-            <mat-radio-group formControlName="scope" aria-label="Costing scope">
-              <mat-radio-button value="selected">This variation</mat-radio-button>
-              <mat-radio-button value="all">All variations</mat-radio-button>
-            </mat-radio-group>
-            <button
-              matButton="filled"
-              type="submit"
-              [disabled]="
-                costing.invalid || !canExport() || exportBusy() || auth.role() === 'production'
-              "
-            >
-              Download CSV
-            </button>
-          </form>
-          @if (auth.role() === 'production') {
-            <p class="muted small">Costing is limited to admin and designer roles.</p>
+          @if (auth.canEdit()) {
+            <h3>Costing CSV</h3>
+            <form [formGroup]="costing" class="row" (ngSubmit)="costingCsv()">
+              <mat-form-field appearance="outline" class="num-field">
+                <mat-label>Gold rate / g</mat-label>
+                <input matInput formControlName="goldRate" inputmode="decimal" />
+              </mat-form-field>
+              <mat-form-field appearance="outline" class="num-field">
+                <mat-label>Setting rate / pc</mat-label>
+                <input matInput formControlName="settingRate" inputmode="decimal" />
+              </mat-form-field>
+              <mat-radio-group formControlName="scope" aria-label="Costing scope">
+                <mat-radio-button value="selected">This variation</mat-radio-button>
+                <mat-radio-button value="all">All variations</mat-radio-button>
+              </mat-radio-group>
+              <button
+                matButton="filled"
+                type="submit"
+                [disabled]="costing.invalid || !canExport() || exportBusy()"
+              >
+                Download CSV
+              </button>
+            </form>
+            <p class="muted small">
+              Wastage % comes from the metal master and stone rates from the stone matrix; if either
+              is unset the export lists what is missing.
+            </p>
           }
-          <p class="muted small">
-            Wastage % comes from the metal master and stone rates from the stone matrix; if either
-            is unset the export lists what is missing.
-          </p>
 
           @if (exportBusy()) {
             <mat-progress-bar mode="indeterminate" />

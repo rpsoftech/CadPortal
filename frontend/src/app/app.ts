@@ -1,22 +1,33 @@
-import { Component, effect, inject, untracked } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth.service';
-import { TokenDialogComponent } from './shared/token-dialog.component';
+import { ChangePasswordDialogComponent } from './shared/change-password-dialog.component';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, MatToolbarModule, MatButtonModule],
+  imports: [RouterOutlet, RouterLink, MatToolbarModule, MatButtonModule, MatMenuModule],
   template: `
     <mat-toolbar>
       <a routerLink="/" class="brand">CadPortal</a>
-      <span class="spacer"></span>
-      <span class="muted role">{{ auth.role() ?? 'not signed in' }}</span>
-      <button matButton="outlined" (click)="openToken()">
-        {{ auth.token() ? 'Change token' : 'Sign in' }}
-      </button>
+      @if (auth.user(); as u) {
+        @if (auth.isAdmin()) {
+          <a matButton routerLink="/users">Users</a>
+        }
+        <span class="spacer"></span>
+        <button matButton="outlined" [matMenuTriggerFor]="menu" aria-label="Account menu">
+          {{ u.name || u.email }} · {{ u.role }}
+        </button>
+        <mat-menu #menu="matMenu">
+          <div class="menu-id muted">{{ u.email }}</div>
+          <button mat-menu-item (click)="changePassword()">Change password</button>
+          <button mat-menu-item (click)="auth.logout()">Sign out</button>
+        </mat-menu>
+      }
     </mat-toolbar>
     <router-outlet />
   `,
@@ -26,33 +37,30 @@ import { TokenDialogComponent } from './shared/token-dialog.component';
       text-decoration: none;
       font-weight: 600;
       font-size: 1.2rem;
+      margin-right: 12px;
     }
     .spacer {
       flex: 1;
     }
-    .role {
-      margin-right: 12px;
+    .menu-id {
+      padding: 8px 16px;
+      font-size: 0.85rem;
     }
   `,
 })
 export class App {
   protected readonly auth = inject(AuthService);
   private readonly dialog = inject(MatDialog);
-  private open = false;
+  private readonly snack = inject(MatSnackBar);
 
-  constructor() {
-    // The API answered 401: ask for a token once (not again while the dialog is open).
-    effect(() => {
-      if (this.auth.promptRequested() > 0) untracked(() => this.openToken());
-    });
-  }
-
-  openToken(): void {
-    if (this.open) return;
-    this.open = true;
+  protected changePassword(): void {
     this.dialog
-      .open(TokenDialogComponent, { width: '520px' })
+      .open<ChangePasswordDialogComponent, void, boolean>(ChangePasswordDialogComponent, {
+        width: '420px',
+      })
       .afterClosed()
-      .subscribe(() => (this.open = false));
+      .subscribe((ok) => {
+        if (ok) this.snack.open('Password changed', 'OK', { duration: 3000 });
+      });
   }
 }

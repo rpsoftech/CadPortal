@@ -3,6 +3,24 @@
 
 export type Dec = string;
 
+export type UserRole = 'admin' | 'designer' | 'production';
+
+export interface User {
+  id: number;
+  email: string;
+  name: string;
+  role: UserRole;
+  active: boolean;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  expires_at: string;
+  user: User;
+}
+
 export interface Category {
   id: number;
   name: string;

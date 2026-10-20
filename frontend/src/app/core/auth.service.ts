@@ -1,70 +1,126 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
+import { Observable, catchError, map, of, tap } from 'rxjs';
+import { LoginResponse, User } from './models';
 
 export type Role = 'admin' | 'designer' | 'production';
 
-const STORAGE_KEY = 'cadportal.token';
-
-/** Decodes a JWT payload for UI hints only. The server verifies every token. */
-export function decodeToken(token: string): { role?: string; exp?: number; sub?: string } | null {
-  try {
-    const part = token.split('.')[1];
-    if (!part) return null;
-    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'));
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
+interface Session {
+  token: string;
+  expiresAt: string;
+  user: User;
 }
 
+const STORAGE_KEY = 'cadportal.session';
+
 /**
- * Holds the bearer token for the session. There is no login endpoint yet, so the
- * user pastes a token; it lives in sessionStorage only (cleared when the tab closes).
+ * Signed-in state. The session (token + user) lives in sessionStorage, so it ends
+ * with the browser tab. The UI uses the role only to hide controls; the server
+ * checks the token and role on every request.
  */
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly _token = signal<string | null>(read());
-  /** Bumped when the API says authentication is needed, so the shell can prompt. */
-  readonly promptRequested = signal(0);
+  private readonly http = inject(HttpClient);
+  private readonly router = inject(Router);
 
-  readonly token = this._token.asReadonly();
+  private readonly session = signal<Session | null>(read());
+  private verified: Promise<boolean> | null = null;
 
-  readonly claims = computed(() => {
-    const t = this._token();
-    return t ? decodeToken(t) : null;
-  });
-
-  readonly role = computed<Role | null>(() => {
-    const c = this.claims();
-    if (!c || (c.exp && c.exp * 1000 < Date.now())) return null;
-    return c.role === 'admin' || c.role === 'designer' || c.role === 'production' ? c.role : null;
-  });
-
-  /** Can upload CAD files and see costing. */
+  readonly user = computed(() => this.session()?.user ?? null);
+  readonly token = computed(() => this.session()?.token ?? null);
+  readonly role = computed<Role | null>(() => this.user()?.role ?? null);
+  readonly isAuthenticated = computed(() => this.session() !== null);
+  /** Can change designs, seats and CAD files, and see costing. */
   readonly canEdit = computed(() => this.role() === 'admin' || this.role() === 'designer');
+  readonly isAdmin = computed(() => this.role() === 'admin');
 
-  set(token: string): void {
-    const t = token.trim().replace(/^Bearer\s+/i, '');
-    this._token.set(t || null);
+  login(email: string, password: string): Observable<User> {
+    return this.http.post<LoginResponse>('/api/v1/auth/login', { email, password }).pipe(
+      tap((r) => this.start(r)),
+      map((r) => r.user),
+    );
+  }
+
+  /** Changing the password invalidates the old token, so the server returns a new one. */
+  changePassword(currentPassword: string, newPassword: string): Observable<User> {
+    return this.http
+      .post<LoginResponse>('/api/v1/auth/change-password', {
+        current_password: currentPassword,
+        new_password: newPassword,
+      })
+      .pipe(
+        tap((r) => this.start(r)),
+        map((r) => r.user),
+      );
+  }
+
+  /**
+   * Confirms the stored session with the server once per page load (a user may have
+   * been disabled or had their role changed since the tab last talked to the API).
+   */
+  verifyOnce(): Promise<boolean> {
+    this.verified ??= new Promise<boolean>((resolve) => {
+      this.http
+        .get<User>('/api/v1/auth/me')
+        .pipe(
+          tap((u) => this.session.update((s) => (s ? { ...s, user: u } : s))),
+          map(() => true),
+          catchError(() => of(false)),
+        )
+        .subscribe((ok) => resolve(ok));
+    });
+    return this.verified;
+  }
+
+  /** Signs out on purpose. */
+  logout(): void {
+    this.clear();
+    void this.router.navigate(['/login']);
+  }
+
+  /** The server rejected our token: drop the session and go to the login page. */
+  expire(): void {
+    if (!this.session()) return;
+    const returnUrl = this.router.url;
+    this.clear();
+    void this.router.navigate(['/login'], {
+      queryParams: returnUrl && returnUrl !== '/login' ? { returnUrl } : {},
+    });
+  }
+
+  private start(r: LoginResponse): void {
+    const s: Session = { token: r.token, expiresAt: r.expires_at, user: r.user };
+    this.session.set(s);
+    this.verified = Promise.resolve(true);
     try {
-      if (t) sessionStorage.setItem(STORAGE_KEY, t);
-      else sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s));
     } catch {
-      /* storage unavailable: keep the token in memory only */
+      /* storage unavailable: keep the session in memory only */
     }
   }
 
-  clear(): void {
-    this.set('');
-  }
-
-  requestSignIn(): void {
-    this.promptRequested.update((n) => n + 1);
+  private clear(): void {
+    this.session.set(null);
+    this.verified = null;
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
-function read(): string | null {
+function read(): Session | null {
   try {
-    return sessionStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Session;
+    if (!s?.token || !s.user?.role || Date.parse(s.expiresAt) <= Date.now()) {
+      sessionStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    return s;
   } catch {
     return null;
   }

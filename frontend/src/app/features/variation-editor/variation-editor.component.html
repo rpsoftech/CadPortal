@@ -32,9 +32,6 @@
     <mat-card appearance="outlined">
       <mat-card-header><mat-card-title>CAD files</mat-card-title></mat-card-header>
       <mat-card-content>
-        @if (auth.role() === 'production') {
-          <p class="muted">Uploading needs the admin or designer role.</p>
-        }
         <p class="muted small">
           Files are hashed (SHA-256 of the original bytes) and compressed while streaming to
           storage. A file already stored on any variation is rejected.
@@ -46,7 +43,6 @@
               [stored]="stored('3dm')"
               [progress]="uploads()['3dm'].progress"
               [error]="uploads()['3dm'].error"
-              [disabled]="auth.role() === 'production'"
               (picked)="upload('3dm', $event)"
             />
           </div>
@@ -56,7 +52,6 @@
               [stored]="stored('stl')"
               [progress]="uploads().stl.progress"
               [error]="uploads().stl.error"
-              [disabled]="auth.role() === 'production'"
               (picked)="upload('stl', $event)"
             />
           </div>
