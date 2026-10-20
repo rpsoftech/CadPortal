@@ -119,6 +119,7 @@ func (h *H) Register(r *gin.Engine) {
 	// Exports: job bags for every role; costing exposes money, so admin/designer only.
 	v1.POST("/exports/job-bag-pdf", anyRole, h.jobBagPDF)
 	v1.POST("/exports/costing-csv", editor, h.costingCSV)
+	v1.GET("/exports/designs-csv", anyRole, h.designsCSV)
 }
 
 func fail(c *gin.Context, err error) {
@@ -706,6 +707,24 @@ func (h *H) costingCSV(c *gin.Context) {
 		return
 	}
 	c.Header("Content-Disposition", `attachment; filename="costing.csv"`)
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", buf.Bytes())
+}
+
+// designsCSV exports the catalog in the format the design import reads. It holds no wastage
+// or rates, so every role may download it.
+func (h *H) designsCSV(c *gin.Context) {
+	rows, err := h.S.ExportDesigns(c)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	var buf bytes.Buffer
+	if err := export.WriteDesignsCSV(&buf, rows); err != nil {
+		fail(c, err)
+		return
+	}
+	auditNote(c, "design", "", fmt.Sprintf("%d rows", len(rows)))
+	c.Header("Content-Disposition", `attachment; filename="designs.csv"`)
 	c.Data(http.StatusOK, "text/csv; charset=utf-8", buf.Bytes())
 }
 

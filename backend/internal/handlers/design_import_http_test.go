@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/rpsoftech/cad-portal/backend/internal/auth"
@@ -66,5 +67,33 @@ func TestImportDesignsOverHTTP(t *testing.T) {
 	}
 	if findWhere(rows, func(a auditRow) bool { return a.Status == 403 }) == nil {
 		t.Error("the refused production attempt should be audited")
+	}
+}
+
+func TestDesignsCSVExportOverHTTP(t *testing.T) {
+	r, _, _ := newHTTPEnv(t)
+	url := "/api/v1/exports/designs-csv"
+	if w := do(r, "GET", url, "", "", nil); w.Code != 401 {
+		t.Errorf("no token: %d", w.Code)
+	}
+	body := []byte(`{"rows":[{"code":"LR400","name":"Ring","category":"Rings","volume_mm3":"200"}]}`)
+	if w := do(r, "POST", "/api/v1/designs/import", token(t, auth.Designer), "application/json", body); w.Code != 201 {
+		t.Fatalf("setup: %d %s", w.Code, w.Body)
+	}
+	// Production may download it: it holds no wastage or rates.
+	w := do(r, "GET", url, token(t, auth.Production), "", nil)
+	if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/csv") {
+		t.Fatalf("production: %d %s", w.Code, w.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(w.Header().Get("Content-Disposition"), "designs.csv") {
+		t.Errorf("disposition = %q", w.Header().Get("Content-Disposition"))
+	}
+	want := "code,name,category,tags,volume_mm3,ref_weight_g,ref_metal\nLR400,Ring,Rings,,200,,\n"
+	if w.Body.String() != want {
+		t.Errorf("body = %q", w.Body.String())
+	}
+	rows, _ := fetchAudit(t, r, token(t, auth.Admin), "?action=export.designs")
+	if a := findAction(rows, "export.designs"); a == nil || a.Detail != "1 rows" {
+		t.Errorf("audit = %+v", a)
 	}
 }

@@ -368,6 +368,64 @@ func (q *Queries) ListAllVariationIDs(ctx context.Context) ([]int64, error) {
 	return items, nil
 }
 
+const listDesignExportRows = `-- name: ListDesignExportRows :many
+SELECT d.code, d.name, c.name AS category_name,
+    COALESCE((SELECT string_agg(t.tag_group || ':' || t.name, ';' ORDER BY t.tag_group, t.name)
+              FROM design_tags dt JOIN tags t ON t.id = dt.tag_id
+              WHERE dt.design_id = d.id), '')::text AS tags,
+    v.seq AS variation_seq,
+    v.base_volume_mm3, v.base_ref_weight_g,
+    COALESCE(m.code, '')::text AS ref_metal
+FROM master_designs d
+JOIN categories c ON c.id = d.category_id
+LEFT JOIN cad_variations v ON v.design_id = d.id
+LEFT JOIN metals m ON m.id = v.base_ref_metal_id
+WHERE d.deleted_at IS NULL
+ORDER BY d.code, v.seq NULLS FIRST
+`
+
+type ListDesignExportRowsRow struct {
+	Code           string              `json:"code"`
+	Name           string              `json:"name"`
+	CategoryName   string              `json:"category_name"`
+	Tags           string              `json:"tags"`
+	VariationSeq   pgtype.Int4         `json:"variation_seq"`
+	BaseVolumeMm3  decimal.NullDecimal `json:"base_volume_mm3"`
+	BaseRefWeightG decimal.NullDecimal `json:"base_ref_weight_g"`
+	RefMetal       string              `json:"ref_metal"`
+}
+
+// One row per variation, plus one row for a design that has none, in the same shape the
+// import reads. Tags are "Group:Name" joined by ';' so they never depend on a name being unique.
+func (q *Queries) ListDesignExportRows(ctx context.Context) ([]ListDesignExportRowsRow, error) {
+	rows, err := q.db.Query(ctx, listDesignExportRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDesignExportRowsRow
+	for rows.Next() {
+		var i ListDesignExportRowsRow
+		if err := rows.Scan(
+			&i.Code,
+			&i.Name,
+			&i.CategoryName,
+			&i.Tags,
+			&i.VariationSeq,
+			&i.BaseVolumeMm3,
+			&i.BaseRefWeightG,
+			&i.RefMetal,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDesignTags = `-- name: ListDesignTags :many
 SELECT t.id, t.name, t.tag_group, t.active, t.created_at, t.updated_at FROM tags t JOIN design_tags dt ON dt.tag_id = t.id
 WHERE dt.design_id = $1 ORDER BY t.tag_group, t.name

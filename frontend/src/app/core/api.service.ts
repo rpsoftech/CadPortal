@@ -239,6 +239,9 @@ export class ApiService {
   }): Observable<Blob> {
     return this.http.post(`${BASE}/exports/job-bag-pdf`, body, { responseType: 'blob' });
   }
+  designsCsv(): Observable<Blob> {
+    return this.http.get(`${BASE}/exports/designs-csv`, { responseType: 'blob' });
+  }
   costingCsv(body: {
     items: CostingItem[];
     gold_rate_per_g: string;

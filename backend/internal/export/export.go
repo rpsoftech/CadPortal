@@ -1,4 +1,4 @@
-// Package export renders the job-bag PDF and the costing CSV.
+// Package export renders the job-bag PDF and the costing and designs CSVs.
 package export
 
 import (
@@ -160,4 +160,26 @@ func RenderJobBagPDF(jb service.JobBag) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// DesignsHeader is the column order of the designs export, which the design import reads.
+var DesignsHeader = []string{"code", "name", "category", "tags", "volume_mm3", "ref_weight_g", "ref_metal"}
+
+// WriteDesignsCSV writes the catalog in the design import format.
+func WriteDesignsCSV(w io.Writer, rows []service.ImportRow) error {
+	cw := csv.NewWriter(w)
+	if err := cw.Write(DesignsHeader); err != nil {
+		return err
+	}
+	for _, r := range rows {
+		rec := []string{
+			safeCell(r.Code), safeCell(r.Name), safeCell(r.Category), safeCell(r.Tags),
+			r.VolumeMM3, r.RefWeightG, r.RefMetal,
+		}
+		if err := cw.Write(rec); err != nil {
+			return err
+		}
+	}
+	cw.Flush()
+	return cw.Error()
 }

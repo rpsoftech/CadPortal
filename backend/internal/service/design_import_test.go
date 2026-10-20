@@ -177,3 +177,68 @@ func TestImportDesignsLimits(t *testing.T) {
 		t.Error("oversized import accepted")
 	}
 }
+
+func TestExportDesignsRoundTripsThroughImport(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	if _, err := s.CreateTag(ctx, "Floral", "Motif"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateTag(ctx, "Bridal", "Audience"); err != nil {
+		t.Fatal(err)
+	}
+	in := []ImportRow{
+		{Code: "RT2", Name: "Stud", Category: "Earrings", RefWeightG: "3.116", RefMetal: "18KY"},
+		{Code: "RT1", Name: "Lotus ring", Category: "Rings", Tags: "Floral;Bridal", VolumeMM3: "200"},
+		{Code: "RT1", VolumeMM3: "300.5"},
+		{Code: "RT3", Name: "Bare", Category: "Pendants"},
+		{Code: "RT4", Name: "Gone", Category: "Rings", VolumeMM3: "10"},
+	}
+	if res, err := s.ImportDesigns(ctx, in, false); err != nil || len(res.Errors) != 0 {
+		t.Fatalf("setup: %+v %v", res, err)
+	}
+	gone, _ := s.GetDesignByCode(ctx, "RT4")
+	if err := s.DeleteDesign(ctx, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.ExportDesigns(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ImportRow{
+		{Code: "RT1", Name: "Lotus ring", Category: "Rings", Tags: "Audience:Bridal;Motif:Floral", VolumeMM3: "200"},
+		{Code: "RT1", VolumeMM3: "300.5"},
+		{Code: "RT2", Name: "Stud", Category: "Earrings", RefWeightG: "3.116", RefMetal: "18KY"},
+		{Code: "RT3", Name: "Bare", Category: "Pendants"},
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("rows = %+v", rows)
+	}
+	for i := range want {
+		if rows[i] != want[i] {
+			t.Errorf("row %d = %+v, want %+v", i, rows[i], want[i])
+		}
+	}
+
+	// The export imports cleanly into an empty catalog and rebuilds the same weights and tags.
+	before, _ := s.GetDesignByCode(ctx, "RT1")
+	if _, err := s.Pool.Exec(ctx, "TRUNCATE master_designs CASCADE"); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.ImportDesigns(ctx, rows, false)
+	if err != nil || len(res.Errors) != 0 || res.Designs != 3 || res.Variations != 3 {
+		t.Fatalf("re-import: %+v %v", res, err)
+	}
+	after, _ := s.GetDesignByCode(ctx, "RT1")
+	if len(after.Tags) != 2 || len(after.Variations) != 2 {
+		t.Fatalf("after = %+v", after)
+	}
+	for i, v := range after.Variations {
+		for j, w := range v.Weights {
+			if !w.NetWeightG.Equal(before.Variations[i].Weights[j].NetWeightG) {
+				t.Errorf("%s %s net %s != %s", v.Code, w.MetalCode, w.NetWeightG, before.Variations[i].Weights[j].NetWeightG)
+			}
+		}
+	}
+}
