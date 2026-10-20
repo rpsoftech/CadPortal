@@ -1701,6 +1701,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@playwright/test@npm:1.64.1":
+  version: 1.64.1
+  resolution: "@playwright/test@npm:1.64.1"
+  dependencies:
+    playwright: "npm:1.64.1"
+  bin:
+    playwright: cli.js
+  checksum: 10c0/0a1a853d76d6c532cafaf0366a5448584b766737ebd39bbd23dc0580f3d3b6ef4c833082af47a792e7fc2501f444debdfaad37a87a76cc5b195f3803fc80ea3c
+  languageName: node
+  linkType: hard
+
 "@rolldown/binding-android-arm-eabi@npm:1.2.14":
   version: 1.2.14
   resolution: "@rolldown/binding-android-arm-eabi@npm:1.2.14"
@@ -2600,6 +2611,7 @@ __metadata:
     "@angular/material": "npm:^22.2.3"
     "@angular/platform-browser": "npm:^22.2.0"
     "@angular/router": "npm:^22.2.0"
+    "@playwright/test": "npm:1.64.1"
     jsdom: "npm:^30.0.0"
     prettier: "npm:^3.8.1"
     rxjs: "npm:~7.8.0"
@@ -3429,6 +3441,26 @@ __metadata:
     "@napi-rs/nice":
       optional: true
   checksum: 10c0/b739158a6b1a6a7a5f30bceb1aa3782cbc85b7195511fd7a808cf18e8a7c162caae82f5045ccdcbb3fd4c60e1f58b72dbb21946aa97f62ae3166bb012cae08f4
+  languageName: node
+  linkType: hard
+
+"playwright-core@npm:1.64.1":
+  version: 1.64.1
+  resolution: "playwright-core@npm:1.64.1"
+  bin:
+    playwright-core: cli.js
+  checksum: 10c0/91c4f5ed1cff4b0e18b6ac62f66770f5f1b6c204d4aebd6a321c07466dca18a70822ac692597c6059705a703f9768097ac551df179fb49294d639509148e04f3
+  languageName: node
+  linkType: hard
+
+"playwright@npm:1.64.1":
+  version: 1.64.1
+  resolution: "playwright@npm:1.64.1"
+  dependencies:
+    playwright-core: "npm:1.64.1"
+  bin:
+    playwright: cli.js
+  checksum: 10c0/edf52d0a79feca37bf383e841a467aa68750684128218eac560063991c9e4b615a94901f580cd8a088bb05fd53008ab4a0e5e8d976067698b60ae5d1de2459f3
   languageName: node
   linkType: hard
 

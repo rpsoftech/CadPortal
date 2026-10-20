@@ -162,6 +162,7 @@ jobs:
       POSTGRES_PASSWORD: ci-postgres-password-0123456789ab
       JWT_SECRET: ci-jwt-secret-0123456789-0123456789-ab
       WEB_PORT: "18080"
+      STORAGE: local          # lets the browser tests upload a CAD file
     steps:
       - uses: actions/checkout@v7
         with:
@@ -183,6 +184,27 @@ jobs:
           curl -fsS "$base/" | grep -q "<app-root"
           test "$(curl -s -o /dev/null -w '%{http_code}' "$base/api/v1/designs")" = "401"
           curl -fsSI "$base/" | grep -qi "content-security-policy"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install browser test tooling
+        working-directory: frontend
+        run: |
+          yarn install --immutable
+          yarn playwright install --with-deps chromium
+      - name: Browser smoke tests
+        run: scripts/e2e.sh
+      - name: Keep the browser report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Backup and restore round trip
         run: scripts/backup_restore_test.sh
       - name: Show logs on failure
