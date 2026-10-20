@@ -33,3 +33,6 @@ Thumbs.db
 
 # Claude Code local settings (project CLAUDE.md stays tracked)
 .claude/settings.local.json
+
+# Database dumps from scripts/backup.sh (they hold password hashes)
+/backups/

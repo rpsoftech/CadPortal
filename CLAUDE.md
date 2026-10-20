@@ -19,6 +19,7 @@ backend/            Go service (Gin, pgx, sqlc, golang-migrate)
 frontend/           Angular 22 app (standalone components, Signals, zoneless, Vitest); package manager: Yarn 4 (`yarn.lock`, release pinned via `.yarnrc.yml`)
 docker-compose.yml  Postgres 18 for local dev
 docker-compose.prod.yml  production-style stack: db + api + web (nginx); images from backend/Dockerfile and frontend/Dockerfile
+scripts/            backup.sh, restore.sh and a round-trip test (run in CI)
 ```
 
 ## Stack decisions
@@ -130,5 +131,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   9. Catalog management: text search, paging, edit/delete designs, delete variations
   10. Audit log: who changed what (append-only, no request bodies), admin Audit screen, optional retention
   11. CAD file management: remove a wrong 3dm/stl file from a variation (deletes the stored object, frees its checksum)
+  12. Backup and restore: scripts/backup.sh and scripts/restore.sh, with a round-trip test in CI
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.

@@ -86,6 +86,7 @@ check "sqlc config"               "test sqlc docker"       backend/sqlc.yaml
 
 # Deployment files, and combinations.
 check "production compose"        "docker"  docker-compose.prod.yml
+check "backup scripts"             "docker"  scripts/backup.sh
 check "docs + frontend"           "frontend docker"  README.md frontend/src/app/a.ts
 check "frontend + backend source"    "test frontend docker vulncheck"  frontend/src/app/a.ts backend/internal/service/x.go
 check "backend + sqlc + frontend" "$all"   backend/migrations/000003.up.sql frontend/src/app/a.ts backend/internal/service/x.go
