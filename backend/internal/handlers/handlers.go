@@ -53,6 +53,10 @@ func (h *H) Register(r *gin.Engine) {
 	editor := a.Require(auth.Editors...)
 	admin := a.Require(auth.Admin)
 
+	// Liveness and readiness for the container runtime; no auth, no data.
+	r.GET("/healthz", h.healthz)
+	r.GET("/readyz", h.readyz)
+
 	v1 := r.Group("/api/v1")
 
 	// Accounts
