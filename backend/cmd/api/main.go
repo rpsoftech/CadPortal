@@ -45,7 +45,9 @@ func main() {
 	}
 
 	svc := service.New(pool)
-	if os.Getenv("S3_BUCKET") != "" {
+	var localStore *storage.Local
+	switch mode := storageMode(os.Getenv("STORAGE"), os.Getenv("S3_BUCKET")); mode {
+	case "r2":
 		store, err := storage.NewR2(storage.Config{
 			Endpoint: os.Getenv("S3_ENDPOINT"), Region: os.Getenv("S3_REGION"),
 			Bucket:      os.Getenv("S3_BUCKET"),
@@ -55,16 +57,45 @@ func main() {
 			log.Fatal(err)
 		}
 		svc.Store = store
-	} else {
-		log.Print("S3_BUCKET not set: CAD upload/download disabled")
+	case "local":
+		dir := os.Getenv("LOCAL_STORAGE_DIR")
+		if dir == "" {
+			dir = "data/uploads"
+		}
+		var err error
+		if localStore, err = storage.NewLocal(dir, []byte(jwtSecret)); err != nil {
+			log.Fatal(err)
+		}
+		defer localStore.Close()
+		svc.Store = localStore
+		log.Printf("WARNING: CAD files are stored on local disk (%s). This is for development only; use R2 in production.", dir)
+	default:
+		log.Print("No storage configured (set S3_BUCKET for R2, or STORAGE=local for development): CAD upload/download disabled")
 	}
 	go service.RunRecalcWorker(ctx, pool, func(err error) { log.Printf("recalc worker: %v", err) })
 
 	r := gin.Default()
-	(&handlers.H{S: svc, JWTSecret: []byte(jwtSecret)}).Register(r)
+	(&handlers.H{S: svc, JWTSecret: []byte(jwtSecret), LocalFiles: localStore}).Register(r)
 	go func() {
 		<-ctx.Done()
 		os.Exit(0)
 	}()
 	log.Fatal(r.Run(addr))
+}
+
+// storageMode picks the object store: an explicit STORAGE wins; otherwise R2 when
+// a bucket is configured; otherwise none.
+func storageMode(explicit, bucket string) string {
+	switch explicit {
+	case "local", "r2":
+		return explicit
+	case "":
+		if bucket != "" {
+			return "r2"
+		}
+		return ""
+	default:
+		log.Fatalf("STORAGE must be %q or %q, got %q", "local", "r2", explicit)
+		return ""
+	}
 }

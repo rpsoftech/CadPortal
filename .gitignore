@@ -13,7 +13,10 @@
 coverage.*
 /backend/bin/
 
-# Frontend (Angular, planned)
+# Local-disk upload storage (development only)
+/backend/data/
+
+# Frontend (Angular)
 node_modules/
 /frontend/dist/
 /frontend/.angular/
