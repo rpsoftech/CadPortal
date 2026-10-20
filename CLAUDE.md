@@ -16,7 +16,7 @@ Internal manufacturing catalog, CAD/CAM file vault, and dynamic Job-Bag spec gen
 backend/            Go service (Gin, pgx, sqlc, golang-migrate)
   migrations/       000001_init_schema, 000002_seed_masters (up/down)
   internal/         handlers, services, db (sqlc output), storage (S3/R2)
-frontend/           Angular 22 app (standalone components, Signals, zoneless, Vitest)
+frontend/           Angular 22 app (standalone components, Signals, zoneless, Vitest); package manager: Yarn 4 (`yarn.lock`, release pinned via `.yarnrc.yml`)
 docker-compose.yml  Postgres 16 for local dev
 ```
 

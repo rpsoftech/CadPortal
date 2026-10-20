@@ -104,8 +104,8 @@ has no replication or backups. Local links are signed with a key derived from
 
 ```bash
 cd frontend
-npm ci
-npm start          # http://localhost:4200, proxies /api to localhost:8080
+yarn install
+yarn start         # http://localhost:4200, proxies /api to localhost:8080
 ```
 
 Sign in with the account you created above. The session lives in `sessionStorage`, so it
@@ -192,8 +192,8 @@ go test ./...
 Frontend (from `frontend/`):
 
 ```bash
-npx ng build
-npx ng test --watch=false
+yarn ng build
+yarn ng test --watch=false
 ```
 
 The tests wipe databases whose names end in `_test`, and refuse to touch any other

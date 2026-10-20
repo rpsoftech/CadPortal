@@ -20,8 +20,8 @@ coverage.*
 node_modules/
 /frontend/dist/
 /frontend/.angular/
-# This project uses npm (package-lock.json); other managers' lockfiles must not be committed
-/frontend/yarn.lock
+# The frontend uses Yarn (yarn.lock); other managers' lockfiles must not be committed
+/frontend/package-lock.json
 /frontend/pnpm-lock.yaml
 
 # Editors and OS
