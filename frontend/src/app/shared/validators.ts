@@ -21,3 +21,14 @@ export const positiveInt: ValidatorFn = (c) => {
 /** Password length limits; the server enforces the same policy. */
 export const PASSWORD_MIN = 12;
 export const PASSWORD_MAX = 128;
+
+/** A percentage from 0 to 100 with at most `maxDp` decimal places. Empty passes. */
+export function percent(maxDp: number): ValidatorFn {
+  const re = new RegExp(`^\\d+(\\.\\d{1,${maxDp}})?$`);
+  return (c: AbstractControl): ValidationErrors | null => {
+    const v = `${c.value ?? ''}`.trim();
+    if (v === '') return null;
+    if (!re.test(v)) return { decimal: `Up to ${maxDp} decimal places` };
+    return Number(v) <= 100 ? null : { range: 'Must be between 0 and 100' };
+  };
+}

@@ -10,11 +10,17 @@ import {
   DesignFilter,
   DesignListItem,
   DownloadLink,
+  MatrixGap,
+  MatrixRowInput,
   Metal,
+  MetalInput,
+  RecalcStatus,
   Seat,
   SeatInput,
   StoneCode,
+  StoneMatrixRow,
   Tag,
+  TagGroup,
   UploadResult,
   User,
   UserRole,
@@ -45,8 +51,50 @@ export class ApiService {
   categories(): Observable<Category[]> {
     return this.http.get<Category[]>(`${BASE}/masters/categories`);
   }
-  tags(): Observable<Tag[]> {
-    return this.http.get<Tag[]>(`${BASE}/masters/tags`);
+  tags(includeInactive = false): Observable<Tag[]> {
+    const params = includeInactive ? new HttpParams().set('include_inactive', 'true') : undefined;
+    return this.http.get<Tag[]>(`${BASE}/masters/tags`, { params });
+  }
+  createTag(body: { name: string; tag_group: TagGroup }): Observable<Tag> {
+    return this.http.post<Tag>(`${BASE}/masters/tags`, body);
+  }
+  updateTag(id: number, body: { name: string; tag_group: TagGroup; active: boolean }) {
+    return this.http.put<Tag>(`${BASE}/masters/tags/${id}`, body);
+  }
+  createCategory(body: { name: string; code_prefix: string }): Observable<Category> {
+    return this.http.post<Category>(`${BASE}/masters/categories`, body);
+  }
+  updateCategory(id: number, body: { name: string; code_prefix: string }): Observable<Category> {
+    return this.http.put<Category>(`${BASE}/masters/categories/${id}`, body);
+  }
+  createMetal(body: MetalInput & { code: string }): Observable<Metal> {
+    return this.http.post<Metal>(`${BASE}/masters/metals`, body);
+  }
+  updateMetal(id: number, body: MetalInput): Observable<Metal> {
+    return this.http.put<Metal>(`${BASE}/masters/metals/${id}`, body);
+  }
+  createStoneCode(code: string): Observable<StoneCode> {
+    return this.http.post<StoneCode>(`${BASE}/masters/stone-codes`, { code });
+  }
+  setStoneCodeActive(id: number, active: boolean): Observable<StoneCode> {
+    return this.http.put<StoneCode>(`${BASE}/masters/stone-codes/${id}`, { active });
+  }
+  stoneMatrix(): Observable<StoneMatrixRow[]> {
+    return this.http.get<StoneMatrixRow[]>(`${BASE}/masters/stone-matrix`);
+  }
+  /** Upserts rows and/or moves the baseline code. Weights are rebuilt in the background. */
+  saveStoneMatrix(rows: MatrixRowInput[], baselineCode = ''): Observable<unknown> {
+    return this.http.put(`${BASE}/masters/stone-matrix`, { rows, baseline_code: baselineCode });
+  }
+  deleteMatrixRow(sizeMm: string, stoneCode: string): Observable<void> {
+    const params = new HttpParams().set('size_mm', sizeMm).set('stone_code', stoneCode);
+    return this.http.delete<void>(`${BASE}/masters/stone-matrix`, { params });
+  }
+  matrixGaps(): Observable<MatrixGap[]> {
+    return this.http.get<MatrixGap[]>(`${BASE}/masters/matrix-gaps`);
+  }
+  recalcStatus(): Observable<RecalcStatus> {
+    return this.http.get<RecalcStatus>(`${BASE}/masters/recalc-status`);
   }
   metals(): Observable<Metal[]> {
     return this.http.get<Metal[]>(`${BASE}/masters/metals`);

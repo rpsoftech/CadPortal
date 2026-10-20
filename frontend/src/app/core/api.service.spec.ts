@@ -75,4 +75,73 @@ describe('ApiService', () => {
     api.jobBagPdf({ variation_id: 1, metal_code: '18KR', stone_code: '2HD' }).subscribe();
     expect(http.expectOne('/api/v1/exports/job-bag-pdf').request.responseType).toBe('blob');
   });
+
+  it('saves matrix rows and the baseline in one call', () => {
+    const row = {
+      size_mm: '1.10',
+      stone_code: '2HD',
+      sieve: '',
+      carats_per_stone: '0.0070',
+      rate_per_ct: null,
+    };
+    api.saveStoneMatrix([row], '2HD').subscribe();
+    const req = http.expectOne('/api/v1/masters/stone-matrix');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ rows: [row], baseline_code: '2HD' });
+    api.saveStoneMatrix([]).subscribe();
+    expect(http.expectOne('/api/v1/masters/stone-matrix').request.body).toEqual({
+      rows: [],
+      baseline_code: '',
+    });
+  });
+
+  it('deletes a matrix row by size and code', () => {
+    api.deleteMatrixRow('1.10', '2HD').subscribe();
+    const req = http.expectOne(
+      (r) => r.url === '/api/v1/masters/stone-matrix' && r.method === 'DELETE',
+    );
+    expect(req.request.params.get('size_mm')).toBe('1.10');
+    expect(req.request.params.get('stone_code')).toBe('2HD');
+  });
+
+  it('asks for deactivated tags only when told to', () => {
+    api.tags().subscribe();
+    expect(http.expectOne('/api/v1/masters/tags').request.params.has('include_inactive')).toBe(
+      false,
+    );
+    api.tags(true).subscribe();
+    expect(
+      http
+        .expectOne((r) => r.url === '/api/v1/masters/tags')
+        .request.params.get('include_inactive'),
+    ).toBe('true');
+  });
+
+  it('creates and updates alloys with a nullable wastage', () => {
+    const body = {
+      specific_gravity: '15.6',
+      wastage_pct: null,
+      is_default_input: false,
+      active: true,
+    };
+    api.createMetal({ ...body, code: '18KW' }).subscribe();
+    const c = http.expectOne('/api/v1/masters/metals');
+    expect(c.request.method).toBe('POST');
+    expect(c.request.body.wastage_pct).toBeNull();
+    api.updateMetal(4, { ...body, wastage_pct: '9.5' }).subscribe();
+    const u = http.expectOne('/api/v1/masters/metals/4');
+    expect(u.request.method).toBe('PUT');
+    expect(u.request.body.wastage_pct).toBe('9.5');
+  });
+
+  it('hits the stone-code, category and gap endpoints', () => {
+    api.createStoneCode('3HD').subscribe();
+    expect(http.expectOne('/api/v1/masters/stone-codes').request.body).toEqual({ code: '3HD' });
+    api.setStoneCodeActive(3, false).subscribe();
+    expect(http.expectOne('/api/v1/masters/stone-codes/3').request.body).toEqual({ active: false });
+    api.updateCategory(2, { name: 'Rings', code_prefix: 'LR' }).subscribe();
+    expect(http.expectOne('/api/v1/masters/categories/2').request.method).toBe('PUT');
+    api.matrixGaps().subscribe();
+    expect(http.expectOne('/api/v1/masters/matrix-gaps').request.method).toBe('GET');
+  });
 });

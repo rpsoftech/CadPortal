@@ -37,6 +37,13 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'master-data',
+        title: 'Master data',
+        canActivate: [roleGuard('admin')],
+        loadComponent: () =>
+          import('./features/master-data/master-data.component').then((m) => m.MasterDataComponent),
+      },
+      {
         path: 'users',
         title: 'Users',
         canActivate: [roleGuard('admin')],

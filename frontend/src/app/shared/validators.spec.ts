@@ -1,6 +1,6 @@
 import { FormControl } from '@angular/forms';
 import { describe, expect, it } from 'vitest';
-import { positiveDecimal, positiveInt } from './validators';
+import { percent, positiveDecimal, positiveInt } from './validators';
 
 const run = (v: unknown, fn: (c: FormControl) => unknown) => fn(new FormControl(v));
 
@@ -20,4 +20,14 @@ describe('positiveDecimal', () => {
 describe('positiveInt', () => {
   it.each(['1', '24', '007'])('accepts %s', (s) => expect(run(s, positiveInt)).toBeNull());
   it.each(['0', '-3', '1.5', 'x'])('rejects %s', (s) => expect(run(s, positiveInt)).not.toBeNull());
+});
+
+describe('percent', () => {
+  const v = percent(3);
+  it.each(['0', '10', '9.5', '100', '100.000', '0.125', ''])('accepts %j', (s) => {
+    expect(run(s, v)).toBeNull();
+  });
+  it.each(['100.5', '101', '-1', '1.2345', 'abc', '5%'])('rejects %s', (s) => {
+    expect(run(s, v)).not.toBeNull();
+  });
 });
