@@ -168,6 +168,14 @@ func TestRoutesByRole(t *testing.T) {
 		{"PUT", "/api/v1/masters/metals/1", adm},
 		{"GET", "/api/v1/masters/stone-codes", all},
 		{"GET", "/api/v1/masters/stone-matrix", all},
+		{"POST", "/api/v1/masters/metals", adm},
+		{"PUT", "/api/v1/masters/categories/1", adm},
+		{"PUT", "/api/v1/masters/tags/1", adm},
+		{"POST", "/api/v1/masters/stone-codes", adm},
+		{"PUT", "/api/v1/masters/stone-codes/1", adm},
+		{"DELETE", "/api/v1/masters/stone-matrix", adm},
+		{"GET", "/api/v1/masters/matrix-gaps", adm},
+		{"GET", "/api/v1/masters/recalc-status", adm},
 		{"PUT", "/api/v1/masters/stone-matrix", adm},
 		{"GET", "/api/v1/designs", all},
 		{"GET", "/api/v1/designs/LR001", all},
@@ -377,4 +385,61 @@ func forgedToken(t *testing.T) (string, error) {
 	t.Helper()
 	tok, err := auth.Issue(testSecret, "99999", auth.Admin, time.Hour)
 	return "Bearer " + tok, err
+}
+
+func TestInactiveTagsOnlyForAdmins(t *testing.T) {
+	r, svc := newAuthEnv(t)
+	mkUser(t, svc, "admin@example.com", "admin")
+	mkUser(t, svc, "designer@example.com", "designer")
+	tag, _ := svc.CreateTag(context.Background(), "Retired", "Motif")
+	if _, err := svc.UpdateTag(context.Background(), tag.ID, "Retired", "Motif", false); err != nil {
+		t.Fatal(err)
+	}
+	list := func(who string) string {
+		w := do(r, "GET", "/api/v1/masters/tags?include_inactive=true", bearer(t, r, who), "", nil)
+		if w.Code != 200 {
+			t.Fatalf("%s: %d", who, w.Code)
+		}
+		return w.Body.String()
+	}
+	if !strings.Contains(list("admin@example.com"), "Retired") {
+		t.Error("admin should see deactivated tags")
+	}
+	if strings.Contains(list("designer@example.com"), "Retired") {
+		t.Error("include_inactive must be ignored for non-admins")
+	}
+}
+
+func TestMatrixRowDeleteAndGapsOverHTTP(t *testing.T) {
+	r, svc := newAuthEnv(t)
+	mkUser(t, svc, "admin@example.com", "admin")
+	adm := bearer(t, r, "admin@example.com")
+	if err := svc.UpdateStoneMatrix(context.Background(), []service.MatrixRowInput{
+		{SizeMM: mustDec("1.10"), StoneCode: "2HD", CaratsPerStone: mustDec("0.0070")},
+	}, "2HD"); err != nil {
+		t.Fatal(err)
+	}
+	if w := do(r, "DELETE", "/api/v1/masters/stone-matrix?size_mm=abc&stone_code=2HD", adm, "", nil); w.Code != 400 {
+		t.Errorf("bad size: %d", w.Code)
+	}
+	if w := do(r, "DELETE", "/api/v1/masters/stone-matrix?size_mm=1.10", adm, "", nil); w.Code != 400 {
+		t.Errorf("missing code: %d", w.Code)
+	}
+	if w := do(r, "DELETE", "/api/v1/masters/stone-matrix?size_mm=1.10&stone_code=2HD", adm, "", nil); w.Code != 204 {
+		t.Errorf("delete: %d %s", w.Code, w.Body)
+	}
+	if w := do(r, "DELETE", "/api/v1/masters/stone-matrix?size_mm=1.10&stone_code=2HD", adm, "", nil); w.Code != 404 {
+		t.Errorf("delete again: %d", w.Code)
+	}
+	if w := do(r, "GET", "/api/v1/masters/matrix-gaps", adm, "", nil); w.Code != 200 || strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Errorf("gaps: %d %s", w.Code, w.Body)
+	}
+	if w := do(r, "GET", "/api/v1/masters/recalc-status", adm, "", nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"pending":`) {
+		t.Errorf("status: %d %s", w.Code, w.Body)
+	}
+	// Over-precise input is rejected instead of silently rounded.
+	body := jsonBody(map[string]any{"rows": []map[string]string{{"size_mm": "1.10", "stone_code": "2HD", "carats_per_stone": "0.00701"}}})
+	if w := do(r, "PUT", "/api/v1/masters/stone-matrix", adm, "application/json", body); w.Code != 400 {
+		t.Errorf("over-precise carats: %d %s", w.Code, w.Body)
+	}
 }

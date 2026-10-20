@@ -78,3 +78,52 @@ RETURNING *;
 UPDATE weight_recalc_jobs
 SET status = $2, error = $3, finished_at = now()
 WHERE id = $1;
+
+-- name: UpdateCategory :one
+UPDATE categories SET name = $2, code_prefix = $3 WHERE id = $1 RETURNING *;
+
+-- name: ListAllTags :many
+SELECT * FROM tags ORDER BY tag_group, name;
+
+-- name: UpdateTag :one
+UPDATE tags SET name = $2, tag_group = $3, active = $4 WHERE id = $1 RETURNING *;
+
+-- name: CreateMetal :one
+INSERT INTO metals (code, specific_gravity, wastage_pct, is_default_input, active)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: CreateStoneCode :one
+INSERT INTO stone_codes (code) VALUES ($1) RETURNING *;
+
+-- name: GetStoneCodeForUpdate :one
+SELECT * FROM stone_codes WHERE id = $1 FOR UPDATE;
+
+-- name: SetStoneCodeActive :one
+UPDATE stone_codes SET active = $2 WHERE id = $1 RETURNING *;
+
+-- name: CountSeatsLockedTo :one
+SELECT count(*)::int FROM variation_stone_seats
+WHERE size_mm = $1 AND locked_stone_code_id = $2;
+
+-- name: DeleteStoneMatrixRow :execrows
+DELETE FROM stone_size_matrix WHERE size_mm = $1 AND stone_code_id = $2;
+
+-- name: ListMatrixGaps :many
+-- Distinct (size, code) pairs that flexible seats need at the baseline code but the
+-- matrix does not have, with how many variations are affected.
+SELECT g.size_mm, g.stone_code, count(DISTINCT g.variation_id)::int AS variation_count
+FROM v_seat_matrix_gaps g
+GROUP BY g.size_mm, g.stone_code
+ORDER BY g.size_mm;
+
+-- name: RecalcQueueStatus :one
+SELECT
+    count(*) FILTER (WHERE status = 'pending')::int AS pending,
+    count(*) FILTER (WHERE status = 'running')::int AS running,
+    count(*) FILTER (WHERE status = 'failed')::int AS failed
+FROM weight_recalc_jobs;
+
+-- name: LastFailedRecalcError :one
+SELECT COALESCE(error, '')::text FROM weight_recalc_jobs
+WHERE status = 'failed' ORDER BY id DESC LIMIT 1;
