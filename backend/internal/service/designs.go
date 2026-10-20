@@ -90,7 +90,7 @@ func (s *Service) GetDesignByCode(ctx context.Context, code string) (DesignDetai
 		return DesignDetail{}, mapErr(err)
 	}
 	out := DesignDetail{MasterDesign: d}
-	if out.Tags, err = s.Q.ListDesignTags(ctx, d.ID); err != nil {
+	if out.Tags, err = nonNil(s.Q.ListDesignTags(ctx, d.ID)); err != nil {
 		return out, err
 	}
 	vs, err := s.Q.ListVariationsByDesign(ctx, d.ID)
@@ -99,7 +99,7 @@ func (s *Service) GetDesignByCode(ctx context.Context, code string) (DesignDetai
 	}
 	out.Variations = make([]VariationDetail, 0, len(vs))
 	for _, v := range vs {
-		w, err := s.Q.ListVariationWeights(ctx, v.ID)
+		w, err := nonNil(s.Q.ListVariationWeights(ctx, v.ID))
 		if err != nil {
 			return out, err
 		}
@@ -291,7 +291,7 @@ func (s *Service) reload(ctx context.Context, q *db.Queries, id int64, out *Vari
 	if err != nil {
 		return err
 	}
-	w, err := q.ListVariationWeights(ctx, id)
+	w, err := nonNil(q.ListVariationWeights(ctx, id))
 	if err != nil {
 		return err
 	}
