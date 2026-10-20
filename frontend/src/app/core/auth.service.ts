@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, catchError, map, of, tap } from 'rxjs';
@@ -58,6 +58,7 @@ export class AuthService {
   /**
    * Confirms the stored session with the server once per page load (a user may have
    * been disabled or had their role changed since the tab last talked to the API).
+   * Resolves false only when the server rejects the token (401).
    */
   verifyOnce(): Promise<boolean> {
     this.verified ??= new Promise<boolean>((resolve) => {
@@ -66,7 +67,9 @@ export class AuthService {
         .pipe(
           tap((u) => this.session.update((s) => (s ? { ...s, user: u } : s))),
           map(() => true),
-          catchError(() => of(false)),
+          // Only a 401 means the session is dead. A 503 or a network error means the server
+          // could not answer right now; keep the session and let the page show the error.
+          catchError((e: unknown) => of(!(e instanceof HttpErrorResponse && e.status === 401))),
         )
         .subscribe((ok) => resolve(ok));
     });

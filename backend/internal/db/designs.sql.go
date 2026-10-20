@@ -125,6 +125,39 @@ func (q *Queries) CreateVariation(ctx context.Context, arg CreateVariationParams
 	return i, err
 }
 
+const deleteVariation = `-- name: DeleteVariation :one
+DELETE FROM cad_variations WHERE id = $1 RETURNING id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes
+`
+
+// Seats, weights and file metadata go with the row (ON DELETE CASCADE); the caller
+// removes the stored objects using the returned keys.
+func (q *Queries) DeleteVariation(ctx context.Context, id int64) (CadVariation, error) {
+	row := q.db.QueryRow(ctx, deleteVariation, id)
+	var i CadVariation
+	err := row.Scan(
+		&i.ID,
+		&i.DesignID,
+		&i.Seq,
+		&i.Code,
+		&i.BaseVolumeMm3,
+		&i.BaseRefWeightG,
+		&i.BaseRefMetalID,
+		&i.File3dmSha256,
+		&i.FileStlSha256,
+		&i.BaselineStoneCarats,
+		&i.BaselineGrossWeightG,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.File3dmKey,
+		&i.File3dmName,
+		&i.File3dmSizeBytes,
+		&i.FileStlKey,
+		&i.FileStlName,
+		&i.FileStlSizeBytes,
+	)
+	return i, err
+}
+
 const deleteVariationSeats = `-- name: DeleteVariationSeats :exec
 DELETE FROM variation_stone_seats WHERE variation_id = $1
 `
@@ -390,36 +423,42 @@ const listDesigns = `-- name: ListDesigns :many
 SELECT d.id, d.code, d.name, d.category_id, d.deleted_at, d.created_at, d.updated_at, c.name AS category_name,
     ARRAY(SELECT t.name FROM design_tags dt JOIN tags t ON t.id = dt.tag_id
           WHERE dt.design_id = d.id ORDER BY t.tag_group, t.name)::text[] AS tag_names,
-    (SELECT count(*) FROM cad_variations cv WHERE cv.design_id = d.id)::int AS variation_count
+    (SELECT count(*) FROM cad_variations cv WHERE cv.design_id = d.id)::int AS variation_count,
+    count(*) OVER ()::bigint AS total_count   -- matches before LIMIT/OFFSET, for pagination
 FROM master_designs d
 JOIN categories c ON c.id = d.category_id
 WHERE d.deleted_at IS NULL
-  AND ($1::bigint IS NULL OR d.category_id = $1)
-  AND (cardinality($2::bigint[]) = 0 OR NOT EXISTS (
-        SELECT 1 FROM unnest($2::bigint[]) AS want(id)
+  -- q is pre-escaped by the service with '!' as the LIKE escape character
+  AND ($1::text IS NULL
+       OR d.code ILIKE '%' || $1 || '%' ESCAPE '!'
+       OR d.name ILIKE '%' || $1 || '%' ESCAPE '!')
+  AND ($2::bigint IS NULL OR d.category_id = $2)
+  AND (cardinality($3::bigint[]) = 0 OR NOT EXISTS (
+        SELECT 1 FROM unnest($3::bigint[]) AS want(id)
         WHERE NOT EXISTS (SELECT 1 FROM design_tags dt WHERE dt.design_id = d.id AND dt.tag_id = want.id)))
   AND (
-    ($3::text IS NULL
-        AND $4::numeric IS NULL AND $5::numeric IS NULL
-        AND $6::numeric IS NULL AND $7::numeric IS NULL
-        AND $8::numeric IS NULL)
+    ($4::text IS NULL
+        AND $5::numeric IS NULL AND $6::numeric IS NULL
+        AND $7::numeric IS NULL AND $8::numeric IS NULL
+        AND $9::numeric IS NULL)
     OR EXISTS (
         SELECT 1 FROM cad_variations v
         JOIN variation_metal_weights w ON w.variation_id = v.id
         JOIN metals m ON m.id = w.metal_id
         WHERE v.design_id = d.id
-          AND ($3::text IS NULL OR m.code = $3)
-          AND ($4::numeric IS NULL OR w.net_weight_g >= $4)
-          AND ($5::numeric IS NULL OR w.net_weight_g <= $5)
-          AND ($6::numeric IS NULL OR w.gross_weight_g >= $6)
-          AND ($7::numeric IS NULL OR w.gross_weight_g <= $7)
-          AND ($8::numeric IS NULL OR v.baseline_stone_carats <= $8)
+          AND ($4::text IS NULL OR m.code = $4)
+          AND ($5::numeric IS NULL OR w.net_weight_g >= $5)
+          AND ($6::numeric IS NULL OR w.net_weight_g <= $6)
+          AND ($7::numeric IS NULL OR w.gross_weight_g >= $7)
+          AND ($8::numeric IS NULL OR w.gross_weight_g <= $8)
+          AND ($9::numeric IS NULL OR v.baseline_stone_carats <= $9)
     ))
 ORDER BY d.code
-LIMIT $10 OFFSET $9
+LIMIT $11 OFFSET $10
 `
 
 type ListDesignsParams struct {
+	Q           pgtype.Text         `json:"q"`
 	CategoryID  pgtype.Int8         `json:"category_id"`
 	TagIds      []int64             `json:"tag_ids"`
 	MetalCode   pgtype.Text         `json:"metal_code"`
@@ -443,12 +482,14 @@ type ListDesignsRow struct {
 	CategoryName   string             `json:"category_name"`
 	TagNames       []string           `json:"tag_names"`
 	VariationCount int32              `json:"variation_count"`
+	TotalCount     int64              `json:"total_count"`
 }
 
 // Weight filters apply to the selected metal (metal_code). A design matches if
 // at least one of its variations satisfies every weight filter.
 func (q *Queries) ListDesigns(ctx context.Context, arg ListDesignsParams) ([]ListDesignsRow, error) {
 	rows, err := q.db.Query(ctx, listDesigns,
+		arg.Q,
 		arg.CategoryID,
 		arg.TagIds,
 		arg.MetalCode,
@@ -478,6 +519,7 @@ func (q *Queries) ListDesigns(ctx context.Context, arg ListDesignsParams) ([]Lis
 			&i.CategoryName,
 			&i.TagNames,
 			&i.VariationCount,
+			&i.TotalCount,
 		); err != nil {
 			return nil, err
 		}

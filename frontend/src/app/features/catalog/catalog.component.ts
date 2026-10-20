@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,10 +7,22 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { Router, RouterLink } from '@angular/router';
-import { catchError, debounceTime, from, map, of, startWith, switchMap } from 'rxjs';
+import {
+  Subject,
+  catchError,
+  debounceTime,
+  from,
+  map,
+  merge,
+  of,
+  startWith,
+  switchMap,
+  tap,
+} from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { toApiError } from '../../core/errors';
@@ -22,6 +34,8 @@ import { positiveDecimal } from '../../shared/validators';
 interface ListState {
   loading: boolean;
   items: DesignListItem[];
+  /** All matches before paging. */
+  total: number;
   error: string;
   /** The metal the request was made for; weights on the cards belong to this metal. */
   metal: string | null;
@@ -43,6 +57,7 @@ export function weightRange(min: string | null, max: string | null): string | nu
     MatChipsModule,
     MatFormFieldModule,
     MatInputModule,
+    MatPaginatorModule,
     MatProgressBarModule,
     MatSelectModule,
   ],
@@ -77,6 +92,7 @@ export class CatalogComponent {
   );
 
   protected readonly form = new FormGroup({
+    q: new FormControl(''),
     categoryId: new FormControl<number | null>(null),
     metalCode: new FormControl<string | null>(null),
     minNetWt: new FormControl('', positiveDecimal(3)),
@@ -87,32 +103,70 @@ export class CatalogComponent {
     tagIds: new FormControl<number[]>([], { nonNullable: true }),
   });
 
+  protected readonly pageSizeOptions = [12, 24, 48, 96];
+  protected readonly pageIndex = signal(0);
+  protected readonly pageSize = signal(24);
+  private readonly pageChanged$ = new Subject<void>();
+
   protected readonly state = toSignal(
-    this.form.valueChanges.pipe(
+    merge(
+      // A changed filter or search starts again from the first page.
+      this.form.valueChanges.pipe(
+        debounceTime(300),
+        tap(() => this.pageIndex.set(0)),
+      ),
+      this.pageChanged$,
+    ).pipe(
       startWith(null),
-      debounceTime(300),
       switchMap(() => {
-        const f = this.filter();
+        const size = this.pageSize();
+        const f = { ...this.filter(), limit: size, offset: this.pageIndex() * size };
         const metal = f.metalCode ?? null;
         return this.api.listDesigns(f).pipe(
-          map((items): ListState => ({ loading: false, items, error: '', metal })),
-          startWith<ListState>({ loading: true, items: [], error: '', metal }),
+          tap(({ items }) => {
+            // The last page can vanish (e.g. after deletions elsewhere): go back to the first.
+            if (items.length === 0 && this.pageIndex() > 0) {
+              this.pageIndex.set(0);
+              this.pageChanged$.next();
+            }
+          }),
+          map(({ items, total }): ListState => ({
+            loading: false,
+            items,
+            total,
+            error: '',
+            metal,
+          })),
+          startWith<ListState>({ loading: true, items: [], total: 0, error: '', metal }),
           catchError((e) =>
             from(toApiError(e)).pipe(
-              map((err): ListState => ({ loading: false, items: [], error: err.message, metal })),
+              map((err): ListState => ({
+                loading: false,
+                items: [],
+                total: 0,
+                error: err.message,
+                metal,
+              })),
             ),
           ),
         );
       }),
     ),
-    { initialValue: { loading: true, items: [], error: '', metal: null } as ListState },
+    { initialValue: { loading: true, items: [], total: 0, error: '', metal: null } as ListState },
   );
+
+  protected onPage(e: PageEvent): void {
+    this.pageIndex.set(e.pageIndex);
+    this.pageSize.set(e.pageSize);
+    this.pageChanged$.next();
+  }
 
   /** Invalid number fields are left out of the request instead of sent as garbage. */
   private filter(): DesignFilter {
     const c = this.form.controls;
     const num = (ctl: FormControl<string | null>) => (ctl.valid ? ctl.value : null);
     return {
+      q: c.q.value,
       categoryId: c.categoryId.value,
       metalCode: c.metalCode.value,
       tagIds: c.tagIds.value,
