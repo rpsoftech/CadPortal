@@ -1,0 +1,127 @@
+<div class="page">
+  <div class="row head">
+    <h1>Catalog</h1>
+    <span class="spacer"></span>
+    <button mat-flat-button (click)="newDesign()">New design</button>
+  </div>
+
+  <form [formGroup]="form" class="filters" aria-label="Catalog filters">
+    <div class="row">
+      <mat-form-field appearance="outline">
+        <mat-label>Category</mat-label>
+        <mat-select formControlName="categoryId">
+          <mat-option [value]="null">All categories</mat-option>
+          @for (c of categories(); track c.id) {
+            <mat-option [value]="c.id">{{ c.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>Target purity</mat-label>
+        <mat-select formControlName="metalCode">
+          <mat-option [value]="null">None (hide weights)</mat-option>
+          @for (m of metals(); track m.id) {
+            <mat-option [value]="m.code">{{ m.code }}</mat-option>
+          }
+        </mat-select>
+        <mat-hint>Weights and weight filters apply to this metal</mat-hint>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="num">
+        <mat-label>Net min (g)</mat-label>
+        <input matInput formControlName="minNetWt" inputmode="decimal" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="num">
+        <mat-label>Net max (g)</mat-label>
+        <input matInput formControlName="maxNetWt" inputmode="decimal" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="num">
+        <mat-label>Gross min (g)</mat-label>
+        <input matInput formControlName="minGrossWt" inputmode="decimal" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="num">
+        <mat-label>Gross max (g)</mat-label>
+        <input matInput formControlName="maxGrossWt" inputmode="decimal" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="num">
+        <mat-label>Stone max (ct)</mat-label>
+        <input matInput formControlName="maxStoneCts" inputmode="decimal" />
+      </mat-form-field>
+    </div>
+
+    @if (tagGroups().length) {
+      <div class="tag-groups">
+        @for (g of tagGroups(); track g.name) {
+          <div class="tag-group">
+            <span class="muted group-name">{{ g.name }}</span>
+            <mat-chip-listbox
+              formControlName="tagIds"
+              multiple
+              [attr.aria-label]="g.name + ' tags'"
+            >
+              @for (t of g.tags; track t.id) {
+                <mat-chip-option [value]="t.id">{{ t.name }}</mat-chip-option>
+              }
+            </mat-chip-listbox>
+          </div>
+        }
+      </div>
+    }
+    <button mat-button type="button" (click)="reset()">Clear filters</button>
+  </form>
+
+  @if (state().loading) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+  @if (state().error) {
+    <div class="error-box">{{ state().error }}</div>
+  }
+
+  @if (!state().loading && !state().error && state().items.length === 0) {
+    <p class="muted">No designs match. Adjust the filters or create a new design.</p>
+  }
+
+  <div class="grid">
+    @for (d of state().items; track d.id) {
+      <mat-card appearance="outlined">
+        <mat-card-header>
+          <mat-card-title>
+            <a [routerLink]="['/designs', d.code]" class="mono">{{ d.code }}</a>
+          </mat-card-title>
+          <mat-card-subtitle>{{ d.name || 'Unnamed' }} · {{ d.category_name }}</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          @if (d.tag_names.length) {
+            <mat-chip-set aria-label="Tags">
+              @for (t of d.tag_names; track t) {
+                <mat-chip>{{ t }}</mat-chip>
+              }
+            </mat-chip-set>
+          }
+          <div class="weights">
+            @if (!state().metal) {
+              <span class="muted">Pick a target purity to see weights</span>
+            } @else if (net(d); as n) {
+              <div>
+                <span class="muted">Net {{ state().metal }}</span> {{ n }}
+              </div>
+              <div>
+                <span class="muted">Gross {{ state().metal }}</span>
+                {{ gross(d) ?? 'unknown (stone matrix gap)' }}
+              </div>
+            } @else {
+              <span class="muted">No {{ state().metal }} weights yet</span>
+            }
+          </div>
+          <div class="muted small">
+            {{ d.variation_count }} variation{{ d.variation_count === 1 ? '' : 's' }}
+          </div>
+        </mat-card-content>
+        <mat-card-actions>
+          <a mat-button [routerLink]="['/designs', d.code]">Open</a>
+        </mat-card-actions>
+      </mat-card>
+    }
+  </div>
+</div>

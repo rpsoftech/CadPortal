@@ -1,0 +1,49 @@
+.head {
+  margin-bottom: 8px;
+}
+.head h1 {
+  margin: 0;
+}
+.spacer {
+  flex: 1;
+}
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.num {
+  width: 150px;
+}
+.tag-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.tag-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.group-name {
+  width: 90px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.weights {
+  margin: 12px 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+.small {
+  font-size: 0.85rem;
+}
+a {
+  color: inherit;
+}
