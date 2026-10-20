@@ -90,7 +90,7 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
 | Auth & users | `POST /api/v1/auth/login`, `GET /api/v1/auth/me`, `POST /api/v1/auth/change-password`, `GET/POST /api/v1/users`, `PUT /api/v1/users/:id`, `POST /api/v1/users/:id/password` |
 | Masters | `GET/POST/PUT /api/v1/masters/categories[/:id]`, `GET/POST/PUT /api/v1/masters/tags[/:id]`, `GET/POST /api/v1/masters/metals`, `PUT /api/v1/masters/metals/:id`, `GET/POST /api/v1/masters/stone-codes`, `PUT /api/v1/masters/stone-codes/:id`, `GET/PUT/DELETE /api/v1/masters/stone-matrix`, `GET /api/v1/masters/matrix-gaps`, `GET /api/v1/masters/recalc-status` (writes admin only) |
 | Designs | `POST/GET /api/v1/designs` (`q` text search, `limit`/`offset` paging, total in `X-Total-Count`), `GET /api/v1/designs/:code`, `PUT/DELETE /api/v1/designs/:id` (soft delete; the code stays reserved) |
-| Variations & CAD vault | `POST /api/v1/designs/:id/variations`, `POST /api/v1/variations/:id/upload-cad`, `POST /api/v1/variations/:id/clone-seats`, `PUT /api/v1/variations/:id/seats`, `DELETE /api/v1/variations/:id`, `GET /api/v1/variations/:id/download` |
+| Variations & CAD vault | `POST /api/v1/designs/:id/variations`, `POST /api/v1/variations/:id/upload-cad`, `POST /api/v1/variations/:id/clone-seats`, `PUT /api/v1/variations/:id/seats`, `DELETE /api/v1/variations/:id`, `GET /api/v1/variations/:id/download`, `DELETE /api/v1/variations/:id/cad?kind=3dm\|stl` (frees the checksum) |
 | BOM & exports | `GET /api/v1/variations/:id/simulate-bom?code=2HD`, `POST /api/v1/exports/job-bag-pdf`, `POST /api/v1/exports/costing-csv` |
 
 `GET /api/v1/designs` filter parameters: `category_id`, `tag_ids[]`, `metal_code`, `min_net_wt`, `max_net_wt`, `min_gross_wt`, `max_gross_wt`, `max_stone_cts`.
@@ -129,5 +129,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   8. Deployment: container images, production compose, health checks, CI image build and smoke test
   9. Catalog management: text search, paging, edit/delete designs, delete variations
   10. Audit log: who changed what (append-only, no request bodies), admin Audit screen, optional retention
+  11. CAD file management: remove a wrong 3dm/stl file from a variation (deletes the stored object, frees its checksum)
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.

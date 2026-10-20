@@ -170,6 +170,25 @@ export class VariationEditorComponent {
     });
   }
 
+  protected removeFile(kind: Kind): void {
+    const v = this.variation();
+    const name = this.stored(kind).name;
+    if (!v || !name) return;
+    if (
+      !confirm(`Remove ${name} from ${v.code}? The stored copy is deleted and cannot be restored.`)
+    ) {
+      return;
+    }
+    this.api.removeCad(v.id, kind).subscribe({
+      next: () => {
+        this.snack.open(`${name} removed`, 'OK', { duration: 3000 });
+        this.refresh();
+      },
+      error: async (e) =>
+        this.setUpload(kind, { progress: null, error: (await toApiError(e)).message }),
+    });
+  }
+
   // ----- stone seats (FormArray) -----
   protected readonly seatForm = new FormGroup({
     seats: new FormArray<ReturnType<typeof seatGroup>>([]),

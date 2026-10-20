@@ -35,6 +35,28 @@ func (q *Queries) ClearDesignTags(ctx context.Context, designID int64) error {
 	return err
 }
 
+const clearVariationFile3dm = `-- name: ClearVariationFile3dm :exec
+UPDATE cad_variations
+SET file_3dm_sha256 = NULL, file_3dm_key = NULL, file_3dm_name = NULL, file_3dm_size_bytes = NULL
+WHERE id = $1
+`
+
+func (q *Queries) ClearVariationFile3dm(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, clearVariationFile3dm, id)
+	return err
+}
+
+const clearVariationFileStl = `-- name: ClearVariationFileStl :exec
+UPDATE cad_variations
+SET file_stl_sha256 = NULL, file_stl_key = NULL, file_stl_name = NULL, file_stl_size_bytes = NULL
+WHERE id = $1
+`
+
+func (q *Queries) ClearVariationFileStl(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, clearVariationFileStl, id)
+	return err
+}
+
 const cloneSeats = `-- name: CloneSeats :exec
 INSERT INTO variation_stone_seats (variation_id, position, size_mm, stone_count, locked_stone_code_id)
 SELECT $1::bigint, src.position, src.size_mm, src.stone_count, src.locked_stone_code_id

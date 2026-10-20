@@ -189,3 +189,47 @@ func TestCADStorageDisabledIs503(t *testing.T) {
 		t.Errorf("status = %d", w.Code)
 	}
 }
+
+func TestRemoveCADOverHTTP(t *testing.T) {
+	r, svc, mem := newHTTPEnv(t)
+	ctx := context.Background()
+	cats, _ := svc.ListCategories(ctx)
+	d, _ := svc.CreateDesign(ctx, service.DesignInput{Code: "LR041", CategoryID: cats[0].ID})
+	vol := mustDec("200")
+	v, _ := svc.CreateVariation(ctx, d.ID, service.BaseInput{VolumeMM3: &vol})
+	body, ct := multipartBody(t, "file", "ring.3dm", make([]byte, 2<<10))
+	if w := do(r, "POST", fmt.Sprintf("/api/v1/variations/%d/upload-cad", v.ID), token(t, auth.Designer), ct, body); w.Code != 201 {
+		t.Fatalf("upload: %d %s", w.Code, w.Body)
+	}
+
+	rm := fmt.Sprintf("/api/v1/variations/%d/cad?kind=3dm", v.ID)
+	if w := do(r, "DELETE", rm, "", "", nil); w.Code != 401 {
+		t.Errorf("no token: %d", w.Code)
+	}
+	if w := do(r, "DELETE", rm, token(t, auth.Production), "", nil); w.Code != 403 {
+		t.Errorf("production: %d", w.Code)
+	}
+	if len(mem.Keys()) != 1 {
+		t.Fatalf("refused requests must not delete: %v", mem.Keys())
+	}
+	if w := do(r, "DELETE", strings.Replace(rm, "3dm", "x", 1), token(t, auth.Designer), "", nil); w.Code != 400 {
+		t.Errorf("bad kind: %d", w.Code)
+	}
+	if w := do(r, "DELETE", rm, token(t, auth.Designer), "", nil); w.Code != 204 {
+		t.Fatalf("designer: %d %s", w.Code, w.Body)
+	}
+	if len(mem.Keys()) != 0 {
+		t.Errorf("object not deleted: %v", mem.Keys())
+	}
+	if w := do(r, "DELETE", rm, token(t, auth.Designer), "", nil); w.Code != 404 {
+		t.Errorf("second delete: %d", w.Code)
+	}
+	dl := fmt.Sprintf("/api/v1/variations/%d/download?kind=3dm", v.ID)
+	if w := do(r, "GET", dl, token(t, auth.Production), "", nil); w.Code != 404 {
+		t.Errorf("download after removal: %d", w.Code)
+	}
+	rows, _ := fetchAudit(t, r, token(t, auth.Admin), "?action=cad.")
+	if a := findWhere(rows, func(r auditRow) bool { return r.Action == "cad.remove" && r.Status == 204 }); a == nil || a.Detail != "3dm" {
+		t.Errorf("audit row = %+v", a)
+	}
+}

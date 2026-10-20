@@ -190,3 +190,38 @@ func (s *Service) DownloadCAD(ctx context.Context, variationID int64, kind strin
 	}
 	return DownloadLink{URL: url, Filename: name.String, ExpiresIn: int(ttl.Seconds())}, nil
 }
+
+// RemoveCAD detaches one kind of file from a variation and deletes its stored
+// object, which frees the checksum so the right file can go on another variation.
+// Removing a file that is not there is ErrNotFound.
+func (s *Service) RemoveCAD(ctx context.Context, variationID int64, kind string) error {
+	if kind != "3dm" && kind != "stl" {
+		return invalid("kind must be 3dm or stl")
+	}
+	var oldKey string
+	err := s.inTx(ctx, func(q *db.Queries) error {
+		cur, err := q.GetVariationForUpdate(ctx, variationID)
+		if err != nil {
+			return err
+		}
+		key := cur.File3dmKey
+		if kind == "stl" {
+			key = cur.FileStlKey
+		}
+		if !key.Valid {
+			return ErrNotFound
+		}
+		oldKey = key.String
+		if kind == "3dm" {
+			return q.ClearVariationFile3dm(ctx, variationID)
+		}
+		return q.ClearVariationFileStl(ctx, variationID)
+	})
+	if err != nil {
+		return mapErr(err)
+	}
+	if s.Store != nil {
+		_ = s.Store.Delete(context.WithoutCancel(ctx), oldKey) // best effort; an orphan is harmless
+	}
+	return nil
+}
