@@ -158,16 +158,25 @@ func (s *Service) Authenticate(ctx context.Context, email, pw string) (UserView,
 // ValidateToken is the per-request check behind auth.Authenticator: the user must
 // still exist, be active, hold the role in the token, and not have changed their
 // password since the token was issued (compared at one-second precision).
-func (s *Service) ValidateToken(ctx context.Context, c auth.Claims) bool {
+//
+// A missing user is an invalid token (false, nil). A database failure is neither valid
+// nor invalid, so it is returned as an error and the caller answers 503, not 401.
+func (s *Service) ValidateToken(ctx context.Context, c auth.Claims) (bool, error) {
 	id, err := strconv.ParseInt(c.Subject, 10, 64)
 	if err != nil || c.IssuedAt == nil {
-		return false
+		return false, nil
 	}
 	u, err := s.Q.GetUserByID(ctx, id)
-	if err != nil || !u.Active || u.Role != string(c.Role) {
-		return false
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
 	}
-	return !c.IssuedAt.Time.Before(u.PwdChangedAt.Time.Truncate(time.Second))
+	if err != nil {
+		return false, err
+	}
+	if !u.Active || u.Role != string(c.Role) {
+		return false, nil
+	}
+	return !c.IssuedAt.Time.Before(u.PwdChangedAt.Time.Truncate(time.Second)), nil
 }
 
 func (s *Service) GetUser(ctx context.Context, id int64) (UserView, error) {

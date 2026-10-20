@@ -184,6 +184,7 @@ func TestRoutesByRole(t *testing.T) {
 		{"DELETE", "/api/v1/designs/1", edit},
 		{"POST", "/api/v1/designs/1/variations", edit},
 		{"PUT", "/api/v1/variations/1/base-input", edit},
+		{"DELETE", "/api/v1/variations/1", edit},
 		{"GET", "/api/v1/variations/1/seats", all},
 		{"PUT", "/api/v1/variations/1/seats", edit},
 		{"POST", "/api/v1/variations/1/clone-seats", edit},

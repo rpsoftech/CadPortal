@@ -1,16 +1,26 @@
 name: CI
 
+# Jobs run only when their inputs changed (see .github/scripts/changes.sh): a docs-only
+# change runs nothing, a frontend change runs the frontend job, and so on. Skipped jobs
+# report as skipped, which GitHub counts as passing for required status checks, so the
+# branch ruleset still works. `changes` itself always runs and is a required check, so a
+# broken detector blocks the merge instead of silently skipping everything.
 on:
   push:
     branches: [main]
   pull_request:          # not pull_request_target: fork PRs never get secrets
   workflow_dispatch:
+  schedule:
+    # Weekly, everything: new vulnerability advisories and base-image updates appear
+    # without any code change in this repository.
+    - cron: "17 5 * * 1"
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # The event is part of the key so the weekly run never cancels a push run on main.
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -18,13 +28,56 @@ defaults:
     working-directory: backend
 
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    outputs:
+      test: ${{ steps.decide.outputs.test }}
+      sqlc: ${{ steps.decide.outputs.sqlc }}
+      frontend: ${{ steps.decide.outputs.frontend }}
+      docker: ${{ steps.decide.outputs.docker }}
+      vulncheck: ${{ steps.decide.outputs.vulncheck }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0          # the base commit must be present to diff against it
+          persist-credentials: false
+      - name: Self-test the change detection
+        run: bash .github/scripts/changes_test.sh
+      - name: Decide which jobs this change needs
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          # PR: the base branch tip. Push: the commit before the push.
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: bash .github/scripts/changes.sh
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Jobs selected for this change"
+            echo "| job | runs |"
+            echo "|---|---|"
+            echo "| test | ${{ steps.decide.outputs.test }} |"
+            echo "| sqlc | ${{ steps.decide.outputs.sqlc }} |"
+            echo "| frontend | ${{ steps.decide.outputs.frontend }} |"
+            echo "| docker | ${{ steps.decide.outputs.docker }} |"
+            echo "| vulncheck | ${{ steps.decide.outputs.vulncheck }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   test:
     name: test
+    needs: changes
+    if: needs.changes.outputs.test == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: cad
           POSTGRES_PASSWORD: cad
@@ -54,6 +107,8 @@ jobs:
 
   sqlc:
     name: sqlc
+    needs: changes
+    if: needs.changes.outputs.sqlc == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -67,6 +122,8 @@ jobs:
 
   frontend:
     name: frontend
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -91,8 +148,48 @@ jobs:
       - name: Unit tests
         run: yarn ng test --watch=false
 
+  docker:
+    name: docker
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: .
+    # Throwaway values for a stack that lives only for this job (nothing here is a secret).
+    env:
+      POSTGRES_PASSWORD: ci-postgres-password-0123456789ab
+      JWT_SECRET: ci-jwt-secret-0123456789-0123456789-ab
+      WEB_PORT: "18080"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate the production compose file
+        run: docker compose -f docker-compose.prod.yml config -q
+      - name: Build images and start the stack
+        # --wait blocks until every service with a health check reports healthy.
+        run: docker compose -f docker-compose.prod.yml up -d --build --wait --wait-timeout 180
+      - name: Smoke test
+        run: |
+          set -eu
+          base=http://127.0.0.1:${WEB_PORT}
+          curl -fsS "$base/healthz"
+          curl -fsS "$base/" | grep -q "<app-root"
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$base/api/v1/designs")" = "401"
+          curl -fsSI "$base/" | grep -qi "content-security-policy"
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.prod.yml logs --no-color --tail 80
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.prod.yml down -v
+
   vulncheck:
     name: vulncheck
+    needs: changes
+    if: needs.changes.outputs.vulncheck == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

@@ -31,10 +31,15 @@ WHERE dt.design_id = $1 ORDER BY t.tag_group, t.name;
 SELECT d.*, c.name AS category_name,
     ARRAY(SELECT t.name FROM design_tags dt JOIN tags t ON t.id = dt.tag_id
           WHERE dt.design_id = d.id ORDER BY t.tag_group, t.name)::text[] AS tag_names,
-    (SELECT count(*) FROM cad_variations cv WHERE cv.design_id = d.id)::int AS variation_count
+    (SELECT count(*) FROM cad_variations cv WHERE cv.design_id = d.id)::int AS variation_count,
+    count(*) OVER ()::bigint AS total_count   -- matches before LIMIT/OFFSET, for pagination
 FROM master_designs d
 JOIN categories c ON c.id = d.category_id
 WHERE d.deleted_at IS NULL
+  -- q is pre-escaped by the service with '!' as the LIKE escape character
+  AND (sqlc.narg('q')::text IS NULL
+       OR d.code ILIKE '%' || sqlc.narg('q') || '%' ESCAPE '!'
+       OR d.name ILIKE '%' || sqlc.narg('q') || '%' ESCAPE '!')
   AND (sqlc.narg('category_id')::bigint IS NULL OR d.category_id = sqlc.narg('category_id'))
   AND (cardinality(sqlc.arg('tag_ids')::bigint[]) = 0 OR NOT EXISTS (
         SELECT 1 FROM unnest(sqlc.arg('tag_ids')::bigint[]) AS want(id)
@@ -78,6 +83,11 @@ SELECT * FROM cad_variations WHERE design_id = $1 ORDER BY seq;
 
 -- name: ListAllVariationIDs :many
 SELECT id FROM cad_variations ORDER BY id;
+
+-- name: DeleteVariation :one
+-- Seats, weights and file metadata go with the row (ON DELETE CASCADE); the caller
+-- removes the stored objects using the returned keys.
+DELETE FROM cad_variations WHERE id = $1 RETURNING *;
 
 -- name: UpdateVariationBaseInput :one
 UPDATE cad_variations

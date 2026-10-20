@@ -144,4 +144,74 @@ describe('ApiService', () => {
     api.matrixGaps().subscribe();
     expect(http.expectOne('/api/v1/masters/matrix-gaps').request.method).toBe('GET');
   });
+
+  it('turns null lists into empty arrays so screens never crash on a fresh database', () => {
+    const results: Record<string, unknown> = {};
+    api.tags().subscribe((v) => (results['tags'] = v));
+    http.expectOne('/api/v1/masters/tags').flush(null);
+    api.stoneMatrix().subscribe((v) => (results['matrix'] = v));
+    http.expectOne('/api/v1/masters/stone-matrix').flush(null);
+    api.seats(3).subscribe((v) => (results['seats'] = v));
+    http.expectOne('/api/v1/variations/3/seats').flush(null);
+    api.listDesigns({}).subscribe((v) => (results['designs'] = v));
+    http.expectOne((r) => r.url === '/api/v1/designs').flush(null);
+    expect(results).toEqual({
+      tags: [],
+      matrix: [],
+      seats: [],
+      designs: { items: [], total: 0 },
+    });
+  });
+
+  it('normalises null tags, variations and weights on a design', () => {
+    let design: { tags: unknown[]; variations: { weights: unknown[] }[] } | undefined;
+    api.getDesign('LR001').subscribe((d) => (design = d));
+    http
+      .expectOne('/api/v1/designs/LR001')
+      .flush({ id: 1, code: 'LR001', tags: null, variations: [{ id: 5, weights: null }] });
+    expect(design?.tags).toEqual([]);
+    expect(design?.variations[0].weights).toEqual([]);
+
+    api.getDesign('LR002').subscribe((d) => (design = d));
+    http
+      .expectOne('/api/v1/designs/LR002')
+      .flush({ id: 2, code: 'LR002', tags: null, variations: null });
+    expect(design?.variations).toEqual([]);
+  });
+
+  it('reads the total match count from X-Total-Count for paging', () => {
+    let page: { items: { code: string; tag_names: string[] }[]; total: number } | undefined;
+    api
+      .listDesigns({ q: ' ring ', limit: 12, offset: 24 })
+      .subscribe((p) => (page = p as typeof page));
+    const req = http.expectOne((r) => r.url === '/api/v1/designs');
+    expect(req.request.params.get('q')).toBe('ring');
+    expect(req.request.params.get('limit')).toBe('12');
+    expect(req.request.params.get('offset')).toBe('24');
+    req.flush([{ code: 'LR025', tag_names: null }], { headers: { 'X-Total-Count': '57' } });
+    expect(page?.total).toBe(57);
+    expect(page?.items[0].tag_names).toEqual([]);
+  });
+
+  it('falls back to the page size when the total header is missing or invalid', () => {
+    const totals: number[] = [];
+    api.listDesigns({}).subscribe((p) => totals.push(p.total));
+    http.expectOne((r) => r.url === '/api/v1/designs').flush([{ code: 'A' }, { code: 'B' }]);
+    api.listDesigns({}).subscribe((p) => totals.push(p.total));
+    http
+      .expectOne((r) => r.url === '/api/v1/designs')
+      .flush([{ code: 'A' }], { headers: { 'X-Total-Count': 'nope' } });
+    expect(totals).toEqual([2, 1]);
+  });
+
+  it('updates and deletes designs and variations', () => {
+    api.updateDesign(4, { name: 'N', category_id: 2, tag_ids: [1, 3] }).subscribe();
+    const put = http.expectOne('/api/v1/designs/4');
+    expect(put.request.method).toBe('PUT');
+    expect(put.request.body).toEqual({ name: 'N', category_id: 2, tag_ids: [1, 3] });
+    api.deleteDesign(4).subscribe();
+    expect(http.expectOne('/api/v1/designs/4').request.method).toBe('DELETE');
+    api.deleteVariation(9).subscribe();
+    expect(http.expectOne('/api/v1/variations/9').request.method).toBe('DELETE');
+  });
 });

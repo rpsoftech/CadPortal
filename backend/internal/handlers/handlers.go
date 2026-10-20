@@ -53,6 +53,10 @@ func (h *H) Register(r *gin.Engine) {
 	editor := a.Require(auth.Editors...)
 	admin := a.Require(auth.Admin)
 
+	// Liveness and readiness for the container runtime; no auth, no data.
+	r.GET("/healthz", h.healthz)
+	r.GET("/readyz", h.readyz)
+
 	v1 := r.Group("/api/v1")
 
 	// Accounts
@@ -92,6 +96,7 @@ func (h *H) Register(r *gin.Engine) {
 	v1.DELETE("/designs/:id", editor, h.deleteDesign)
 	v1.POST("/designs/:id/variations", editor, h.createVariation)
 	v1.PUT("/variations/:id/base-input", editor, h.updateVariationBase)
+	v1.DELETE("/variations/:id", editor, h.deleteVariation)
 	v1.GET("/variations/:id/seats", anyRole, h.listSeats)
 	v1.PUT("/variations/:id/seats", editor, h.setSeats)
 	v1.POST("/variations/:id/clone-seats", editor, h.cloneSeats)
@@ -340,7 +345,7 @@ func (h *H) getDesign(c *gin.Context) {
 }
 
 func (h *H) listDesigns(c *gin.Context) {
-	f := service.DesignFilter{MetalCode: c.Query("metal_code")}
+	f := service.DesignFilter{MetalCode: c.Query("metal_code"), Query: c.Query("q")}
 	var err error
 	if f.CategoryID, err = optInt(c, "category_id"); err != nil {
 		badRequest(c, err.Error())
@@ -381,7 +386,28 @@ func (h *H) listDesigns(c *gin.Context) {
 		f.Offset = int32(*v)
 	}
 	out, err := h.S.ListDesigns(c, f)
+	if err == nil {
+		// Total matches before paging, so the client can render a paginator. 0 when the
+		// requested page is past the end.
+		total := int64(0)
+		if len(out) > 0 {
+			total = out[0].TotalCount
+		}
+		c.Header("X-Total-Count", strconv.FormatInt(total, 10))
+	}
 	respond(c, http.StatusOK, out, err)
+}
+
+func (h *H) deleteVariation(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	if err := h.S.DeleteVariation(c, id); err != nil {
+		fail(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func optInt(c *gin.Context, name string) (*int64, error) {

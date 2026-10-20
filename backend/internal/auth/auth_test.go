@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -72,9 +73,13 @@ func TestAuthenticatorValidator(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	calls := 0
 	allow := true
-	a := &Authenticator{Secret: secret, Validate: func(_ context.Context, c Claims) bool {
+	broken := false
+	a := &Authenticator{Secret: secret, Validate: func(_ context.Context, c Claims) (bool, error) {
 		calls++
-		return allow && c.Subject == "42" && c.Role == Designer
+		if broken {
+			return false, errors.New("database unreachable")
+		}
+		return allow && c.Subject == "42" && c.Role == Designer, nil
 	}}
 	r := gin.New()
 	r.GET("/x", a.Require(AllRoles...), func(c *gin.Context) {
@@ -100,6 +105,16 @@ func TestAuthenticatorValidator(t *testing.T) {
 	other, _ := Issue(secret, "7", Designer, time.Hour) // validator says no for another user
 	if code, _ := get(other); code != 401 {
 		t.Errorf("other user: %d", code)
+	}
+	// A validator that cannot decide (database down) is a 503, never a 401 that ends sessions.
+	broken = true
+	code, body := get(tok)
+	if code != 503 || strings.Contains(body, "database") {
+		t.Errorf("validator error: %d %s (want 503 without internals)", code, body)
+	}
+	broken = false
+	if code, _ := get(tok); code != 200 {
+		t.Errorf("recovers once the validator can decide again: %d", code)
 	}
 	// Validator is not consulted for tokens that fail signature or expiry.
 	before := calls

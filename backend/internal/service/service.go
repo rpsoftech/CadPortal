@@ -55,6 +55,15 @@ func friendly(err error, msg string) error {
 	return err
 }
 
+// nonNil turns a nil slice into an empty one. Go marshals a nil slice as JSON null, which
+// clients then trip over; list endpoints must always return [].
+func nonNil[T any](s []T, err error) ([]T, error) {
+	if s == nil {
+		s = []T{}
+	}
+	return s, err
+}
+
 func pgText(s string) pgtype.Text { return pgtype.Text{String: s, Valid: s != ""} }
 
 func newTicker() *time.Ticker { return time.NewTicker(5 * time.Second) }
@@ -84,7 +93,7 @@ func (s *Service) inTx(ctx context.Context, fn func(q *db.Queries) error) error 
 // ---------- Masters ----------
 
 func (s *Service) ListCategories(ctx context.Context) ([]db.Category, error) {
-	return s.Q.ListCategories(ctx)
+	return nonNil(s.Q.ListCategories(ctx))
 }
 
 func (s *Service) CreateCategory(ctx context.Context, name, prefix string) (db.Category, error) {
@@ -97,7 +106,7 @@ func (s *Service) CreateCategory(ctx context.Context, name, prefix string) (db.C
 
 var tagGroups = map[string]bool{"Audience": true, "Sub-Style": true, "Motif": true, "Attribute": true}
 
-func (s *Service) ListTags(ctx context.Context) ([]db.Tag, error) { return s.Q.ListTags(ctx) }
+func (s *Service) ListTags(ctx context.Context) ([]db.Tag, error) { return nonNil(s.Q.ListTags(ctx)) }
 
 func (s *Service) CreateTag(ctx context.Context, name, group string) (db.Tag, error) {
 	if name == "" {
@@ -111,10 +120,12 @@ func (s *Service) CreateTag(ctx context.Context, name, group string) (db.Tag, er
 }
 
 func (s *Service) ListStoneCodes(ctx context.Context) ([]db.StoneCode, error) {
-	return s.Q.ListStoneCodes(ctx)
+	return nonNil(s.Q.ListStoneCodes(ctx))
 }
 
-func (s *Service) ListMetals(ctx context.Context) ([]db.Metal, error) { return s.Q.ListMetals(ctx) }
+func (s *Service) ListMetals(ctx context.Context) ([]db.Metal, error) {
+	return nonNil(s.Q.ListMetals(ctx))
+}
 
 type MetalUpdate struct {
 	SpecificGravity decimal.Decimal
@@ -160,7 +171,7 @@ func (s *Service) UpdateMetal(ctx context.Context, id int64, u MetalUpdate) (db.
 }
 
 func (s *Service) ListStoneMatrix(ctx context.Context) ([]db.ListStoneMatrixRow, error) {
-	return s.Q.ListStoneMatrix(ctx)
+	return nonNil(s.Q.ListStoneMatrix(ctx))
 }
 
 type MatrixRowInput struct {
