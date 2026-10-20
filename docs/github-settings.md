@@ -5,6 +5,11 @@ Repository: `rpsoftech/CadPortal` (organization-owned, public).
 
 ## 1. Protect `main` (Settings > Rules > Rulesets > New branch ruleset)
 
+**Fastest route:** Settings > Rules > Rulesets > New ruleset > **Import a ruleset** and
+choose [`ruleset-main.json`](ruleset-main.json). It sets everything below and lets
+repository admins bypass the review requirement through a pull request only (so a solo
+owner is not locked out). Check the result against this list.
+
 Target: default branch (`main`). Enforcement: **Active**.
 
 - [ ] Restrict deletions
