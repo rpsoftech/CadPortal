@@ -30,6 +30,7 @@
           { "context": "test" },
           { "context": "sqlc" },
           { "context": "frontend" },
+          { "context": "docker" },
           { "context": "vulncheck" }
         ]
       }

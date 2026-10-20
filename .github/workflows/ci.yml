@@ -91,6 +91,42 @@ jobs:
       - name: Unit tests
         run: yarn ng test --watch=false
 
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: .
+    # Throwaway values for a stack that lives only for this job (nothing here is a secret).
+    env:
+      POSTGRES_PASSWORD: ci-postgres-password-0123456789ab
+      JWT_SECRET: ci-jwt-secret-0123456789-0123456789-ab
+      WEB_PORT: "18080"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate the production compose file
+        run: docker compose -f docker-compose.prod.yml config -q
+      - name: Build images and start the stack
+        # --wait blocks until every service with a health check reports healthy.
+        run: docker compose -f docker-compose.prod.yml up -d --build --wait --wait-timeout 180
+      - name: Smoke test
+        run: |
+          set -eu
+          base=http://127.0.0.1:${WEB_PORT}
+          curl -fsS "$base/healthz"
+          curl -fsS "$base/" | grep -q "<app-root"
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$base/api/v1/designs")" = "401"
+          curl -fsSI "$base/" | grep -qi "content-security-policy"
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.prod.yml logs --no-color --tail 80
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.prod.yml down -v
+
   vulncheck:
     name: vulncheck
     runs-on: ubuntu-latest

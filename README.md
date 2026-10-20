@@ -116,6 +116,52 @@ the token and role on every request.
 
 See [.env.example](.env.example). Never commit real credentials: `.env` is gitignored.
 
+## Deployment
+
+`docker-compose.prod.yml` runs the whole stack: PostgreSQL, the API, and a web container
+(nginx serving the Angular app and proxying `/api`). Only the web container is published, by
+default on `127.0.0.1:8080`; the API and database are reachable only inside the compose network.
+
+```bash
+cp .env.example .env
+# Fill in: JWT_SECRET (openssl rand -hex 32), POSTGRES_PASSWORD (openssl rand -hex 24),
+# and the Cloudflare R2 values (S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY).
+
+docker compose -f docker-compose.prod.yml up -d --build
+
+# Create the first admin (prompts for the password without echo):
+docker compose -f docker-compose.prod.yml exec api /app/adduser -email you@example.com -name "Your Name" -role admin
+```
+
+On Windows Git Bash, prefix the `exec` line with `MSYS_NO_PATHCONV=1` so `/app/adduser` is not
+rewritten into a Windows path.
+
+What to know before going live:
+
+- **TLS:** the web container speaks plain HTTP. Put a reverse proxy in front that terminates TLS
+  and sends `Strict-Transport-Security`. The proxy should also rate-limit `/api/v1/auth/login`
+  (account lockout is per account, not per IP).
+- **Storage:** use R2 in production. `STORAGE=local` keeps files in a Docker volume with no
+  replication or backups and is for development only.
+- **Migrations** run automatically when the API starts (`AUTO_MIGRATE=true`). Run one API
+  instance; the recalculation worker is safe against overlap, but there is no need to scale it.
+- **Health:** the API answers `/healthz` (process up) and `/readyz` (database reachable) on its
+  own port, and both images define Docker health checks. `docker compose ps` shows them.
+- **Shutdown:** `docker compose stop` sends SIGTERM; the API lets in-flight requests, uploads
+  included, finish for up to 30 seconds.
+- **Hardening:** both app containers run as non-root with a read-only filesystem, all Linux
+  capabilities dropped and `no-new-privileges`. The API image is distroless (no shell).
+- **Backups** are yours to schedule. For example:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T db pg_dump -U cad cad_portal | gzip > backup-$(date +%F).sql.gz
+```
+
+- **Updating:** `git pull`, then `docker compose -f docker-compose.prod.yml up -d --build`.
+
+CI builds both images and validates the compose file on every pull request, but does not
+publish images anywhere.
+
 ## API (v1)
 
 | Group | Endpoints |

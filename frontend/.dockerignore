@@ -1,0 +1,11 @@
+.git
+node_modules
+dist
+.angular
+.yarn/install-state.gz
+.yarn/cache
+*.log
+.env
+.env.*
+Dockerfile
+.dockerignore
