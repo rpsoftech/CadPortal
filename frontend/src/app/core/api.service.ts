@@ -2,6 +2,8 @@ import { HttpClient, HttpEvent, HttpParams, HttpRequest } from '@angular/common/
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
 import {
+  AuditFilter,
+  AuditRecord,
   BaseInput,
   BomResult,
   Category,
@@ -33,6 +35,29 @@ const BASE = '/api/v1';
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly http = inject(HttpClient);
+
+  // ----- audit log (admin) -----
+  audit(f: AuditFilter): Observable<{ items: AuditRecord[]; total: number }> {
+    let params = new HttpParams();
+    const set = (k: string, v: string | number | null | undefined) => {
+      if (v !== null && v !== undefined && `${v}`.trim() !== '')
+        params = params.set(k, `${v}`.trim());
+    };
+    set('action', f.action);
+    set('user_id', f.userId);
+    set('from', f.from);
+    set('to', f.to);
+    set('limit', f.limit);
+    set('offset', f.offset);
+    return this.http.get<AuditRecord[]>(`${BASE}/audit`, { params, observe: 'response' }).pipe(
+      map((res) => {
+        const items = res.body ?? [];
+        const header = res.headers.get('X-Total-Count');
+        const total = header === null ? NaN : Number(header);
+        return { items, total: Number.isFinite(total) ? total : items.length };
+      }),
+    );
+  }
 
   // ----- users (admin) -----
   users(): Observable<User[]> {

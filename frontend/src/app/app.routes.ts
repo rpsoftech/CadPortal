@@ -44,6 +44,13 @@ export const routes: Routes = [
           import('./features/master-data/master-data.component').then((m) => m.MasterDataComponent),
       },
       {
+        path: 'audit',
+        title: 'Audit log',
+        canActivate: [roleGuard('admin')],
+        loadComponent: () =>
+          import('./features/audit/audit.component').then((m) => m.AuditComponent),
+      },
+      {
         path: 'users',
         title: 'Users',
         canActivate: [roleGuard('admin')],
