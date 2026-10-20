@@ -345,8 +345,52 @@ func (q *Queries) ListDesignTags(ctx context.Context, designID int64) ([]Tag, er
 	return items, nil
 }
 
+const listDesignWeightsForMetal = `-- name: ListDesignWeightsForMetal :many
+SELECT sv.design_id, w.net_weight_g, w.gross_weight_g
+FROM cad_variations sv
+JOIN variation_metal_weights w ON w.variation_id = sv.id
+JOIN metals m ON m.id = w.metal_id
+WHERE m.code = $1 AND sv.design_id = ANY($2::bigint[])
+`
+
+type ListDesignWeightsForMetalParams struct {
+	Code    string  `json:"code"`
+	Column2 []int64 `json:"column_2"`
+}
+
+type ListDesignWeightsForMetalRow struct {
+	DesignID     int64               `json:"design_id"`
+	NetWeightG   decimal.Decimal     `json:"net_weight_g"`
+	GrossWeightG decimal.NullDecimal `json:"gross_weight_g"`
+}
+
+// Per-variation weights of one metal for the given designs; the service folds
+// them into min/max ranges for the catalog cards.
+func (q *Queries) ListDesignWeightsForMetal(ctx context.Context, arg ListDesignWeightsForMetalParams) ([]ListDesignWeightsForMetalRow, error) {
+	rows, err := q.db.Query(ctx, listDesignWeightsForMetal, arg.Code, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDesignWeightsForMetalRow
+	for rows.Next() {
+		var i ListDesignWeightsForMetalRow
+		if err := rows.Scan(&i.DesignID, &i.NetWeightG, &i.GrossWeightG); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDesigns = `-- name: ListDesigns :many
-SELECT d.id, d.code, d.name, d.category_id, d.deleted_at, d.created_at, d.updated_at, c.name AS category_name
+SELECT d.id, d.code, d.name, d.category_id, d.deleted_at, d.created_at, d.updated_at, c.name AS category_name,
+    ARRAY(SELECT t.name FROM design_tags dt JOIN tags t ON t.id = dt.tag_id
+          WHERE dt.design_id = d.id ORDER BY t.tag_group, t.name)::text[] AS tag_names,
+    (SELECT count(*) FROM cad_variations cv WHERE cv.design_id = d.id)::int AS variation_count
 FROM master_designs d
 JOIN categories c ON c.id = d.category_id
 WHERE d.deleted_at IS NULL
@@ -389,14 +433,16 @@ type ListDesignsParams struct {
 }
 
 type ListDesignsRow struct {
-	ID           int64              `json:"id"`
-	Code         string             `json:"code"`
-	Name         string             `json:"name"`
-	CategoryID   int64              `json:"category_id"`
-	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-	CategoryName string             `json:"category_name"`
+	ID             int64              `json:"id"`
+	Code           string             `json:"code"`
+	Name           string             `json:"name"`
+	CategoryID     int64              `json:"category_id"`
+	DeletedAt      pgtype.Timestamptz `json:"deleted_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	CategoryName   string             `json:"category_name"`
+	TagNames       []string           `json:"tag_names"`
+	VariationCount int32              `json:"variation_count"`
 }
 
 // Weight filters apply to the selected metal (metal_code). A design matches if
@@ -430,6 +476,8 @@ func (q *Queries) ListDesigns(ctx context.Context, arg ListDesignsParams) ([]Lis
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CategoryName,
+			&i.TagNames,
+			&i.VariationCount,
 		); err != nil {
 			return nil, err
 		}

@@ -21,7 +21,7 @@ Target: default branch (`main`). Enforcement: **Active**.
   - [ ] Require review from Code Owners (`.github/CODEOWNERS`)
   - [ ] Require conversation resolution before merging
 - [ ] Require status checks to pass, and require branches to be up to date:
-  `test`, `sqlc`, `vulncheck` (these names come from `.github/workflows/ci.yml`; run the
+  `test`, `sqlc`, `frontend`, `vulncheck` (these names come from `.github/workflows/ci.yml`; run the
   workflow once first so GitHub offers them in the list)
 - [ ] Require signed commits (optional; needs everyone to set up signing)
 

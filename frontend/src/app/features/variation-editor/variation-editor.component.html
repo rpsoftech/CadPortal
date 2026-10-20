@@ -1,0 +1,206 @@
+<div class="page">
+  <a [routerLink]="['/designs', code()]" class="muted back">← {{ code() }}</a>
+
+  @if (design.isLoading() && !design.hasValue()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  @if (design.hasValue() && !variation()) {
+    <div class="error-box">Variation {{ variationId() }} was not found in design {{ code() }}.</div>
+  }
+
+  @if (variation(); as v) {
+    <h1 class="mono">{{ v.code }}</h1>
+
+    <!-- 1. Base input -->
+    <mat-card appearance="outlined">
+      <mat-card-header><mat-card-title>Base input</mat-card-title></mat-card-header>
+      <mat-card-content>
+        <app-base-input [metals]="metals()" [initial]="v" (valueChange)="base.set($event)" />
+        @if (baseError()) {
+          <div class="error-box" role="alert">{{ baseError() }}</div>
+        }
+      </mat-card-content>
+      <mat-card-actions>
+        <button matButton="filled" (click)="saveBase()" [disabled]="!base() || baseBusy()">
+          Save base input
+        </button>
+      </mat-card-actions>
+    </mat-card>
+
+    <!-- 2. CAD files -->
+    <mat-card appearance="outlined">
+      <mat-card-header><mat-card-title>CAD files</mat-card-title></mat-card-header>
+      <mat-card-content>
+        @if (auth.role() === 'production') {
+          <p class="muted">Uploading needs the admin or designer role.</p>
+        }
+        <p class="muted small">
+          Files are hashed (SHA-256 of the original bytes) and compressed while streaming to
+          storage. A file already stored on any variation is rejected.
+        </p>
+        <div class="zones">
+          <div>
+            <app-file-dropzone
+              kind="3dm"
+              [stored]="stored('3dm')"
+              [progress]="uploads()['3dm'].progress"
+              [error]="uploads()['3dm'].error"
+              [disabled]="auth.role() === 'production'"
+              (picked)="upload('3dm', $event)"
+            />
+          </div>
+          <div>
+            <app-file-dropzone
+              kind="stl"
+              [stored]="stored('stl')"
+              [progress]="uploads().stl.progress"
+              [error]="uploads().stl.error"
+              [disabled]="auth.role() === 'production'"
+              (picked)="upload('stl', $event)"
+            />
+          </div>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- 3. Stone seats -->
+    <mat-card appearance="outlined">
+      <mat-card-header><mat-card-title>Stone seats</mat-card-title></mat-card-header>
+      <mat-card-content>
+        <p class="muted small">
+          Enter only the size and count. Leave “Lock to” as flexible unless this seat must keep a
+          specific stone code regardless of what the planner picks.
+        </p>
+
+        @if (others().length) {
+          <div class="row clone">
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Copy seats from</mat-label>
+              <mat-select [value]="cloneFrom()" (selectionChange)="cloneFrom.set($event.value)">
+                @for (o of others(); track o.id) {
+                  <mat-option [value]="o.id">{{ o.code }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+            <button
+              matButton="outlined"
+              (click)="cloneSeats()"
+              [disabled]="cloneFrom() === null || seatBusy()"
+            >
+              Copy seats
+            </button>
+          </div>
+        }
+
+        <form [formGroup]="seatForm" (ngSubmit)="saveSeats()">
+          <div formArrayName="seats">
+            <table class="plain seat-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Size (mm)</th>
+                  <th>Count</th>
+                  <th>Lock to</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (g of seats.controls; track g; let i = $index) {
+                  <tr [formGroupName]="i">
+                    <td>{{ i + 1 }}</td>
+                    <td>
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="cell">
+                        <input
+                          matInput
+                          formControlName="size"
+                          inputmode="decimal"
+                          [attr.aria-label]="'Seat ' + (i + 1) + ' size in mm'"
+                        />
+                        @if (g.controls.size.invalid) {
+                          <mat-error>Positive, 2 dp max</mat-error>
+                        }
+                      </mat-form-field>
+                    </td>
+                    <td>
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="cell">
+                        <input
+                          matInput
+                          formControlName="count"
+                          inputmode="numeric"
+                          [attr.aria-label]="'Seat ' + (i + 1) + ' stone count'"
+                        />
+                        @if (g.controls.count.invalid) {
+                          <mat-error>Whole number ≥ 1</mat-error>
+                        }
+                      </mat-form-field>
+                    </td>
+                    <td>
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="cell">
+                        <mat-select
+                          formControlName="locked"
+                          [attr.aria-label]="'Seat ' + (i + 1) + ' lock'"
+                        >
+                          <mat-option value="">Flexible</mat-option>
+                          @for (c of stoneCodes(); track c.id) {
+                            <mat-option [value]="c.code">{{ c.code }}</mat-option>
+                          }
+                        </mat-select>
+                      </mat-form-field>
+                    </td>
+                    <td>
+                      <button
+                        matButton
+                        type="button"
+                        (click)="removeSeat(i)"
+                        [attr.aria-label]="'Remove seat ' + (i + 1)"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="5" class="muted">No seats. This variation has no stones.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <div class="row actions">
+            <button matButton type="button" (click)="addSeat()">Add seat</button>
+            <span class="muted">{{ totalPcs() }} pcs total</span>
+            <span class="spacer"></span>
+            <button
+              matButton="filled"
+              type="submit"
+              [disabled]="seatForm.invalid || !seatForm.dirty || seatBusy()"
+            >
+              Save seats
+            </button>
+          </div>
+        </form>
+
+        @if (seatBusy() || seatsResource.isLoading()) {
+          <mat-progress-bar mode="indeterminate" />
+        }
+        @if (seatError()) {
+          <div class="error-box" role="alert">{{ seatError() }}</div>
+        }
+
+        <div class="summary muted">
+          @if (hasGap(v)) {
+            Baseline stone and gross are unknown: the stone matrix has no row for one of these sizes
+            at the baseline stone code.
+          } @else {
+            Baseline stone: {{ v.baseline_stone_carats | fixed: 4 }} ct
+            @if (v.baseline_gross_weight_g) {
+              · baseline gross {{ v.baseline_gross_weight_g | fixed: 3 }} g
+            }
+          }
+        </div>
+      </mat-card-content>
+    </mat-card>
+  }
+</div>

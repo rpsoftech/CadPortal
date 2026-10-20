@@ -28,7 +28,10 @@ WHERE dt.design_id = $1 ORDER BY t.tag_group, t.name;
 -- name: ListDesigns :many
 -- Weight filters apply to the selected metal (metal_code). A design matches if
 -- at least one of its variations satisfies every weight filter.
-SELECT d.*, c.name AS category_name
+SELECT d.*, c.name AS category_name,
+    ARRAY(SELECT t.name FROM design_tags dt JOIN tags t ON t.id = dt.tag_id
+          WHERE dt.design_id = d.id ORDER BY t.tag_group, t.name)::text[] AS tag_names,
+    (SELECT count(*) FROM cad_variations cv WHERE cv.design_id = d.id)::int AS variation_count
 FROM master_designs d
 JOIN categories c ON c.id = d.category_id
 WHERE d.deleted_at IS NULL
@@ -142,3 +145,12 @@ SELECT code FROM cad_variations WHERE file_3dm_sha256 = $1;
 
 -- name: FindVariationCodeByShaStl :one
 SELECT code FROM cad_variations WHERE file_stl_sha256 = $1;
+
+-- name: ListDesignWeightsForMetal :many
+-- Per-variation weights of one metal for the given designs; the service folds
+-- them into min/max ranges for the catalog cards.
+SELECT sv.design_id, w.net_weight_g, w.gross_weight_g
+FROM cad_variations sv
+JOIN variation_metal_weights w ON w.variation_id = sv.id
+JOIN metals m ON m.id = w.metal_id
+WHERE m.code = $1 AND sv.design_id = ANY($2::bigint[]);

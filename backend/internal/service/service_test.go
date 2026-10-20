@@ -265,3 +265,54 @@ func TestListDesignsFilters(t *testing.T) {
 		t.Fatalf("unfiltered = %d", len(rows))
 	}
 }
+
+func TestListDesignsCardSummary(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	a := newDesign(t, s, "LR012")
+	empty := newDesign(t, s, "LR013")                                                        // no variations
+	if _, err := s.CreateVariation(ctx, a.ID, BaseInput{VolumeMM3: dp("200")}); err != nil { // 18KR 3.050
+		t.Fatal(err)
+	}
+	if _, err := s.CreateVariation(ctx, a.ID, BaseInput{VolumeMM3: dp("400")}); err != nil { // 18KR 6.100
+		t.Fatal(err)
+	}
+	tag, err := s.CreateTag(ctx, "Floral", "Motif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpdateDesign(ctx, a.ID, DesignInput{CategoryID: a.CategoryID, TagIDs: []int64{tag.ID}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Without a metal there is no range, but tags and counts are present.
+	rows, err := s.ListDesigns(ctx, DesignFilter{})
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("rows=%d err=%v", len(rows), err)
+	}
+	if rows[0].NetMin != nil || rows[0].VariationCount != 2 || len(rows[0].TagNames) != 1 || rows[0].TagNames[0] != "Floral" {
+		t.Errorf("no-metal card = %+v", rows[0])
+	}
+	if rows[1].Code != empty.Code || rows[1].TagNames == nil || rows[1].VariationCount != 0 {
+		t.Errorf("empty design card = %+v", rows[1])
+	}
+
+	// With a metal, the range spans the variations. Gross equals net (no seats).
+	rows, _ = s.ListDesigns(ctx, DesignFilter{MetalCode: "18KR", CategoryID: &a.CategoryID, TagIDs: []int64{tag.ID}})
+	if len(rows) != 1 {
+		t.Fatalf("filtered rows = %d", len(rows))
+	}
+	r := rows[0]
+	if r.NetMin.StringFixed(3) != "3.050" || r.NetMax.StringFixed(3) != "6.100" ||
+		r.GrossMin.StringFixed(3) != "3.050" || r.GrossMax.StringFixed(3) != "6.100" {
+		t.Errorf("range = %v %v %v %v", r.NetMin, r.NetMax, r.GrossMin, r.GrossMax)
+	}
+}
+
+func TestListStoneCodes(t *testing.T) {
+	s := newTestService(t)
+	codes, err := s.ListStoneCodes(context.Background())
+	if err != nil || len(codes) != 2 || codes[0].Code != "1HD" || !codes[0].IsDefaultBaseline {
+		t.Fatalf("codes=%+v err=%v", codes, err)
+	}
+}

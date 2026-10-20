@@ -102,6 +102,10 @@ func (s *Service) CreateTag(ctx context.Context, name, group string) (db.Tag, er
 	return t, mapErr(err)
 }
 
+func (s *Service) ListStoneCodes(ctx context.Context) ([]db.StoneCode, error) {
+	return s.Q.ListStoneCodes(ctx)
+}
+
 func (s *Service) ListMetals(ctx context.Context) ([]db.Metal, error) { return s.Q.ListMetals(ctx) }
 
 type MetalUpdate struct {

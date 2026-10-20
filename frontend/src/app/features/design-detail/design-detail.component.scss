@@ -1,0 +1,39 @@
+:host mat-card {
+  margin: 16px 0;
+}
+.back {
+  text-decoration: none;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+.head h1 {
+  margin: 0;
+}
+.spacer {
+  flex: 1;
+}
+.scroll {
+  overflow-x: auto;
+}
+.picker {
+  margin: 8px 0;
+}
+.small {
+  font-size: 0.85rem;
+}
+.num-field {
+  width: 170px;
+}
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.strong {
+  font-weight: 600;
+}
+tr.current td {
+  background: var(--mat-sys-surface-container);
+}

@@ -1,0 +1,300 @@
+<div class="page">
+  <a routerLink="/" class="muted back">← Catalog</a>
+
+  @if (design.isLoading() && !design.hasValue()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+  @if (designError()) {
+    <div class="error-box">{{ designError() }}</div>
+  }
+
+  @if (design.value(); as d) {
+    <div class="row head">
+      <div>
+        <h1 class="mono">{{ d.code }}</h1>
+        <div class="muted">{{ d.name || 'Unnamed' }} · {{ categoryName() }}</div>
+      </div>
+      <span class="spacer"></span>
+      <button matButton="filled" (click)="addVariation()">Add variation</button>
+    </div>
+
+    @if (d.tags.length) {
+      <mat-chip-set aria-label="Tags">
+        @for (t of d.tags; track t.id) {
+          <mat-chip>{{ t.name }}</mat-chip>
+        }
+      </mat-chip-set>
+    }
+
+    @if (d.variations.length === 0) {
+      <p class="muted">No variations yet. Add one to set its weight, seats and CAD files.</p>
+    } @else {
+      <!-- Weight matrix across all metals -->
+      <mat-card appearance="outlined">
+        <mat-card-header><mat-card-title>Weight matrix</mat-card-title></mat-card-header>
+        <mat-card-content class="scroll">
+          <table class="plain">
+            <thead>
+              <tr>
+                <th>Metal</th>
+                @for (v of d.variations; track v.id) {
+                  <th class="num mono">{{ v.code }}</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @for (m of matrixMetals(); track m) {
+                <tr [class.current]="m === metalCode()">
+                  <td class="mono">{{ m }}</td>
+                  @for (v of d.variations; track v.id) {
+                    <td class="num">
+                      @if (cell(v, m); as c) {
+                        <div>Net {{ c.net | fixed: 3 }}</div>
+                        <div class="muted">Gross {{ c.gross | fixed: 3 }}</div>
+                      } @else {
+                        –
+                      }
+                    </td>
+                  }
+                </tr>
+              }
+              <tr class="total">
+                <td>Baseline stone (ct)</td>
+                @for (v of d.variations; track v.id) {
+                  <td class="num">{{ hasGap(v) ? '–' : (v.baseline_stone_carats | fixed: 4) }}</td>
+                }
+              </tr>
+            </tbody>
+          </table>
+          <p class="muted small">
+            Weights in grams. Gross uses the baseline stone code; “–” means the stone matrix has a
+            gap for this variation's seats.
+          </p>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Variation picker shared by the simulator and exports -->
+      <div class="row picker">
+        <span class="muted">Variation</span>
+        <mat-button-toggle-group
+          [value]="variationId()"
+          (change)="variationId.set($event.value)"
+          aria-label="Variation"
+        >
+          @for (v of d.variations; track v.id) {
+            <mat-button-toggle [value]="v.id" class="mono">{{ v.code }}</mat-button-toggle>
+          }
+        </mat-button-toggle-group>
+        @if (selected(); as s) {
+          <a matButton [routerLink]="['/designs', d.code, 'variations', s.id, 'edit']">
+            Edit seats & files
+          </a>
+        }
+      </div>
+
+      <!-- BOM simulator -->
+      <mat-card appearance="outlined">
+        <mat-card-header><mat-card-title>BOM simulator</mat-card-title></mat-card-header>
+        <mat-card-content>
+          <div class="row">
+            <mat-form-field appearance="outline">
+              <mat-label>Stone code</mat-label>
+              <mat-select [value]="stoneCode()" (selectionChange)="stoneCode.set($event.value)">
+                @for (c of stoneCodes(); track c.id) {
+                  <mat-option [value]="c.code">
+                    {{ c.code }}{{ c.is_default_baseline ? ' (baseline)' : '' }}
+                  </mat-option>
+                }
+              </mat-select>
+              <mat-hint>Flexible seats use this code; locked seats keep theirs</mat-hint>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Metal</mat-label>
+              <mat-select [value]="metalCode()" (selectionChange)="metalCode.set($event.value)">
+                @for (m of metals(); track m.id) {
+                  <mat-option [value]="m.code">{{ m.code }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          </div>
+
+          @if (bomState().status === 'loading') {
+            <mat-progress-bar mode="indeterminate" />
+          }
+          @if (bomError(); as err) {
+            <div class="error-box" role="alert">
+              {{ err.message }}
+              @if (err.missing.length) {
+                <ul>
+                  @for (p of err.missing; track p.SizeMM + p.Code) {
+                    <li>{{ p.SizeMM }} mm × {{ p.Code }}: no stone matrix row</li>
+                  }
+                </ul>
+              }
+            </div>
+          }
+
+          @if (bom(); as b) {
+            @if (b.lines.length === 0) {
+              <p class="muted">This variation has no stone seats.</p>
+            } @else {
+              <div class="scroll">
+                <table class="plain">
+                  <thead>
+                    <tr>
+                      <th>Size (mm)</th>
+                      <th class="num">Pcs</th>
+                      <th>Code</th>
+                      <th class="num">ct / stone</th>
+                      <th class="num">Line ct</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (l of b.lines; track $index) {
+                      <tr>
+                        <td>{{ l.size_mm | fixed: 2 }}</td>
+                        <td class="num">{{ l.stone_count }}</td>
+                        <td class="mono">{{ l.stone_code }}{{ l.locked ? ' 🔒' : '' }}</td>
+                        <td class="num">{{ l.carats_per_stone | fixed: 4 }}</td>
+                        <td class="num">{{ l.line_carats | fixed: 4 }}</td>
+                      </tr>
+                    }
+                    <tr class="total">
+                      <td>Total</td>
+                      <td class="num">{{ b.total_pcs }}</td>
+                      <td></td>
+                      <td></td>
+                      <td class="num">{{ b.total_carats | fixed: 4 }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            }
+            <div class="summary">
+              <div><span class="muted">Stone weight</span> {{ b.stone_weight_g | fixed: 3 }} g</div>
+              @if (metalTotals(); as t) {
+                <div>
+                  <span class="muted">Net {{ t.metal_code }}</span>
+                  {{ t.net_weight_g | fixed: 3 }} g
+                </div>
+                <div class="strong">
+                  <span class="muted">Gross {{ t.metal_code }}</span>
+                  {{ t.gross_weight_g | fixed: 3 }} g
+                </div>
+              }
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Exports -->
+      <mat-card appearance="outlined">
+        <mat-card-header><mat-card-title>Exports</mat-card-title></mat-card-header>
+        <mat-card-content>
+          <p class="muted">Uses the variation, metal and stone code selected above.</p>
+          <div class="row">
+            <button matButton="filled" (click)="jobBag()" [disabled]="!canExport() || exportBusy()">
+              Job-bag PDF
+            </button>
+          </div>
+
+          <h3>Costing CSV</h3>
+          <form [formGroup]="costing" class="row" (ngSubmit)="costingCsv()">
+            <mat-form-field appearance="outline" class="num-field">
+              <mat-label>Gold rate / g</mat-label>
+              <input matInput formControlName="goldRate" inputmode="decimal" />
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="num-field">
+              <mat-label>Setting rate / pc</mat-label>
+              <input matInput formControlName="settingRate" inputmode="decimal" />
+            </mat-form-field>
+            <mat-radio-group formControlName="scope" aria-label="Costing scope">
+              <mat-radio-button value="selected">This variation</mat-radio-button>
+              <mat-radio-button value="all">All variations</mat-radio-button>
+            </mat-radio-group>
+            <button
+              matButton="filled"
+              type="submit"
+              [disabled]="
+                costing.invalid || !canExport() || exportBusy() || auth.role() === 'production'
+              "
+            >
+              Download CSV
+            </button>
+          </form>
+          @if (auth.role() === 'production') {
+            <p class="muted small">Costing is limited to admin and designer roles.</p>
+          }
+          <p class="muted small">
+            Wastage % comes from the metal master and stone rates from the stone matrix; if either
+            is unset the export lists what is missing.
+          </p>
+
+          @if (exportBusy()) {
+            <mat-progress-bar mode="indeterminate" />
+          }
+          @if (exportError(); as err) {
+            <div class="error-box" role="alert">
+              {{ err.message }}
+              @if (err.metalsMissingWastage.length) {
+                <div>Wastage % not set for: {{ err.metalsMissingWastage.join(', ') }}</div>
+              }
+              @if (err.missing.length) {
+                <ul>
+                  @for (p of err.missing; track p.SizeMM + p.Code) {
+                    <li>No rate per ct for {{ p.SizeMM }} mm × {{ p.Code }}</li>
+                  }
+                </ul>
+              }
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <!-- CAD files -->
+      <mat-card appearance="outlined">
+        <mat-card-header><mat-card-title>CAD files</mat-card-title></mat-card-header>
+        <mat-card-content>
+          <table class="plain">
+            <thead>
+              <tr>
+                <th>Variation</th>
+                <th>3dm</th>
+                <th>stl</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (v of d.variations; track v.id) {
+                <tr>
+                  <td class="mono">{{ v.code }}</td>
+                  <td>
+                    @if (v.file_3dm_sha256) {
+                      <div>{{ v.file_3dm_name }} · {{ size(v.file_3dm_size_bytes) }}</div>
+                      <div class="mono muted small">
+                        sha256 {{ v.file_3dm_sha256.slice(0, 16) }}…
+                      </div>
+                      <button matButton (click)="download(v, '3dm')">Download</button>
+                    } @else {
+                      <span class="muted">Not uploaded</span>
+                    }
+                  </td>
+                  <td>
+                    @if (v.file_stl_sha256) {
+                      <div>{{ v.file_stl_name }} · {{ size(v.file_stl_size_bytes) }}</div>
+                      <div class="mono muted small">
+                        sha256 {{ v.file_stl_sha256.slice(0, 16) }}…
+                      </div>
+                      <button matButton (click)="download(v, 'stl')">Download</button>
+                    } @else {
+                      <span class="muted">Not uploaded</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </mat-card-content>
+      </mat-card>
+    }
+  }
+</div>
