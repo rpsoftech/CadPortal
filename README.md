@@ -151,11 +151,29 @@ What to know before going live:
   included, finish for up to 30 seconds.
 - **Hardening:** both app containers run as non-root with a read-only filesystem, all Linux
   capabilities dropped and `no-new-privileges`. The API image is distroless (no shell).
-- **Backups** are yours to schedule. For example:
+- **Backups** are yours to schedule; the script does the dump and the housekeeping:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -T db pg_dump -U cad cad_portal | gzip > backup-$(date +%F).sql.gz
+scripts/backup.sh                                  # writes backups/cad_portal-<timestamp>.dump
+KEEP=30 BACKUP_DIR=/srv/cad-backups scripts/backup.sh
 ```
+
+  Each dump is checked for readability before it is kept, and only the newest `KEEP` (default
+  14) are retained (`KEEP=0` keeps all). Run it from cron or a systemd timer, and copy the
+  dumps off the machine. They contain every password hash and the full audit log, so treat
+  them like `.env`. Dumps cover the database only: with R2, file versions and backups are
+  managed on the Cloudflare side.
+
+- **Restoring** replaces the database contents:
+
+```bash
+scripts/restore.sh backups/cad_portal-20261021-020000.dump
+```
+
+  It asks you to type the database name, stops the API while tables are rebuilt, restores in a
+  single transaction (a failed restore leaves the database as it was) and starts the API
+  again. Use `--yes` to skip the prompt. CI runs `scripts/backup_restore_test.sh` against the
+  production stack, so a backup that cannot be restored fails the build.
 
 - **Updating:** `git pull`, then `docker compose -f docker-compose.prod.yml up -d --build`.
 

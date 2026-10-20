@@ -54,5 +54,6 @@ emit test      "$(decide match '^backend/')"
 emit sqlc      "$(decide match '^backend/(internal/db/|migrations/|sqlc\.yaml$)')"
 emit vulncheck "$(decide nontest '^backend/(go\.(mod|sum)$|.*\.go$)')"
 emit frontend  "$(decide match '^frontend/')"
-# Images are built from non-test sources plus the production compose file.
-emit docker    "$(decide nontest '^(backend/|frontend/|docker-compose\.prod\.yml$)')"
+# Images are built from non-test sources plus the production compose file; the backup
+# scripts are exercised against that running stack.
+emit docker    "$(decide nontest '^(backend/|frontend/|scripts/|docker-compose\.prod\.yml$)')"

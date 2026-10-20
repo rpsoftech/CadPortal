@@ -179,6 +179,8 @@ jobs:
           curl -fsS "$base/" | grep -q "<app-root"
           test "$(curl -s -o /dev/null -w '%{http_code}' "$base/api/v1/designs")" = "401"
           curl -fsSI "$base/" | grep -qi "content-security-policy"
+      - name: Backup and restore round trip
+        run: scripts/backup_restore_test.sh
       - name: Show logs on failure
         if: failure()
         run: docker compose -f docker-compose.prod.yml logs --no-color --tail 80
