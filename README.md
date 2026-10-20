@@ -185,7 +185,7 @@ publish images anywhere.
 | Group | Endpoints |
 |---|---|
 | Masters | `GET/POST /masters/categories`, `PUT /masters/categories/:id`, `GET/POST /masters/tags`, `PUT /masters/tags/:id`, `GET/POST /masters/metals`, `PUT /masters/metals/:id`, `GET/POST /masters/stone-codes`, `PUT /masters/stone-codes/:id`, `GET/PUT/DELETE /masters/stone-matrix`, `GET /masters/matrix-gaps`, `GET /masters/recalc-status` |
-| Designs | `POST/GET /designs` (`q` search, `limit`/`offset`, total in `X-Total-Count`), `GET /designs/:code`, `PUT/DELETE /designs/:id` |
+| Designs | `POST/GET /designs` (`q` search, `limit`/`offset`, total in `X-Total-Count`), `GET /designs/:code`, `PUT/DELETE /designs/:id`, `POST /designs/import` (bulk create from CSV rows; `dry_run` validates only) |
 | Variations | `POST /designs/:id/variations`, `PUT /variations/:id/base-input`, `DELETE /variations/:id` |
 | Seats and BOM | `GET/PUT /variations/:id/seats`, `POST /variations/:id/clone-seats`, `GET /variations/:id/simulate-bom?code=2HD` |
 | CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl`, `DELETE /variations/:id/cad?kind=3dm\|stl` |
@@ -218,6 +218,26 @@ before rows can use them.
 Changing SG, the baseline stone code or baseline carats rebuilds every variation's weights in
 the background; the screen shows when that finishes. A matrix row cannot be deleted while a seat
 is locked to it.
+
+### Importing designs
+
+To load an existing catalog, use **Import** on the Catalog screen (admin and designer). Paste rows
+from a spreadsheet or choose a CSV file. Columns, in order:
+`code, name, category, tags, volume_mm3, ref_weight_g, ref_metal` (trailing empty columns may be
+left out; a header row is optional).
+
+- **Tags** go in one cell separated by `;`. Write `Group:Name` when a tag name exists in two
+  groups.
+- **Variations:** give a row either a volume, or a reference weight with its alloy. Repeat a
+  code on another row to add a variation to the same design (`LR001-V1`, `LR001-V2`, in file
+  order). A row with no base input creates the design alone.
+- **Check first:** **Check** validates everything on the server and lists every problem with its
+  line number, so a file can be fixed in one pass. **Import** is enabled only after a clean check
+  and is all-or-nothing.
+- **Never changes existing designs:** a code that is taken, including a deleted design's, is
+  reported as a problem. Categories, tags and alloys must already exist.
+
+Up to 1000 rows per import. Imports appear in the audit log as `design.import`.
 
 ### Audit log
 

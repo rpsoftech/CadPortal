@@ -47,6 +47,7 @@ var auditRoutes = map[string]auditRoute{
 	"POST /api/v1/designs":                    {action: "design.create", entity: "design"},
 	"PUT /api/v1/designs/:id":                 {action: "design.update", entity: "design", idParam: "id"},
 	"DELETE /api/v1/designs/:id":              {action: "design.delete", entity: "design", idParam: "id"},
+	"POST /api/v1/designs/import":             {action: "design.import", entity: "design"},
 	"POST /api/v1/designs/:id/variations":     {action: "variation.create", entity: "design", idParam: "id"},
 	"PUT /api/v1/variations/:id/base-input":   {action: "variation.update_base", entity: "variation", idParam: "id"},
 	"PUT /api/v1/variations/:id/seats":        {action: "variation.set_seats", entity: "variation", idParam: "id"},

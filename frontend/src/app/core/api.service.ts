@@ -1,6 +1,6 @@
 import { HttpClient, HttpEvent, HttpParams, HttpRequest } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, map } from 'rxjs';
+import { Observable, catchError, map, of, throwError } from 'rxjs';
 import {
   AuditFilter,
   AuditRecord,
@@ -10,6 +10,8 @@ import {
   CostingItem,
   DesignDetail,
   DesignFilter,
+  DesignImportResult,
+  DesignImportRow,
   DesignListItem,
   DesignPage,
   DownloadLink,
@@ -154,6 +156,18 @@ export class ApiService {
   }
   createDesign(body: { code: string; name: string; category_id: number; tag_ids: number[] }) {
     return this.http.post<{ id: number; code: string }>(`${BASE}/designs`, body);
+  }
+  /** A rejected import is a normal outcome (HTTP 422 with every problem), not an error. */
+  importDesigns(rows: DesignImportRow[], dryRun: boolean): Observable<DesignImportResult> {
+    return this.http
+      .post<DesignImportResult>(`${BASE}/designs/import`, { rows, dry_run: dryRun })
+      .pipe(
+        catchError((e) =>
+          e?.status === 422 && Array.isArray(e.error?.errors)
+            ? of(e.error as DesignImportResult)
+            : throwError(() => e),
+        ),
+      );
   }
   updateDesign(id: number, body: { name: string; category_id: number; tag_ids: number[] }) {
     return this.http.put<{ id: number; code: string }>(`${BASE}/designs/${id}`, body);
