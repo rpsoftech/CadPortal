@@ -19,6 +19,7 @@ backend/            Go service (Gin, pgx, sqlc, golang-migrate)
 frontend/           Angular 22 app (standalone components, Signals, zoneless, Vitest); package manager: Yarn 4 (`yarn.lock`, release pinned via `.yarnrc.yml`)
 docker-compose.yml  Postgres 18 for local dev
 docker-compose.prod.yml  production-style stack: db + api + web (nginx); images from backend/Dockerfile and frontend/Dockerfile
+docker-compose.images.yml  overlay for prod: run the published ghcr.io images instead of building (see README, Releases)
 scripts/            backup.sh, restore.sh and a round-trip test (run in CI)
 ```
 
@@ -134,5 +135,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   12. Backup and restore: scripts/backup.sh and scripts/restore.sh, with a round-trip test in CI
   13. Design import: bulk-create designs and variations from CSV (validate first, all-or-nothing)
   14. Design export: catalog CSV in the import format (round-trips into a fresh install)
+  15. Release: tag-triggered publish of the api and web images to GHCR, and a compose overlay to run them
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.

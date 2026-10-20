@@ -168,6 +168,10 @@ jobs:
           persist-credentials: false
       - name: Validate the production compose file
         run: docker compose -f docker-compose.prod.yml config -q
+      - name: Validate the published-images override
+        run: CADPORTAL_VERSION=0.0.0 docker compose -f docker-compose.prod.yml -f docker-compose.images.yml config -q
+      - name: Lint the workflow files
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
       - name: Build images and start the stack
         # --wait blocks until every service with a health check reports healthy.
         run: docker compose -f docker-compose.prod.yml up -d --build --wait --wait-timeout 180
