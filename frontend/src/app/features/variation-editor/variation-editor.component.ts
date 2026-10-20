@@ -9,7 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { catchError, map, of } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
@@ -66,6 +66,7 @@ export class VariationEditorComponent {
 
   private readonly api = inject(ApiService);
   private readonly snack = inject(MatSnackBar);
+  private readonly router = inject(Router);
   protected readonly auth = inject(AuthService);
 
   private readonly tick = signal(0);
@@ -275,6 +276,24 @@ export class VariationEditorComponent {
   /** True when any metal's gross is unknown, i.e. the stone matrix has a gap for these seats. */
   protected hasGap(v: Variation): boolean {
     return v.weights.some((w) => w.gross_weight_g === null);
+  }
+
+  protected deleteVariation(): void {
+    const v = this.variation();
+    if (!v) return;
+    const files = [v.file_3dm_sha256, v.file_stl_sha256].filter(Boolean).length;
+    const warning =
+      `Delete ${v.code}? Its seats, weights and ${files} stored CAD file${files === 1 ? '' : 's'} ` +
+      'are removed. This cannot be undone.';
+    if (!confirm(warning)) return;
+    this.api.deleteVariation(v.id).subscribe({
+      next: () => {
+        this.snack.open(`Deleted ${v.code}`, 'OK', { duration: 4000 });
+        void this.router.navigate(['/designs', this.code()]);
+      },
+      error: async (e) =>
+        this.snack.open((await toApiError(e)).message, 'Dismiss', { duration: 6000 }),
+    });
   }
 
   protected refresh(): void {

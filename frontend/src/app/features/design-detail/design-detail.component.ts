@@ -20,6 +20,7 @@ import { ApiError, toApiError } from '../../core/errors';
 import { FixedPipe } from '../../core/format';
 import { BomResult, CostingItem, Variation } from '../../core/models';
 import { saveBlob } from '../../shared/download';
+import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design-dialog.component';
 import {
   NewVariationData,
   NewVariationDialogComponent,
@@ -81,6 +82,9 @@ export class DesignDetailComponent {
     ),
     { initialValue: [] },
   );
+  private readonly tagPool = toSignal(this.api.tags().pipe(catchError(() => of([]))), {
+    initialValue: [],
+  });
   private readonly categories = toSignal(this.api.categories().pipe(catchError(() => of([]))), {
     initialValue: [],
   });
@@ -234,6 +238,51 @@ export class DesignDetailComponent {
   protected download(v: Variation, kind: '3dm' | 'stl'): void {
     this.api.downloadLink(v.id, kind).subscribe({
       next: (l) => window.location.assign(l.url),
+      error: async (e) =>
+        this.snack.open((await toApiError(e)).message, 'Dismiss', { duration: 6000 }),
+    });
+  }
+
+  protected editDesign(): void {
+    const d = this.design.value();
+    if (!d) return;
+    const data: NewDesignData = {
+      categories: this.categories(),
+      tags: this.tagPool(),
+      design: {
+        id: d.id,
+        code: d.code,
+        name: d.name,
+        categoryId: d.category_id,
+        tagIds: d.tags.map((t) => t.id),
+      },
+    };
+    this.dialog
+      .open<NewDesignDialogComponent, NewDesignData, string>(NewDesignDialogComponent, {
+        data,
+        width: '460px',
+      })
+      .afterClosed()
+      .subscribe((code) => {
+        if (!code) return;
+        this.snack.open('Design saved', 'OK', { duration: 3000 });
+        this.refresh();
+      });
+  }
+
+  protected deleteDesign(): void {
+    const d = this.design.value();
+    if (!d) return;
+    const n = d.variations.length;
+    const warning =
+      `Delete ${d.code} and its ${n} variation${n === 1 ? '' : 's'}? ` +
+      'The design disappears from the catalog. Its code stays reserved and cannot be reused.';
+    if (!confirm(warning)) return;
+    this.api.deleteDesign(d.id).subscribe({
+      next: () => {
+        this.snack.open(`Deleted ${d.code}`, 'OK', { duration: 4000 });
+        void this.router.navigate(['/']);
+      },
       error: async (e) =>
         this.snack.open((await toApiError(e)).message, 'Dismiss', { duration: 6000 }),
     });

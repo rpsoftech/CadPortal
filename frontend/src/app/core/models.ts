@@ -106,6 +106,10 @@ export interface DesignListItem {
 }
 
 export interface DesignFilter {
+  /** Matches the design code or name (substring, case-insensitive). */
+  q?: string | null;
+  limit?: number;
+  offset?: number;
   categoryId?: number | null;
   tagIds?: number[];
   metalCode?: string | null;
@@ -141,6 +145,12 @@ export interface Variation {
   baseline_stone_carats: Dec;
   baseline_gross_weight_g: Dec | null;
   weights: VariationWeight[];
+}
+
+export interface DesignPage {
+  items: DesignListItem[];
+  /** All matches before paging. */
+  total: number;
 }
 
 export interface DesignDetail {
