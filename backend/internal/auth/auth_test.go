@@ -142,3 +142,28 @@ func TestIssueAtReportsExpiry(t *testing.T) {
 		t.Error("unknown role should not issue")
 	}
 }
+
+// A refused request must still be attributable: the audit log records who tried.
+func TestRefusedRequestStillIdentifiesTheCaller(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var seenUser string
+	var seenRole Role
+	r := gin.New()
+	r.Use(func(c *gin.Context) { // runs after Require, like the audit middleware does
+		c.Next()
+		seenUser, seenRole = UserIDFrom(c), RoleFrom(c)
+	})
+	r.GET("/admin-only", Require(secret, Admin), func(c *gin.Context) { c.Status(200) })
+
+	tok, _ := Issue(secret, "17", Production, time.Hour)
+	req := httptest.NewRequest(http.MethodGet, "/admin-only", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != 403 {
+		t.Fatalf("status = %d, want 403", w.Code)
+	}
+	if seenUser != "17" || seenRole != Production {
+		t.Errorf("caller of a refused request = (%q, %q), want (\"17\", production)", seenUser, seenRole)
+	}
+}

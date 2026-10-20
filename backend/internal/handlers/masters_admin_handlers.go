@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +26,9 @@ func (h *H) createMetal(c *gin.Context) {
 		Code: in.Code, SpecificGravity: in.SpecificGravity, WastagePct: in.WastagePct,
 		IsDefaultInput: in.IsDefaultInput, Active: active,
 	})
+	if err == nil {
+		auditNote(c, "metal", idStr(m.ID), m.Code)
+	}
 	respond(c, http.StatusCreated, m, err)
 }
 
@@ -41,6 +45,9 @@ func (h *H) updateCategory(c *gin.Context) {
 		return
 	}
 	out, err := h.S.UpdateCategory(c, id, in.Name, in.CodePrefix)
+	if err == nil {
+		auditNote(c, "", "", fmt.Sprintf("%s prefix=%q", out.Name, in.CodePrefix))
+	}
 	respond(c, http.StatusOK, out, err)
 }
 
@@ -62,6 +69,9 @@ func (h *H) updateTag(c *gin.Context) {
 		return
 	}
 	out, err := h.S.UpdateTag(c, id, in.Name, in.TagGroup, *in.Active)
+	if err == nil {
+		auditNote(c, "", "", fmt.Sprintf("%s: %s active=%t", in.TagGroup, in.Name, *in.Active))
+	}
 	respond(c, http.StatusOK, out, err)
 }
 
@@ -73,6 +83,9 @@ func (h *H) createStoneCode(c *gin.Context) {
 		return
 	}
 	out, err := h.S.CreateStoneCode(c, in.Code)
+	if err == nil {
+		auditNote(c, "stone_code", idStr(out.ID), out.Code)
+	}
 	respond(c, http.StatusCreated, out, err)
 }
 
@@ -92,6 +105,9 @@ func (h *H) setStoneCodeActive(c *gin.Context) {
 		return
 	}
 	out, err := h.S.SetStoneCodeActive(c, id, *in.Active)
+	if err == nil {
+		auditNote(c, "", "", fmt.Sprintf("%s active=%t", out.Code, *in.Active))
+	}
 	respond(c, http.StatusOK, out, err)
 }
 
@@ -105,6 +121,7 @@ func (h *H) deleteMatrixRow(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	auditNote(c, "", "", size.StringFixed(2)+" mm "+c.Query("stone_code"))
 	c.Status(http.StatusNoContent)
 }
 

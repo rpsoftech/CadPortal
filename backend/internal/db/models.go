@@ -9,6 +9,18 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+type AuditLog struct {
+	ID         int64              `json:"id"`
+	At         pgtype.Timestamptz `json:"at"`
+	UserID     pgtype.Int8        `json:"user_id"`
+	UserEmail  string             `json:"user_email"`
+	Action     string             `json:"action"`
+	EntityType string             `json:"entity_type"`
+	EntityID   string             `json:"entity_id"`
+	Status     int32              `json:"status"`
+	Detail     string             `json:"detail"`
+}
+
 type CadVariation struct {
 	ID                   int64               `json:"id"`
 	DesignID             int64               `json:"design_id"`

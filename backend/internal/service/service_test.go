@@ -19,6 +19,17 @@ func dp(s string) *decimal.Decimal {
 	return &v
 }
 
+// dbUnavailable skips locally when there is no test database, but fails in CI (GitHub sets
+// CI=true): a Postgres service that failed to start must not turn into a green run that
+// tested nothing.
+func dbUnavailable(t *testing.T, err error) {
+	t.Helper()
+	if os.Getenv("CI") != "" {
+		t.Fatalf("test database unavailable in CI: %v", err)
+	}
+	t.Skipf("test database unavailable: %v", err)
+}
+
 // newTestService resets the local test database to freshly migrated state.
 func newTestService(t *testing.T) *Service {
 	t.Helper()
@@ -29,10 +40,10 @@ func newTestService(t *testing.T) *Service {
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, url)
 	if err != nil {
-		t.Skipf("test database unavailable: %v", err)
+		dbUnavailable(t, err)
 	}
 	if err := pool.Ping(ctx); err != nil {
-		t.Skipf("test database unavailable: %v", err)
+		dbUnavailable(t, err)
 	}
 	t.Cleanup(pool.Close)
 	// Guard: only ever wipe a database whose name ends in _test.

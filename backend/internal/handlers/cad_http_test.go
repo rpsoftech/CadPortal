@@ -40,6 +40,9 @@ func httpTestDB(t *testing.T) string {
 		err = admin.Ping(ctx)
 	}
 	if err != nil {
+		if os.Getenv("CI") != "" { // a Postgres service that failed to start must not look green
+			t.Fatalf("test database unavailable in CI: %v", err)
+		}
 		t.Skipf("test database unavailable: %v", err)
 	}
 	defer admin.Close()

@@ -57,7 +57,11 @@ func (h *H) Register(r *gin.Engine) {
 	r.GET("/healthz", h.healthz)
 	r.GET("/readyz", h.readyz)
 
-	v1 := r.Group("/api/v1")
+	// Every API call passes through the audit middleware (see audit.go).
+	v1 := r.Group("/api/v1", h.audit())
+
+	// Audit log (admin only)
+	v1.GET("/audit", admin, h.listAudit)
 
 	// Accounts
 	v1.POST("/auth/login", h.login)
@@ -190,6 +194,9 @@ func (h *H) createCategory(c *gin.Context) {
 		return
 	}
 	out, err := h.S.CreateCategory(c, in.Name, in.CodePrefix)
+	if err == nil {
+		auditNote(c, "category", idStr(out.ID), out.Name)
+	}
 	respond(c, http.StatusCreated, out, err)
 }
 
@@ -212,6 +219,9 @@ func (h *H) createTag(c *gin.Context) {
 		return
 	}
 	out, err := h.S.CreateTag(c, in.Name, in.TagGroup)
+	if err == nil {
+		auditNote(c, "tag", idStr(out.ID), out.TagGroup+": "+out.Name)
+	}
 	respond(c, http.StatusCreated, out, err)
 }
 
@@ -244,6 +254,14 @@ func (h *H) updateMetal(c *gin.Context) {
 		SpecificGravity: in.SpecificGravity, WastagePct: in.WastagePct,
 		IsDefaultInput: in.IsDefaultInput, Active: in.Active,
 	})
+	if err == nil {
+		wastage := "unset"
+		if in.WastagePct.Valid {
+			wastage = in.WastagePct.Decimal.String()
+		}
+		auditNote(c, "", "", fmt.Sprintf("%s: sg=%s wastage=%s default=%t active=%t",
+			out.Code, in.SpecificGravity, wastage, in.IsDefaultInput, in.Active))
+	}
 	respond(c, http.StatusOK, out, err)
 }
 
@@ -286,6 +304,7 @@ func (h *H) updateStoneMatrix(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	auditNote(c, "", "", fmt.Sprintf("%d rows, baseline=%q", len(rows), in.BaselineCode))
 	// Weights are rebuilt asynchronously by the recalc worker.
 	c.JSON(http.StatusAccepted, gin.H{"status": "saved", "recalc": "queued"})
 }
@@ -310,6 +329,9 @@ func (h *H) createDesign(c *gin.Context) {
 		return
 	}
 	out, err := h.S.CreateDesign(c, in.input())
+	if err == nil {
+		auditNote(c, "design", idStr(out.ID), out.Code)
+	}
 	respond(c, http.StatusCreated, out, err)
 }
 
@@ -439,6 +461,9 @@ func (h *H) createVariation(c *gin.Context) {
 		return
 	}
 	out, err := h.S.CreateVariation(c, id, service.BaseInput(in))
+	if err == nil {
+		auditNote(c, "variation", idStr(out.ID), out.Code)
+	}
 	respond(c, http.StatusCreated, out, err)
 }
 
@@ -557,6 +582,13 @@ func (h *H) uploadCAD(c *gin.Context) {
 			continue
 		}
 		out, err := h.S.UploadCAD(c, id, part.FileName(), part)
+		if err == nil {
+			sha := out.SHA256
+			if len(sha) > 12 {
+				sha = sha[:12]
+			}
+			auditNote(c, "", "", fmt.Sprintf("%s %s sha256=%s", out.VariationCode, out.Filename, sha))
+		}
 		respond(c, http.StatusCreated, out, err)
 		return
 	}
@@ -588,6 +620,7 @@ func (h *H) jobBagPDF(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	auditNote(c, "variation", idStr(in.VariationID), fmt.Sprintf("%s %s %s", jb.VariationCode, in.MetalCode, in.StoneCode))
 	pdf, err := export.RenderJobBagPDF(jb)
 	if err != nil {
 		fail(c, err)

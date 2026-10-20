@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -60,6 +61,9 @@ func (h *H) login(c *gin.Context) {
 	}
 	u, err := h.S.Authenticate(c, in.Email, in.Password)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidCredentials) {
+			h.recordLogin(c, false, in.Email, 0, http.StatusUnauthorized)
+		}
 		fail(c, err)
 		return
 	}
@@ -68,6 +72,7 @@ func (h *H) login(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	h.recordLogin(c, true, "", u.ID, http.StatusOK)
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, resp)
 }
@@ -108,6 +113,7 @@ func (h *H) changePassword(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	auditNote(c, "user", idStr(id), "")
 	u, err := h.S.GetUser(c, id)
 	if err != nil {
 		fail(c, err)
@@ -138,6 +144,9 @@ func (h *H) createUser(c *gin.Context) {
 		return
 	}
 	u, err := h.S.CreateUser(c, service.CreateUserInput(in))
+	if err == nil {
+		auditNote(c, "user", idStr(u.ID), u.Email+" ("+u.Role+")")
+	}
 	respond(c, http.StatusCreated, u, err)
 }
 
@@ -163,6 +172,9 @@ func (h *H) updateUser(c *gin.Context) {
 		return
 	}
 	u, err := h.S.UpdateUser(c, actor, id, in.Name, in.Role, *in.Active)
+	if err == nil {
+		auditNote(c, "", "", fmt.Sprintf("%s role=%s active=%t", u.Email, u.Role, *in.Active))
+	}
 	respond(c, http.StatusOK, u, err)
 }
 

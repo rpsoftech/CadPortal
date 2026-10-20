@@ -104,12 +104,14 @@ func (a *Authenticator) Require(roles ...Role) gin.HandlerFunc {
 				return
 			}
 		}
+		// Identify the caller before the role check, so a refused request can still be
+		// attributed to them (the audit log records who tried).
+		c.Set(roleKey, cl.Role)
+		c.Set(userKey, cl.Subject)
 		if !slices.Contains(roles, cl.Role) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "role not permitted"})
 			return
 		}
-		c.Set(roleKey, cl.Role)
-		c.Set(userKey, cl.Subject)
 		c.Next()
 	}
 }
