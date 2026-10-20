@@ -346,6 +346,7 @@ export class MatrixTabComponent {
     this.dialog
       .open<MatrixImportDialogComponent, void, number>(MatrixImportDialogComponent, {
         width: '700px',
+        maxWidth: '95vw',
       })
       .afterClosed()
       .subscribe((n) => n && this.changed(`Imported ${n} rows. Weights are being rebuilt.`, true));

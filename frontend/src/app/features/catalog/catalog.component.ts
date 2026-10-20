@@ -10,6 +10,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router, RouterLink } from '@angular/router';
 import {
   Subject,
@@ -29,6 +30,7 @@ import { toApiError } from '../../core/errors';
 import { fixed } from '../../core/format';
 import { DesignFilter, DesignListItem, TAG_GROUPS } from '../../core/models';
 import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design-dialog.component';
+import { DesignImportDialogComponent } from './design-import-dialog.component';
 import { positiveDecimal } from '../../shared/validators';
 
 interface ListState {
@@ -67,6 +69,7 @@ export function weightRange(min: string | null, max: string | null): string | nu
 export class CatalogComponent {
   private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
+  private readonly snack = inject(MatSnackBar);
   private readonly router = inject(Router);
   protected readonly auth = inject(AuthService);
 
@@ -196,6 +199,23 @@ export class CatalogComponent {
       .afterClosed()
       .subscribe((code) => {
         if (code) this.router.navigate(['/designs', code]);
+      });
+  }
+
+  protected importDesigns(): void {
+    this.dialog
+      .open<DesignImportDialogComponent, void, number>(DesignImportDialogComponent, {
+        width: '720px',
+        maxWidth: '95vw',
+      })
+      .afterClosed()
+      .subscribe((count) => {
+        if (!count) return;
+        this.snack.open(`Imported ${count} design${count === 1 ? '' : 's'}`, 'OK', {
+          duration: 4000,
+        });
+        this.pageIndex.set(0);
+        this.pageChanged$.next();
       });
   }
 }

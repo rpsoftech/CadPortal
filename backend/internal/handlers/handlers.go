@@ -94,6 +94,7 @@ func (h *H) Register(r *gin.Engine) {
 
 	// Designs, variations, seats
 	v1.POST("/designs", editor, h.createDesign)
+	v1.POST("/designs/import", editor, h.importDesigns)
 	v1.GET("/designs", anyRole, h.listDesigns)
 	v1.GET("/designs/:code", anyRole, h.getDesign)
 	v1.PUT("/designs/:id", editor, h.updateDesign)
@@ -334,6 +335,36 @@ func (h *H) createDesign(c *gin.Context) {
 		auditNote(c, "design", idStr(out.ID), out.Code)
 	}
 	respond(c, http.StatusCreated, out, err)
+}
+
+// importDesigns validates (dry_run) or creates a batch of designs and variations from CSV rows
+// the client parsed. Any problem returns 422 with every error and nothing is written.
+func (h *H) importDesigns(c *gin.Context) {
+	var in struct {
+		DryRun bool                `json:"dry_run"`
+		Rows   []service.ImportRow `json:"rows"`
+	}
+	if c.ShouldBindJSON(&in) != nil {
+		badRequest(c, "invalid JSON body")
+		return
+	}
+	res, err := h.S.ImportDesigns(c, in.Rows, in.DryRun)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if len(res.Errors) > 0 {
+		auditNote(c, "design", "", fmt.Sprintf("rejected: %d problems", len(res.Errors)))
+		c.JSON(http.StatusUnprocessableEntity, res)
+		return
+	}
+	if in.DryRun {
+		auditNote(c, "design", "", fmt.Sprintf("dry run: %d designs, %d variations", res.Designs, res.Variations))
+		c.JSON(http.StatusOK, res)
+		return
+	}
+	auditNote(c, "design", "", fmt.Sprintf("%d designs, %d variations", res.Designs, res.Variations))
+	c.JSON(http.StatusCreated, res)
 }
 
 func (h *H) updateDesign(c *gin.Context) {

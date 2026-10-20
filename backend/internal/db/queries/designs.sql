@@ -174,3 +174,7 @@ WHERE id = $1;
 UPDATE cad_variations
 SET file_stl_sha256 = NULL, file_stl_key = NULL, file_stl_name = NULL, file_stl_size_bytes = NULL
 WHERE id = $1;
+
+-- name: ListExistingDesignCodes :many
+-- Codes already taken, deleted designs included (their codes stay reserved).
+SELECT code FROM master_designs WHERE code = ANY($1::text[]);

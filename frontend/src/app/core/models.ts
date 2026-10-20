@@ -259,3 +259,22 @@ export interface ApiErrorBody {
   stone_rates_missing?: { SizeMM: string; Code: string }[];
   metals_missing_wastage?: string[];
 }
+
+/** One line of a design import file, as sent to POST /designs/import. */
+export interface DesignImportRow {
+  line: number;
+  code: string;
+  name: string;
+  category: string;
+  tags: string;
+  volume_mm3: string;
+  ref_weight_g: string;
+  ref_metal: string;
+}
+
+export interface DesignImportResult {
+  dry_run: boolean;
+  designs: number;
+  variations: number;
+  errors: { line: number; message: string }[];
+}

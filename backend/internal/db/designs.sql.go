@@ -553,6 +553,31 @@ func (q *Queries) ListDesigns(ctx context.Context, arg ListDesignsParams) ([]Lis
 	return items, nil
 }
 
+const listExistingDesignCodes = `-- name: ListExistingDesignCodes :many
+SELECT code FROM master_designs WHERE code = ANY($1::text[])
+`
+
+// Codes already taken, deleted designs included (their codes stay reserved).
+func (q *Queries) ListExistingDesignCodes(ctx context.Context, dollar_1 []string) ([]string, error) {
+	rows, err := q.db.Query(ctx, listExistingDesignCodes, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		items = append(items, code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMatrixAll = `-- name: ListMatrixAll :many
 SELECT m.size_mm, sc.code AS stone_code, m.carats_per_stone
 FROM stone_size_matrix m JOIN stone_codes sc ON sc.id = m.stone_code_id
