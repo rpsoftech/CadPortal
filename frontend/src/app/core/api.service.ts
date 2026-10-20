@@ -9,6 +9,7 @@ import {
   DesignDetail,
   DesignFilter,
   DesignListItem,
+  DesignPage,
   DownloadLink,
   MatrixGap,
   MatrixRowInput,
@@ -104,11 +105,18 @@ export class ApiService {
   }
 
   // ----- designs -----
-  listDesigns(f: DesignFilter): Observable<DesignListItem[]> {
-    return this.http.get<DesignListItem[]>(`${BASE}/designs`, { params: designParams(f) }).pipe(
-      orEmpty(),
-      map((items) => items.map((d) => ({ ...d, tag_names: d.tag_names ?? [] }))),
-    );
+  listDesigns(f: DesignFilter): Observable<DesignPage> {
+    return this.http
+      .get<DesignListItem[]>(`${BASE}/designs`, { params: designParams(f), observe: 'response' })
+      .pipe(
+        map((res) => {
+          const items = (res.body ?? []).map((d) => ({ ...d, tag_names: d.tag_names ?? [] }));
+          // X-Total-Count is the match count before paging; fall back to what we received.
+          const header = res.headers.get('X-Total-Count');
+          const total = header === null ? NaN : Number(header);
+          return { items, total: Number.isFinite(total) ? total : items.length };
+        }),
+      );
   }
   getDesign(code: string): Observable<DesignDetail> {
     return this.http.get<DesignDetail>(`${BASE}/designs/${encodeURIComponent(code)}`).pipe(
@@ -121,6 +129,15 @@ export class ApiService {
   }
   createDesign(body: { code: string; name: string; category_id: number; tag_ids: number[] }) {
     return this.http.post<{ id: number; code: string }>(`${BASE}/designs`, body);
+  }
+  updateDesign(id: number, body: { name: string; category_id: number; tag_ids: number[] }) {
+    return this.http.put<{ id: number; code: string }>(`${BASE}/designs/${id}`, body);
+  }
+  deleteDesign(id: number): Observable<void> {
+    return this.http.delete<void>(`${BASE}/designs/${id}`);
+  }
+  deleteVariation(id: number): Observable<void> {
+    return this.http.delete<void>(`${BASE}/variations/${id}`);
   }
 
   // ----- variations -----
@@ -194,6 +211,9 @@ export function designParams(f: DesignFilter): HttpParams {
   const set = (k: string, v: string | number | null | undefined) => {
     if (v !== null && v !== undefined && `${v}`.trim() !== '') p = p.set(k, `${v}`.trim());
   };
+  set('q', f.q?.trim());
+  set('limit', f.limit);
+  set('offset', f.offset);
   set('category_id', f.categoryId);
   set('metal_code', f.metalCode);
   set('min_net_wt', f.minNetWt);

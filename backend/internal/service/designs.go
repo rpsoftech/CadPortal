@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
@@ -28,7 +29,7 @@ func (s *Service) CreateDesign(ctx context.Context, in DesignInput) (db.MasterDe
 	err := s.inTx(ctx, func(q *db.Queries) error {
 		var err error
 		if d, err = q.CreateDesign(ctx, db.CreateDesignParams{Code: in.Code, Name: in.Name, CategoryID: in.CategoryID}); err != nil {
-			return err
+			return friendly(err, "a design with that code already exists (codes of deleted designs stay reserved)")
 		}
 		return setTags(ctx, q, d.ID, in.TagIDs)
 	})
@@ -60,6 +61,34 @@ func (s *Service) UpdateDesign(ctx context.Context, id int64, in DesignInput) (d
 		return setTags(ctx, q, id, in.TagIDs)
 	})
 	return d, err
+}
+
+// DeleteVariation removes a variation with its seats, weights and stored CAD files. The
+// database row goes first; objects are deleted afterwards on a best-effort basis (an
+// orphaned object is harmless, a row pointing at a missing object is not).
+func (s *Service) DeleteVariation(ctx context.Context, id int64) error {
+	var keys []string
+	err := s.inTx(ctx, func(q *db.Queries) error {
+		v, err := q.DeleteVariation(ctx, id)
+		if err != nil {
+			return err
+		}
+		for _, k := range []pgtype.Text{v.File3dmKey, v.FileStlKey} {
+			if k.Valid {
+				keys = append(keys, k.String)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if s.Store != nil {
+		for _, k := range keys {
+			_ = s.Store.Delete(context.WithoutCancel(ctx), k)
+		}
+	}
+	return nil
 }
 
 func (s *Service) DeleteDesign(ctx context.Context, id int64) error {
@@ -109,6 +138,8 @@ func (s *Service) GetDesignByCode(ctx context.Context, code string) (DesignDetai
 }
 
 type DesignFilter struct {
+	// Query matches the design code or name, case-insensitively, as a substring.
+	Query       string
 	CategoryID  *int64
 	TagIDs      []int64
 	MetalCode   string
@@ -138,11 +169,26 @@ type DesignListItem struct {
 	GrossMax *decimal.Decimal `json:"gross_max"`
 }
 
+// likeEscaper escapes LIKE wildcards with '!' (the ESCAPE character used in the query),
+// so a search for "50%" or "a_b" matches literally.
+var likeEscaper = strings.NewReplacer("!", "!!", "%", "!%", "_", "!_")
+
+const maxQueryLen = 100
+
+func likePattern(q string) string {
+	q = strings.TrimSpace(q)
+	if r := []rune(q); len(r) > maxQueryLen {
+		q = string(r[:maxQueryLen])
+	}
+	return likeEscaper.Replace(q)
+}
+
 func (s *Service) ListDesigns(ctx context.Context, f DesignFilter) ([]DesignListItem, error) {
 	if f.Limit <= 0 || f.Limit > 200 {
 		f.Limit = 50
 	}
 	p := db.ListDesignsParams{
+		Q:      pgText(likePattern(f.Query)),
 		TagIds: f.TagIDs, MetalCode: pgText(f.MetalCode),
 		MinNetWt: nullDec(f.MinNetWt), MaxNetWt: nullDec(f.MaxNetWt),
 		MinGrossWt: nullDec(f.MinGrossWt), MaxGrossWt: nullDec(f.MaxGrossWt),

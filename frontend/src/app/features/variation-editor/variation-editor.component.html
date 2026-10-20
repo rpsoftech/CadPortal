@@ -10,7 +10,11 @@
   }
 
   @if (variation(); as v) {
-    <h1 class="mono">{{ v.code }}</h1>
+    <div class="row head">
+      <h1 class="mono">{{ v.code }}</h1>
+      <span class="spacer"></span>
+      <button matButton (click)="deleteVariation()">Delete variation</button>
+    </div>
 
     <!-- 1. Base input -->
     <mat-card appearance="outlined">

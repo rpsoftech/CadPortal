@@ -38,7 +38,11 @@ type Claims struct {
 // Validator is an optional per-request check on a token that already passed
 // signature and expiry (for example: the user still exists, is active, still has
 // this role, and has not changed their password since the token was issued).
-type Validator func(ctx context.Context, c Claims) bool
+//
+// It returns ok=false for a token that is genuinely no longer valid (401). It returns
+// an error only when it could not decide, such as a database outage; that is a 503, so a
+// brief outage does not sign every user out.
+type Validator func(ctx context.Context, c Claims) (ok bool, err error)
 
 // Authenticator verifies tokens. A nil Validate means signature and expiry only.
 type Authenticator struct {
@@ -88,9 +92,17 @@ func (a *Authenticator) Require(roles ...Role) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
-		if a.Validate != nil && !a.Validate(c.Request.Context(), cl) {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
+		if a.Validate != nil {
+			ok, err := a.Validate(c.Request.Context(), cl)
+			if err != nil {
+				_ = c.Error(err) // detail stays in server logs
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "service temporarily unavailable"})
+				return
+			}
+			if !ok {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+				return
+			}
 		}
 		if !slices.Contains(roles, cl.Role) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "role not permitted"})

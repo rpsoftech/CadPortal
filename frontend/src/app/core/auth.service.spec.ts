@@ -168,4 +168,28 @@ describe('AuthService', () => {
     expect(await p).toBe(false);
     expect(auth.isAuthenticated()).toBe(false); // the interceptor expired it
   });
+
+  it('keeps the session when the server is unavailable (503 or network error), not only on 401', async () => {
+    for (const failure of [
+      {
+        body: { error: 'service temporarily unavailable' },
+        opts: { status: 503, statusText: 'Service Unavailable' },
+      },
+      { body: null, opts: { status: 0, statusText: 'Unknown Error' } },
+    ]) {
+      sessionStorage.setItem(
+        'cadportal.session',
+        JSON.stringify({
+          token: 't',
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          user: user(),
+        }),
+      );
+      const { auth, http } = setup();
+      const p = auth.verifyOnce();
+      http.expectOne('/api/v1/auth/me').flush(failure.body, failure.opts);
+      expect(await p).toBe(true);
+      expect(auth.isAuthenticated()).toBe(true);
+    }
+  });
 });
