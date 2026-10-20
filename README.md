@@ -81,7 +81,18 @@ Mint a development token for the role-gated routes:
 JWT_SECRET=<your secret> go run ./cmd/devtoken admin
 ```
 
-Without `S3_BUCKET` set, the API still runs and the CAD upload/download routes return 503.
+### File storage
+
+| Setting | Use | Behaviour |
+|---|---|---|
+| `S3_BUCKET` + `S3_*` | **Production** | Cloudflare R2; downloads use presigned URLs |
+| `STORAGE=local` | Development | Files under `LOCAL_STORAGE_DIR` (default `backend/data/uploads`); downloads use short-lived signed links served by the API |
+| neither | | The API still runs; CAD upload/download routes return 503 |
+
+`STORAGE=local` is for development and tests only: it logs a warning at startup, and it
+has no replication or backups. Local links are signed with a key derived from
+`JWT_SECRET` and expire after 10 minutes. An explicit `STORAGE` value wins over
+`S3_BUCKET`.
 
 ### Frontend
 

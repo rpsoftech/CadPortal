@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	"github.com/rpsoftech/cad-portal/backend/internal/calc"
 	"github.com/rpsoftech/cad-portal/backend/internal/export"
 	"github.com/rpsoftech/cad-portal/backend/internal/service"
+	"github.com/rpsoftech/cad-portal/backend/internal/storage"
 )
 
 type H struct {
@@ -25,6 +28,8 @@ type H struct {
 	JWTSecret []byte
 	// MaxUploadBytes caps a single CAD upload (0 = DefaultMaxUploadBytes).
 	MaxUploadBytes int64
+	// LocalFiles, when set (development storage), serves signed download links.
+	LocalFiles *storage.Local
 }
 
 const DefaultMaxUploadBytes = 512 << 20
@@ -60,6 +65,10 @@ func (h *H) Register(r *gin.Engine) {
 	// Exports: job bags for every role; costing exposes money, so admin/designer only.
 	v1.POST("/exports/job-bag-pdf", auth.Require(h.JWTSecret, auth.Admin, auth.Designer, auth.Production), h.jobBagPDF)
 	v1.POST("/exports/costing-csv", auth.Require(h.JWTSecret, auth.Admin, auth.Designer), h.costingCSV)
+	if h.LocalFiles != nil {
+		// Auth is the signed, expiring link itself (like an R2 presigned URL).
+		v1.GET("/local-files/*key", h.serveLocalFile)
+	}
 	v1.GET("/variations/:id/download", auth.Require(h.JWTSecret, auth.Admin, auth.Designer, auth.Production), h.downloadCAD)
 }
 
@@ -531,4 +540,43 @@ func (h *H) costingCSV(c *gin.Context) {
 	}
 	c.Header("Content-Disposition", `attachment; filename="costing.csv"`)
 	c.Data(http.StatusOK, "text/csv; charset=utf-8", buf.Bytes())
+}
+
+// serveLocalFile streams a stored object after checking the signed link. The
+// bytes are gzipped on disk, so Content-Encoding: gzip lets clients receive the
+// original file, exactly as with R2.
+func (h *H) serveLocalFile(c *gin.Context) {
+	q := c.Request.URL.Query()
+	key := strings.TrimPrefix(c.Param("key"), "/")
+	filename := q.Get("filename")
+	if !h.LocalFiles.Verify(key, filename, q.Get("expires"), q.Get("sig")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "invalid or expired link"})
+		return
+	}
+	f, err := h.LocalFiles.Open(key)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "file not found"})
+			return
+		}
+		fail(c, err)
+		return
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	disp := mime.FormatMediaType("attachment", map[string]string{"filename": filename})
+	if disp == "" {
+		disp = "attachment"
+	}
+	hd := c.Writer.Header()
+	hd.Set("Content-Type", "application/octet-stream")
+	hd.Set("Content-Encoding", "gzip")
+	hd.Set("Content-Disposition", disp)
+	hd.Set("Cache-Control", "private, no-store")
+	hd.Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(c.Writer, c.Request, "", st.ModTime(), f)
 }
