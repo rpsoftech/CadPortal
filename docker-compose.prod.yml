@@ -36,6 +36,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-cad}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-cad_portal}?sslmode=disable
       AUTO_MIGRATE: "true"
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-0}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (32+ characters)}
       # Object storage. Production uses Cloudflare R2; STORAGE=local is development only.
       STORAGE: ${STORAGE:-}

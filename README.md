@@ -201,6 +201,20 @@ Changing SG, the baseline stone code or baseline carats rebuilds every variation
 the background; the screen shows when that finishes. A matrix row cannot be deleted while a seat
 is locked to it.
 
+### Audit log
+
+Every state-changing request is recorded in an append-only `audit_log` table: who (a snapshot of
+their email), what (`metal.update`, `user.create`, `cad.upload`, …), which entity, the HTTP
+status, and a short detail such as `18KR: sg=15.25 wastage=12.5`. Also recorded: sign-ins and
+failed sign-ins (with the attempted email), refused attempts (403, attributed to the user who
+tried), CAD download links and exports. Admins read it on the **Audit** screen or at
+`GET /api/v1/audit`.
+
+What is deliberately *not* recorded: request bodies, passwords, tokens, plain reads, and
+requests with no valid token. A failure to write an entry never fails the request. Rows cannot
+be updated (a trigger enforces it). Set `AUDIT_RETENTION_DAYS` to delete entries older than that
+many days (default 0 keeps everything).
+
 ### Access control
 
 Every route except login needs `Authorization: Bearer <token>`.

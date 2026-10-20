@@ -86,6 +86,7 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
 ## API (v1)
 | Group | Endpoints |
 |---|---|
+| Audit log | `GET /api/v1/audit` (admin; filters `action` prefix, `user_id`, `from`, `to`; paging with `X-Total-Count`) |
 | Auth & users | `POST /api/v1/auth/login`, `GET /api/v1/auth/me`, `POST /api/v1/auth/change-password`, `GET/POST /api/v1/users`, `PUT /api/v1/users/:id`, `POST /api/v1/users/:id/password` |
 | Masters | `GET/POST/PUT /api/v1/masters/categories[/:id]`, `GET/POST/PUT /api/v1/masters/tags[/:id]`, `GET/POST /api/v1/masters/metals`, `PUT /api/v1/masters/metals/:id`, `GET/POST /api/v1/masters/stone-codes`, `PUT /api/v1/masters/stone-codes/:id`, `GET/PUT/DELETE /api/v1/masters/stone-matrix`, `GET /api/v1/masters/matrix-gaps`, `GET /api/v1/masters/recalc-status` (writes admin only) |
 | Designs | `POST/GET /api/v1/designs` (`q` text search, `limit`/`offset` paging, total in `X-Total-Count`), `GET /api/v1/designs/:code`, `PUT/DELETE /api/v1/designs/:id` (soft delete; the code stays reserved) |
@@ -127,5 +128,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   7. Admin screens for master data (alloys, stone matrix with CSV import, categories, tags)
   8. Deployment: container images, production compose, health checks, CI image build and smoke test
   9. Catalog management: text search, paging, edit/delete designs, delete variations
+  10. Audit log: who changed what (append-only, no request bodies), admin Audit screen, optional retention
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.
