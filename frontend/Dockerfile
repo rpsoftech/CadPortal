@@ -20,6 +20,7 @@ FROM nginxinc/nginx-unprivileged:stable-alpine
 # nginx renders templates/*.template with the environment on start.
 ENV API_UPSTREAM=api:8080
 COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
+COPY nginx/api-proxy.conf /etc/nginx/api-proxy.conf
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist/frontend/browser /usr/share/nginx/html
 

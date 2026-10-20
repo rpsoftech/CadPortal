@@ -195,6 +195,8 @@ jobs:
           yarn playwright install --with-deps chromium
       - name: Browser smoke tests
         run: scripts/e2e.sh
+      - name: Sign-in rate limit
+        run: scripts/ratelimit_test.sh
       - name: Keep the browser report on failure
         if: failure()
         uses: actions/upload-artifact@v7

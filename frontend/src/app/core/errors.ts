@@ -35,9 +35,11 @@ export async function toApiError(err: unknown): Promise<ApiError> {
           ? 'Sign in with a valid token to do this.'
           : err.status === 403
             ? 'Your role is not permitted to do this.'
-            : err.status === 503
-              ? 'File storage is not configured on the server.'
-              : `Request failed (${err.status})`;
+            : err.status === 429
+              ? 'Too many attempts. Wait a minute and try again.'
+              : err.status === 503
+                ? 'File storage is not configured on the server.'
+                : `Request failed (${err.status})`;
   }
   return {
     status: err.status,
