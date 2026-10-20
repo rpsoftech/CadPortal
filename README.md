@@ -23,7 +23,7 @@ CSV.
 | 2 | Stone seats, `simulate-bom` | Done |
 | 3 | CAD upload/download (R2, presigned URLs, role-gated) | Done |
 | 4 | Job-bag PDF, costing CSV | Done |
-| 5 | Angular screens | Not started |
+| 5 | Angular screens (catalog, variation editor, design detail) | Done |
 
 ## Stack
 
@@ -32,7 +32,7 @@ CSV.
   carats to 4 dp
 - **Files:** streamed SHA-256 (of the original bytes) and gzip into Cloudflare R2, served
   through short-lived presigned URLs
-- **Frontend (planned):** Angular with standalone components and Signals
+- **Frontend:** Angular 22 (standalone components, Signals, zoneless), Angular Material, Vitest
 
 ## Layout
 
@@ -49,12 +49,16 @@ backend/
     storage/        R2 client and in-memory test store
     export/         job-bag PDF and costing CSV
     auth/           bearer-token role middleware
+frontend/
+  src/app/core/     API client, models, token auth, formatting
+  src/app/features/ catalog, design-detail, variation-editor screens
+  src/app/shared/   dialogs, upload dropzone, base-input form
 docker-compose.yml  local PostgreSQL
 ```
 
 ## Getting started
 
-You need Go (see `backend/go.mod`), Docker and a shell.
+You need Go (see `backend/go.mod`), Docker, Node 22.22.3+ (or 24.15+) for the frontend, and a shell.
 
 ```bash
 # 1. Start Postgres and create the test database
@@ -78,6 +82,18 @@ JWT_SECRET=<your secret> go run ./cmd/devtoken admin
 ```
 
 Without `S3_BUCKET` set, the API still runs and the CAD upload/download routes return 503.
+
+### Frontend
+
+```bash
+cd frontend
+npm ci
+npm start          # http://localhost:4200, proxies /api to localhost:8080
+```
+
+There is no login service yet. Click **Sign in** and paste a token from `devtoken`; it is
+kept for the browser tab only (sessionStorage). The UI uses the role only as a hint, and
+the server verifies every token.
 
 ## Configuration
 
@@ -108,6 +124,13 @@ Tests run against the local PostgreSQL from Docker Compose.
 cd backend
 go vet ./...
 go test ./...
+```
+
+Frontend (from `frontend/`):
+
+```bash
+npx ng build
+npx ng test --watch=false
 ```
 
 The tests wipe databases whose names end in `_test`, and refuse to touch any other

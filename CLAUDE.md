@@ -5,7 +5,7 @@ Internal manufacturing catalog, CAD/CAM file vault, and dynamic Job-Bag spec gen
 **Out of scope:** public storefront, customer payments, live spot-gold pricing. Don't build or suggest these.
 
 ## Environment
-- **Go 1.23+**, **Angular CLI**, and **Docker** are installed locally.
+- **Go 1.23+**, **Angular CLI 22** (needs Node 22.22.3+ or 24.15+), and **Docker** are installed locally.
 - **Local dev/test DB:** run Postgres 16 in Docker (see `docker-compose.yml`). All automated tests run against this.
 - **Shared testing Postgres on the server:** reached via `TEST_SERVER_DATABASE_URL` in `.env` (never commit credentials).
   - Read-only checks are fine. **Ask before** running migrations, seeds, `DROP`, `TRUNCATE`, or bulk writes against it.
@@ -16,7 +16,7 @@ Internal manufacturing catalog, CAD/CAM file vault, and dynamic Job-Bag spec gen
 backend/            Go service (Gin, pgx, sqlc, golang-migrate)
   migrations/       000001_init_schema, 000002_seed_masters (up/down)
   internal/         handlers, services, db (sqlc output), storage (S3/R2)
-frontend/           Angular 18/19 app (standalone components, Signals)
+frontend/           Angular 22 app (standalone components, Signals, zoneless, Vitest)
 docker-compose.yml  Postgres 16 for local dev
 ```
 
@@ -24,7 +24,7 @@ docker-compose.yml  Postgres 16 for local dev
 - **Backend:** Gin REST API, `pgx/v5` + `sqlc`, `golang-migrate`.
 - **Money and weights:** use `shopspring/decimal` in Go, never `float64`. Round only when storing (grams to 3 dp, carats to 4 dp).
 - **Files:** `crypto/sha256` + `compress/gzip`, streamed (no full file in memory), stored in S3 or Cloudflare R2 behind role-protected presigned URLs.
-- **Frontend:** Angular `ReactiveFormsModule` (`FormArray` for stone-seat rows), Signals `computed()` for live BOM math, Angular Material or PrimeNG for tables and tag chips.
+- **Frontend:** Angular `ReactiveFormsModule` (`FormArray` for stone-seat rows), Signals `computed()` for live BOM math, Angular Material for tables and tag chips (decided; not PrimeNG).
 
 ## Domain model
 **Taxonomy:** each Master Design has exactly one Category (Rings, Earrings, Pendants, Pendant Sets, Necklaces, Bangles, Bracelets) plus any number of Tags from an admin-controlled pool. The pool is grouped as Audience / Sub-Style / Motif / Attribute.
@@ -120,4 +120,4 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   4. Exports
   5. Angular screens 1 → 3
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
-- Run `go vet`, `go test ./...`, and `ng build` before saying a stage is done.
+- Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.

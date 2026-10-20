@@ -29,6 +29,7 @@
         "required_status_checks": [
           { "context": "test" },
           { "context": "sqlc" },
+          { "context": "frontend" },
           { "context": "vulncheck" }
         ]
       }
