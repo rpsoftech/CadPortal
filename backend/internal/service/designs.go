@@ -128,7 +128,17 @@ func nullDec(d *decimal.Decimal) decimal.NullDecimal {
 	return decimal.NullDecimal{Decimal: *d, Valid: true}
 }
 
-func (s *Service) ListDesigns(ctx context.Context, f DesignFilter) ([]db.ListDesignsRow, error) {
+// DesignListItem is a catalog card: the design plus its tags and, when a metal
+// is selected, the net/gross range across its variations for that metal.
+type DesignListItem struct {
+	db.ListDesignsRow
+	NetMin   *decimal.Decimal `json:"net_min"`
+	NetMax   *decimal.Decimal `json:"net_max"`
+	GrossMin *decimal.Decimal `json:"gross_min"`
+	GrossMax *decimal.Decimal `json:"gross_max"`
+}
+
+func (s *Service) ListDesigns(ctx context.Context, f DesignFilter) ([]DesignListItem, error) {
 	if f.Limit <= 0 || f.Limit > 200 {
 		f.Limit = 50
 	}
@@ -145,10 +155,47 @@ func (s *Service) ListDesigns(ctx context.Context, f DesignFilter) ([]db.ListDes
 		p.CategoryID = pgtype.Int8{Int64: *f.CategoryID, Valid: true}
 	}
 	rows, err := s.Q.ListDesigns(ctx, p)
-	if rows == nil {
-		rows = []db.ListDesignsRow{}
+	if err != nil {
+		return nil, mapErr(err)
 	}
-	return rows, mapErr(err)
+	items := make([]DesignListItem, len(rows))
+	ids := make([]int64, len(rows))
+	for i, r := range rows {
+		if r.TagNames == nil {
+			r.TagNames = []string{}
+		}
+		items[i] = DesignListItem{ListDesignsRow: r}
+		ids[i] = r.ID
+	}
+	if f.MetalCode == "" || len(items) == 0 {
+		return items, nil
+	}
+	ws, err := s.Q.ListDesignWeightsForMetal(ctx, db.ListDesignWeightsForMetalParams{Code: f.MetalCode, Column2: ids})
+	if err != nil {
+		return nil, err
+	}
+	idx := make(map[int64]*DesignListItem, len(items))
+	for i := range items {
+		idx[items[i].ID] = &items[i]
+	}
+	for _, w := range ws {
+		it := idx[w.DesignID]
+		it.NetMin, it.NetMax = widen(it.NetMin, it.NetMax, w.NetWeightG)
+		if w.GrossWeightG.Valid {
+			it.GrossMin, it.GrossMax = widen(it.GrossMin, it.GrossMax, w.GrossWeightG.Decimal)
+		}
+	}
+	return items, nil
+}
+
+func widen(lo, hi *decimal.Decimal, v decimal.Decimal) (*decimal.Decimal, *decimal.Decimal) {
+	if lo == nil || v.LessThan(*lo) {
+		lo = &v
+	}
+	if hi == nil || v.GreaterThan(*hi) {
+		hi = &v
+	}
+	return lo, hi
 }
 
 // BaseInput is either VolumeMM3, or RefWeightG + RefMetalCode.

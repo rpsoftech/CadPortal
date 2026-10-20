@@ -39,6 +39,7 @@ func (h *H) Register(r *gin.Engine) {
 	m.POST("/tags", h.createTag)
 	m.GET("/metals", h.listMetals)
 	m.PUT("/metals/:id", h.updateMetal)
+	m.GET("/stone-codes", h.listStoneCodes)
 	m.GET("/stone-matrix", h.listStoneMatrix)
 	m.PUT("/stone-matrix", h.updateStoneMatrix)
 
@@ -173,6 +174,11 @@ func (h *H) updateMetal(c *gin.Context) {
 		SpecificGravity: in.SpecificGravity, WastagePct: in.WastagePct,
 		IsDefaultInput: in.IsDefaultInput, Active: in.Active,
 	})
+	respond(c, http.StatusOK, out, err)
+}
+
+func (h *H) listStoneCodes(c *gin.Context) {
+	out, err := h.S.ListStoneCodes(c)
 	respond(c, http.StatusOK, out, err)
 }
 
