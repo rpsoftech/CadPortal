@@ -53,6 +53,44 @@ export interface StoneCode {
   active: boolean;
 }
 
+export interface StoneMatrixRow {
+  size_mm: Dec;
+  stone_code_id: number;
+  stone_code: string;
+  sieve: string | null;
+  carats_per_stone: Dec;
+  rate_per_ct: Dec | null;
+}
+
+/** One row sent to PUT /masters/stone-matrix. */
+export interface MatrixRowInput {
+  size_mm: string;
+  stone_code: string;
+  sieve: string;
+  carats_per_stone: string;
+  rate_per_ct: string | null;
+}
+
+export interface MatrixGap {
+  size_mm: Dec;
+  stone_code: string;
+  variation_count: number;
+}
+
+export interface RecalcStatus {
+  pending: number;
+  running: number;
+  failed: number;
+  last_error: string;
+}
+
+export interface MetalInput {
+  specific_gravity: string;
+  wastage_pct: string | null;
+  is_default_input: boolean;
+  active: boolean;
+}
+
 export interface DesignListItem {
   id: number;
   code: string;

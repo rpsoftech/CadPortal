@@ -68,13 +68,21 @@ func (h *H) Register(r *gin.Engine) {
 	m := v1.Group("/masters")
 	m.GET("/categories", anyRole, h.listCategories)
 	m.POST("/categories", admin, h.createCategory)
+	m.PUT("/categories/:id", admin, h.updateCategory)
 	m.GET("/tags", anyRole, h.listTags)
 	m.POST("/tags", admin, h.createTag)
+	m.PUT("/tags/:id", admin, h.updateTag)
 	m.GET("/metals", anyRole, h.listMetals)
+	m.POST("/metals", admin, h.createMetal)
 	m.PUT("/metals/:id", admin, h.updateMetal)
 	m.GET("/stone-codes", anyRole, h.listStoneCodes)
+	m.POST("/stone-codes", admin, h.createStoneCode)
+	m.PUT("/stone-codes/:id", admin, h.setStoneCodeActive)
 	m.GET("/stone-matrix", anyRole, h.listStoneMatrix)
 	m.PUT("/stone-matrix", admin, h.updateStoneMatrix)
+	m.DELETE("/stone-matrix", admin, h.deleteMatrixRow)
+	m.GET("/matrix-gaps", admin, h.matrixGaps)
+	m.GET("/recalc-status", admin, h.recalcStatus)
 
 	// Designs, variations, seats
 	v1.POST("/designs", editor, h.createDesign)
@@ -133,8 +141,12 @@ func fail(c *gin.Context, err error) {
 		return
 	}
 	msg := err.Error()
-	if status == http.StatusBadRequest {
-		msg = strings.TrimPrefix(msg, "invalid input: ") // internal sentinel text, not for users
+	// Internal sentinel text is not for users.
+	switch status {
+	case http.StatusBadRequest:
+		msg = strings.TrimPrefix(msg, "invalid input: ")
+	case http.StatusConflict:
+		msg = strings.TrimPrefix(msg, "conflict: ")
 	}
 	if status == http.StatusInternalServerError {
 		_ = c.Error(err) // keep detail in server logs only
@@ -177,7 +189,11 @@ func (h *H) createCategory(c *gin.Context) {
 }
 
 func (h *H) listTags(c *gin.Context) {
-	out, err := h.S.ListTags(c)
+	list := h.S.ListTags
+	if c.Query("include_inactive") == "true" && auth.RoleFrom(c) == auth.Admin {
+		list = h.S.ListAllTags // only the admin screen needs deactivated tags
+	}
+	out, err := list(c)
 	respond(c, http.StatusOK, out, err)
 }
 

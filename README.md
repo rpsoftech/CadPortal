@@ -104,8 +104,8 @@ has no replication or backups. Local links are signed with a key derived from
 
 ```bash
 cd frontend
-npm ci
-npm start          # http://localhost:4200, proxies /api to localhost:8080
+yarn install
+yarn start         # http://localhost:4200, proxies /api to localhost:8080
 ```
 
 Sign in with the account you created above. The session lives in `sessionStorage`, so it
@@ -120,7 +120,7 @@ See [.env.example](.env.example). Never commit real credentials: `.env` is gitig
 
 | Group | Endpoints |
 |---|---|
-| Masters | `GET/POST /masters/categories`, `GET/POST /masters/tags`, `GET /masters/metals`, `PUT /masters/metals/:id`, `GET/PUT /masters/stone-matrix` |
+| Masters | `GET/POST /masters/categories`, `PUT /masters/categories/:id`, `GET/POST /masters/tags`, `PUT /masters/tags/:id`, `GET/POST /masters/metals`, `PUT /masters/metals/:id`, `GET/POST /masters/stone-codes`, `PUT /masters/stone-codes/:id`, `GET/PUT/DELETE /masters/stone-matrix`, `GET /masters/matrix-gaps`, `GET /masters/recalc-status` |
 | Designs | `POST/GET /designs`, `GET /designs/:code`, `PUT/DELETE /designs/:id` |
 | Variations | `POST /designs/:id/variations`, `PUT /variations/:id/base-input` |
 | Seats and BOM | `GET/PUT /variations/:id/seats`, `POST /variations/:id/clone-seats`, `GET /variations/:id/simulate-bom?code=2HD` |
@@ -133,6 +133,27 @@ All paths are under `/api/v1`. Alongside the routes above:
 |---|---|
 | Accounts | `POST /auth/login` (public), `GET /auth/me`, `POST /auth/change-password` |
 | Users (admin) | `GET/POST /users`, `PUT /users/:id`, `POST /users/:id/password` |
+
+### Master data screen
+
+Admins maintain the reference data under **Master data** (no API calls needed):
+
+- **Alloys:** specific gravity, wastage % (needed for costing), and the default input alloy.
+- **Stone matrix:** carats per stone and rate per carat for each (size, stone code), the baseline
+  stone code, and stone codes themselves. A **Missing for the baseline code** panel lists sizes
+  that seats use but the matrix lacks, with an Add shortcut.
+- **Categories and tags:** names, category code prefixes, and deactivating tags.
+
+To load a large stone matrix, use **Import CSV / paste**. Columns, in order:
+`size_mm, stone_code, sieve, carats_per_stone, rate_per_ct` (sieve and rate may be empty; a header
+row is optional; tab-separated text pasted from a spreadsheet works). Sizes allow 2 decimals,
+carats 4, rates 2; over-precise values are rejected rather than rounded. An import is
+all-or-nothing, and **Export CSV** gives the same format back for editing. Stone codes must exist
+before rows can use them.
+
+Changing SG, the baseline stone code or baseline carats rebuilds every variation's weights in
+the background; the screen shows when that finishes. A matrix row cannot be deleted while a seat
+is locked to it.
 
 ### Access control
 
@@ -171,8 +192,8 @@ go test ./...
 Frontend (from `frontend/`):
 
 ```bash
-npx ng build
-npx ng test --watch=false
+yarn ng build
+yarn ng test --watch=false
 ```
 
 The tests wipe databases whose names end in `_test`, and refuse to touch any other

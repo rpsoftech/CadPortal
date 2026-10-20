@@ -49,6 +49,23 @@ func (q *Queries) ClearDefaultInputMetal(ctx context.Context, id int64) error {
 	return err
 }
 
+const countSeatsLockedTo = `-- name: CountSeatsLockedTo :one
+SELECT count(*)::int FROM variation_stone_seats
+WHERE size_mm = $1 AND locked_stone_code_id = $2
+`
+
+type CountSeatsLockedToParams struct {
+	SizeMm            decimal.Decimal `json:"size_mm"`
+	LockedStoneCodeID pgtype.Int8     `json:"locked_stone_code_id"`
+}
+
+func (q *Queries) CountSeatsLockedTo(ctx context.Context, arg CountSeatsLockedToParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countSeatsLockedTo, arg.SizeMm, arg.LockedStoneCodeID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createCategory = `-- name: CreateCategory :one
 INSERT INTO categories (name, code_prefix) VALUES ($1, $2) RETURNING id, name, code_prefix, created_at, updated_at
 `
@@ -65,6 +82,60 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		&i.ID,
 		&i.Name,
 		&i.CodePrefix,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createMetal = `-- name: CreateMetal :one
+INSERT INTO metals (code, specific_gravity, wastage_pct, is_default_input, active)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, code, specific_gravity, wastage_pct, is_default_input, active, created_at, updated_at
+`
+
+type CreateMetalParams struct {
+	Code            string              `json:"code"`
+	SpecificGravity decimal.Decimal     `json:"specific_gravity"`
+	WastagePct      decimal.NullDecimal `json:"wastage_pct"`
+	IsDefaultInput  bool                `json:"is_default_input"`
+	Active          bool                `json:"active"`
+}
+
+func (q *Queries) CreateMetal(ctx context.Context, arg CreateMetalParams) (Metal, error) {
+	row := q.db.QueryRow(ctx, createMetal,
+		arg.Code,
+		arg.SpecificGravity,
+		arg.WastagePct,
+		arg.IsDefaultInput,
+		arg.Active,
+	)
+	var i Metal
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.SpecificGravity,
+		&i.WastagePct,
+		&i.IsDefaultInput,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createStoneCode = `-- name: CreateStoneCode :one
+INSERT INTO stone_codes (code) VALUES ($1) RETURNING id, code, is_default_baseline, active, created_at, updated_at
+`
+
+func (q *Queries) CreateStoneCode(ctx context.Context, code string) (StoneCode, error) {
+	row := q.db.QueryRow(ctx, createStoneCode, code)
+	var i StoneCode
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.IsDefaultBaseline,
+		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -92,6 +163,23 @@ func (q *Queries) CreateTag(ctx context.Context, arg CreateTagParams) (Tag, erro
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const deleteStoneMatrixRow = `-- name: DeleteStoneMatrixRow :execrows
+DELETE FROM stone_size_matrix WHERE size_mm = $1 AND stone_code_id = $2
+`
+
+type DeleteStoneMatrixRowParams struct {
+	SizeMm      decimal.Decimal `json:"size_mm"`
+	StoneCodeID int64           `json:"stone_code_id"`
+}
+
+func (q *Queries) DeleteStoneMatrixRow(ctx context.Context, arg DeleteStoneMatrixRowParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteStoneMatrixRow, arg.SizeMm, arg.StoneCodeID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const enqueueRecalcJob = `-- name: EnqueueRecalcJob :one
@@ -198,6 +286,36 @@ func (q *Queries) GetStoneCodeByCode(ctx context.Context, code string) (StoneCod
 	return i, err
 }
 
+const getStoneCodeForUpdate = `-- name: GetStoneCodeForUpdate :one
+SELECT id, code, is_default_baseline, active, created_at, updated_at FROM stone_codes WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) GetStoneCodeForUpdate(ctx context.Context, id int64) (StoneCode, error) {
+	row := q.db.QueryRow(ctx, getStoneCodeForUpdate, id)
+	var i StoneCode
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.IsDefaultBaseline,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lastFailedRecalcError = `-- name: LastFailedRecalcError :one
+SELECT COALESCE(error, '')::text FROM weight_recalc_jobs
+WHERE status = 'failed' ORDER BY id DESC LIMIT 1
+`
+
+func (q *Queries) LastFailedRecalcError(ctx context.Context) (string, error) {
+	row := q.db.QueryRow(ctx, lastFailedRecalcError)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listActiveMetals = `-- name: ListActiveMetals :many
 SELECT id, code, specific_gravity, wastage_pct, is_default_input, active, created_at, updated_at FROM metals WHERE active ORDER BY code
 `
@@ -217,6 +335,37 @@ func (q *Queries) ListActiveMetals(ctx context.Context) ([]Metal, error) {
 			&i.SpecificGravity,
 			&i.WastagePct,
 			&i.IsDefaultInput,
+			&i.Active,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllTags = `-- name: ListAllTags :many
+SELECT id, name, tag_group, active, created_at, updated_at FROM tags ORDER BY tag_group, name
+`
+
+func (q *Queries) ListAllTags(ctx context.Context) ([]Tag, error) {
+	rows, err := q.db.Query(ctx, listAllTags)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Tag
+	for rows.Next() {
+		var i Tag
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.TagGroup,
 			&i.Active,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -251,6 +400,41 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMatrixGaps = `-- name: ListMatrixGaps :many
+SELECT g.size_mm, g.stone_code, count(DISTINCT g.variation_id)::int AS variation_count
+FROM v_seat_matrix_gaps g
+GROUP BY g.size_mm, g.stone_code
+ORDER BY g.size_mm
+`
+
+type ListMatrixGapsRow struct {
+	SizeMm         decimal.Decimal `json:"size_mm"`
+	StoneCode      string          `json:"stone_code"`
+	VariationCount int32           `json:"variation_count"`
+}
+
+// Distinct (size, code) pairs that flexible seats need at the baseline code but the
+// matrix does not have, with how many variations are affected.
+func (q *Queries) ListMatrixGaps(ctx context.Context) ([]ListMatrixGapsRow, error) {
+	rows, err := q.db.Query(ctx, listMatrixGaps)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMatrixGapsRow
+	for rows.Next() {
+		var i ListMatrixGapsRow
+		if err := rows.Scan(&i.SizeMm, &i.StoneCode, &i.VariationCount); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -400,6 +584,27 @@ func (q *Queries) ListTags(ctx context.Context) ([]Tag, error) {
 	return items, nil
 }
 
+const recalcQueueStatus = `-- name: RecalcQueueStatus :one
+SELECT
+    count(*) FILTER (WHERE status = 'pending')::int AS pending,
+    count(*) FILTER (WHERE status = 'running')::int AS running,
+    count(*) FILTER (WHERE status = 'failed')::int AS failed
+FROM weight_recalc_jobs
+`
+
+type RecalcQueueStatusRow struct {
+	Pending int32 `json:"pending"`
+	Running int32 `json:"running"`
+	Failed  int32 `json:"failed"`
+}
+
+func (q *Queries) RecalcQueueStatus(ctx context.Context) (RecalcQueueStatusRow, error) {
+	row := q.db.QueryRow(ctx, recalcQueueStatus)
+	var i RecalcQueueStatusRow
+	err := row.Scan(&i.Pending, &i.Running, &i.Failed)
+	return i, err
+}
+
 const setBaselineStoneCode = `-- name: SetBaselineStoneCode :exec
 UPDATE stone_codes SET is_default_baseline = (id = $1)
 `
@@ -407,6 +612,52 @@ UPDATE stone_codes SET is_default_baseline = (id = $1)
 func (q *Queries) SetBaselineStoneCode(ctx context.Context, id int64) error {
 	_, err := q.db.Exec(ctx, setBaselineStoneCode, id)
 	return err
+}
+
+const setStoneCodeActive = `-- name: SetStoneCodeActive :one
+UPDATE stone_codes SET active = $2 WHERE id = $1 RETURNING id, code, is_default_baseline, active, created_at, updated_at
+`
+
+type SetStoneCodeActiveParams struct {
+	ID     int64 `json:"id"`
+	Active bool  `json:"active"`
+}
+
+func (q *Queries) SetStoneCodeActive(ctx context.Context, arg SetStoneCodeActiveParams) (StoneCode, error) {
+	row := q.db.QueryRow(ctx, setStoneCodeActive, arg.ID, arg.Active)
+	var i StoneCode
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.IsDefaultBaseline,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateCategory = `-- name: UpdateCategory :one
+UPDATE categories SET name = $2, code_prefix = $3 WHERE id = $1 RETURNING id, name, code_prefix, created_at, updated_at
+`
+
+type UpdateCategoryParams struct {
+	ID         int64       `json:"id"`
+	Name       string      `json:"name"`
+	CodePrefix pgtype.Text `json:"code_prefix"`
+}
+
+func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error) {
+	row := q.db.QueryRow(ctx, updateCategory, arg.ID, arg.Name, arg.CodePrefix)
+	var i Category
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CodePrefix,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const updateMetal = `-- name: UpdateMetal :one
@@ -439,6 +690,36 @@ func (q *Queries) UpdateMetal(ctx context.Context, arg UpdateMetalParams) (Metal
 		&i.SpecificGravity,
 		&i.WastagePct,
 		&i.IsDefaultInput,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTag = `-- name: UpdateTag :one
+UPDATE tags SET name = $2, tag_group = $3, active = $4 WHERE id = $1 RETURNING id, name, tag_group, active, created_at, updated_at
+`
+
+type UpdateTagParams struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	TagGroup string `json:"tag_group"`
+	Active   bool   `json:"active"`
+}
+
+func (q *Queries) UpdateTag(ctx context.Context, arg UpdateTagParams) (Tag, error) {
+	row := q.db.QueryRow(ctx, updateTag,
+		arg.ID,
+		arg.Name,
+		arg.TagGroup,
+		arg.Active,
+	)
+	var i Tag
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.TagGroup,
 		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,

@@ -16,6 +16,7 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
       <a routerLink="/" class="brand">CadPortal</a>
       @if (auth.user(); as u) {
         @if (auth.isAdmin()) {
+          <a matButton routerLink="/master-data">Master data</a>
           <a matButton routerLink="/users">Users</a>
         }
         <span class="spacer"></span>

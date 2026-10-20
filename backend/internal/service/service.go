@@ -47,6 +47,14 @@ func mapErr(err error) error {
 	return err
 }
 
+// friendly replaces the database's raw conflict detail with a message an admin can act on.
+func friendly(err error, msg string) error {
+	if err = mapErr(err); errors.Is(err, ErrConflict) {
+		return fmt.Errorf("%w: %s", ErrConflict, msg)
+	}
+	return err
+}
+
 func pgText(s string) pgtype.Text { return pgtype.Text{String: s, Valid: s != ""} }
 
 func newTicker() *time.Ticker { return time.NewTicker(5 * time.Second) }
@@ -84,7 +92,7 @@ func (s *Service) CreateCategory(ctx context.Context, name, prefix string) (db.C
 		return db.Category{}, invalid("name is required")
 	}
 	c, err := s.Q.CreateCategory(ctx, db.CreateCategoryParams{Name: name, CodePrefix: pgText(prefix)})
-	return c, mapErr(err)
+	return c, friendly(err, "a category with that name or code prefix already exists")
 }
 
 var tagGroups = map[string]bool{"Audience": true, "Sub-Style": true, "Motif": true, "Attribute": true}
@@ -99,7 +107,7 @@ func (s *Service) CreateTag(ctx context.Context, name, group string) (db.Tag, er
 		return db.Tag{}, invalid("tag_group must be Audience, Sub-Style, Motif or Attribute")
 	}
 	t, err := s.Q.CreateTag(ctx, db.CreateTagParams{Name: name, TagGroup: group})
-	return t, mapErr(err)
+	return t, friendly(err, "that group already has a tag with this name")
 }
 
 func (s *Service) ListStoneCodes(ctx context.Context) ([]db.StoneCode, error) {
@@ -117,8 +125,11 @@ type MetalUpdate struct {
 
 // UpdateMetal edits a metal. An SG or active change enqueues a weight recalc.
 func (s *Service) UpdateMetal(ctx context.Context, id int64, u MetalUpdate) (db.Metal, error) {
-	if !u.SpecificGravity.IsPositive() {
-		return db.Metal{}, invalid("specific_gravity must be positive")
+	if err := checkSG(u.SpecificGravity); err != nil {
+		return db.Metal{}, err
+	}
+	if err := checkWastage(u.WastagePct); err != nil {
+		return db.Metal{}, err
 	}
 	var out db.Metal
 	err := s.inTx(ctx, func(q *db.Queries) error {
@@ -163,6 +174,11 @@ type MatrixRowInput struct {
 // UpdateStoneMatrix upserts rows and optionally moves the baseline code.
 // Changes to baseline-code carats or the baseline itself enqueue a recalc.
 func (s *Service) UpdateStoneMatrix(ctx context.Context, rows []MatrixRowInput, baselineCode string) error {
+	if len(rows) > 0 {
+		if err := ValidateMatrixRows(rows); err != nil {
+			return err
+		}
+	}
 	return s.inTx(ctx, func(q *db.Queries) error {
 		codes, err := q.ListStoneCodes(ctx)
 		if err != nil {
@@ -214,3 +230,5 @@ func (s *Service) UpdateStoneMatrix(ctx context.Context, rows []MatrixRowInput, 
 		return err
 	})
 }
+
+func pgInt8(v int64) pgtype.Int8 { return pgtype.Int8{Int64: v, Valid: true} }
