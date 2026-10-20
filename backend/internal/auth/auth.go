@@ -1,8 +1,9 @@
-// Package auth verifies HS256 bearer tokens carrying a role claim and gates
-// routes by role. Tokens are issued elsewhere (see cmd/devtoken for dev use).
+// Package auth issues and verifies HS256 bearer tokens carrying a role claim and
+// gates routes by role.
 package auth
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"slices"
@@ -21,43 +22,73 @@ const (
 	Production Role = "production"
 )
 
-func (r Role) valid() bool { return r == Admin || r == Designer || r == Production }
+// AllRoles is every signed-in role, for routes any authenticated user may call.
+var AllRoles = []Role{Admin, Designer, Production}
+
+// Editors may change designs, variations and seats.
+var Editors = []Role{Admin, Designer}
+
+func (r Role) Valid() bool { return r == Admin || r == Designer || r == Production }
 
 type Claims struct {
 	Role Role `json:"role"`
 	jwt.RegisteredClaims
 }
 
-const roleKey = "auth.role"
+// Validator is an optional per-request check on a token that already passed
+// signature and expiry (for example: the user still exists, is active, still has
+// this role, and has not changed their password since the token was issued).
+type Validator func(ctx context.Context, c Claims) bool
+
+// Authenticator verifies tokens. A nil Validate means signature and expiry only.
+type Authenticator struct {
+	Secret   []byte
+	Validate Validator
+}
+
+const (
+	roleKey = "auth.role"
+	userKey = "auth.user"
+)
 
 // Issue signs a token for subject with the given role.
 func Issue(secret []byte, subject string, role Role, ttl time.Duration) (string, error) {
-	if !role.valid() {
-		return "", errors.New("auth: unknown role")
+	tok, _, err := IssueAt(secret, subject, role, ttl, time.Now())
+	return tok, err
+}
+
+// IssueAt is Issue with an explicit issue time; it also returns the expiry.
+func IssueAt(secret []byte, subject string, role Role, ttl time.Duration, now time.Time) (string, time.Time, error) {
+	if !role.Valid() {
+		return "", time.Time{}, errors.New("auth: unknown role")
 	}
-	now := time.Now()
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
+	exp := now.Add(ttl)
+	tok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
 		Role: role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: subject, IssuedAt: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+			Subject: subject, IssuedAt: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(exp),
 		},
 	}).SignedString(secret)
+	return tok, exp, err
 }
 
 // Require returns middleware that accepts only the listed roles. A missing or
 // invalid token is 401; a valid token with the wrong role is 403.
-func Require(secret []byte, roles ...Role) gin.HandlerFunc {
+func (a *Authenticator) Require(roles ...Role) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		h := c.GetHeader("Authorization")
-		raw, ok := strings.CutPrefix(h, "Bearer ")
+		raw, ok := strings.CutPrefix(c.GetHeader("Authorization"), "Bearer ")
 		if !ok || raw == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
 			return
 		}
 		var cl Claims
-		tok, err := jwt.ParseWithClaims(raw, &cl, func(*jwt.Token) (any, error) { return secret, nil },
-			jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
-		if err != nil || !tok.Valid || !cl.Role.valid() {
+		tok, err := jwt.ParseWithClaims(raw, &cl, func(*jwt.Token) (any, error) { return a.Secret, nil },
+			jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired(), jwt.WithIssuedAt())
+		if err != nil || !tok.Valid || !cl.Role.Valid() || cl.Subject == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			return
+		}
+		if a.Validate != nil && !a.Validate(c.Request.Context(), cl) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
@@ -66,6 +97,26 @@ func Require(secret []byte, roles ...Role) gin.HandlerFunc {
 			return
 		}
 		c.Set(roleKey, cl.Role)
+		c.Set(userKey, cl.Subject)
 		c.Next()
 	}
+}
+
+// Require is shorthand for a stateless Authenticator (signature and expiry only).
+func Require(secret []byte, roles ...Role) gin.HandlerFunc {
+	return (&Authenticator{Secret: secret}).Require(roles...)
+}
+
+// RoleFrom returns the authenticated caller's role ("" outside Require).
+func RoleFrom(c *gin.Context) Role {
+	r, _ := c.Get(roleKey)
+	role, _ := r.(Role)
+	return role
+}
+
+// UserIDFrom returns the authenticated caller's user id ("" outside Require).
+func UserIDFrom(c *gin.Context) string {
+	u, _ := c.Get(userKey)
+	id, _ := u.(string)
+	return id
 }

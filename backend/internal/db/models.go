@@ -93,6 +93,21 @@ type Tag struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type User struct {
+	ID             int64              `json:"id"`
+	Email          string             `json:"email"`
+	Name           string             `json:"name"`
+	PasswordHash   string             `json:"password_hash"`
+	Role           string             `json:"role"`
+	Active         bool               `json:"active"`
+	FailedAttempts int32              `json:"failed_attempts"`
+	LockedUntil    pgtype.Timestamptz `json:"locked_until"`
+	PwdChangedAt   pgtype.Timestamptz `json:"pwd_changed_at"`
+	LastLoginAt    pgtype.Timestamptz `json:"last_login_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type VSeatMatrixGap struct {
 	VariationID int64           `json:"variation_id"`
 	SeatID      int64           `json:"seat_id"`

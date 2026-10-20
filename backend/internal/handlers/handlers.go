@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
@@ -24,52 +25,81 @@ import (
 
 type H struct {
 	S *service.Service
-	// JWTSecret verifies bearer tokens on the CAD vault routes.
+	// JWTSecret verifies and signs bearer tokens.
 	JWTSecret []byte
+	// Validate is the per-request token check (user active, role unchanged, password
+	// not changed since issue). Nil means signature and expiry only (tests).
+	Validate auth.Validator
+	// TokenTTL is how long a login token lives (0 = DefaultTokenTTL).
+	TokenTTL time.Duration
 	// MaxUploadBytes caps a single CAD upload (0 = DefaultMaxUploadBytes).
 	MaxUploadBytes int64
 	// LocalFiles, when set (development storage), serves signed download links.
 	LocalFiles *storage.Local
 }
 
-const DefaultMaxUploadBytes = 512 << 20
+const (
+	DefaultMaxUploadBytes = 512 << 20
+	DefaultTokenTTL       = 8 * time.Hour
+	maxJSONBody           = 16 << 10 // auth payloads are tiny; refuse anything bigger
+)
 
+// Register mounts the API. Everything except login requires a valid token:
+// reads for any signed-in role, writes for admin/designer, master data and user
+// management for admin only.
 func (h *H) Register(r *gin.Engine) {
+	a := &auth.Authenticator{Secret: h.JWTSecret, Validate: h.Validate}
+	anyRole := a.Require(auth.AllRoles...)
+	editor := a.Require(auth.Editors...)
+	admin := a.Require(auth.Admin)
+
 	v1 := r.Group("/api/v1")
 
-	m := v1.Group("/masters")
-	m.GET("/categories", h.listCategories)
-	m.POST("/categories", h.createCategory)
-	m.GET("/tags", h.listTags)
-	m.POST("/tags", h.createTag)
-	m.GET("/metals", h.listMetals)
-	m.PUT("/metals/:id", h.updateMetal)
-	m.GET("/stone-codes", h.listStoneCodes)
-	m.GET("/stone-matrix", h.listStoneMatrix)
-	m.PUT("/stone-matrix", h.updateStoneMatrix)
+	// Accounts
+	v1.POST("/auth/login", h.login)
+	v1.GET("/auth/me", anyRole, h.me)
+	v1.POST("/auth/change-password", anyRole, h.changePassword)
+	v1.GET("/users", admin, h.listUsers)
+	v1.POST("/users", admin, h.createUser)
+	v1.PUT("/users/:id", admin, h.updateUser)
+	v1.POST("/users/:id/password", admin, h.resetPassword)
 
-	v1.POST("/designs", h.createDesign)
-	v1.GET("/designs", h.listDesigns)
-	v1.GET("/designs/:code", h.getDesign)
-	v1.PUT("/designs/:id", h.updateDesign)
-	v1.DELETE("/designs/:id", h.deleteDesign)
-	v1.POST("/designs/:id/variations", h.createVariation)
-	v1.PUT("/variations/:id/base-input", h.updateVariationBase)
-	v1.GET("/variations/:id/seats", h.listSeats)
-	v1.PUT("/variations/:id/seats", h.setSeats)
-	v1.POST("/variations/:id/clone-seats", h.cloneSeats)
-	v1.GET("/variations/:id/simulate-bom", h.simulateBOM)
+	// Master data
+	m := v1.Group("/masters")
+	m.GET("/categories", anyRole, h.listCategories)
+	m.POST("/categories", admin, h.createCategory)
+	m.GET("/tags", anyRole, h.listTags)
+	m.POST("/tags", admin, h.createTag)
+	m.GET("/metals", anyRole, h.listMetals)
+	m.PUT("/metals/:id", admin, h.updateMetal)
+	m.GET("/stone-codes", anyRole, h.listStoneCodes)
+	m.GET("/stone-matrix", anyRole, h.listStoneMatrix)
+	m.PUT("/stone-matrix", admin, h.updateStoneMatrix)
+
+	// Designs, variations, seats
+	v1.POST("/designs", editor, h.createDesign)
+	v1.GET("/designs", anyRole, h.listDesigns)
+	v1.GET("/designs/:code", anyRole, h.getDesign)
+	v1.PUT("/designs/:id", editor, h.updateDesign)
+	v1.DELETE("/designs/:id", editor, h.deleteDesign)
+	v1.POST("/designs/:id/variations", editor, h.createVariation)
+	v1.PUT("/variations/:id/base-input", editor, h.updateVariationBase)
+	v1.GET("/variations/:id/seats", anyRole, h.listSeats)
+	v1.PUT("/variations/:id/seats", editor, h.setSeats)
+	v1.POST("/variations/:id/clone-seats", editor, h.cloneSeats)
+	v1.GET("/variations/:id/simulate-bom", anyRole, h.simulateBOM)
 
 	// CAD vault: uploads by admin/designer, downloads also by production.
-	v1.POST("/variations/:id/upload-cad", auth.Require(h.JWTSecret, auth.Admin, auth.Designer), h.uploadCAD)
-	// Exports: job bags for every role; costing exposes money, so admin/designer only.
-	v1.POST("/exports/job-bag-pdf", auth.Require(h.JWTSecret, auth.Admin, auth.Designer, auth.Production), h.jobBagPDF)
-	v1.POST("/exports/costing-csv", auth.Require(h.JWTSecret, auth.Admin, auth.Designer), h.costingCSV)
+	v1.POST("/variations/:id/upload-cad", editor, h.uploadCAD)
+	v1.GET("/variations/:id/download", anyRole, h.downloadCAD)
 	if h.LocalFiles != nil {
 		// Auth is the signed, expiring link itself (like an R2 presigned URL).
 		v1.GET("/local-files/*key", h.serveLocalFile)
 	}
-	v1.GET("/variations/:id/download", auth.Require(h.JWTSecret, auth.Admin, auth.Designer, auth.Production), h.downloadCAD)
+
+	// Exports: job bags for every role; costing exposes money, so admin/designer only.
+	v1.POST("/exports/job-bag-pdf", anyRole, h.jobBagPDF)
+	v1.POST("/exports/costing-csv", editor, h.costingCSV)
 }
 
 func fail(c *gin.Context, err error) {
@@ -94,6 +124,8 @@ func fail(c *gin.Context, err error) {
 		status = http.StatusBadRequest
 	case errors.Is(err, service.ErrStorageDisabled):
 		status = http.StatusServiceUnavailable
+	case errors.Is(err, service.ErrInvalidCredentials):
+		status = http.StatusUnauthorized
 	}
 	var tooBig *http.MaxBytesError
 	if errors.As(err, &tooBig) {
@@ -101,6 +133,9 @@ func fail(c *gin.Context, err error) {
 		return
 	}
 	msg := err.Error()
+	if status == http.StatusBadRequest {
+		msg = strings.TrimPrefix(msg, "invalid input: ") // internal sentinel text, not for users
+	}
 	if status == http.StatusInternalServerError {
 		_ = c.Error(err) // keep detail in server logs only
 		msg = "internal error"
@@ -161,6 +196,11 @@ func (h *H) createTag(c *gin.Context) {
 
 func (h *H) listMetals(c *gin.Context) {
 	out, err := h.S.ListMetals(c)
+	if err == nil && auth.RoleFrom(c) == auth.Production {
+		for i := range out { // wastage % is commercially sensitive
+			out[i].WastagePct = decimal.NullDecimal{}
+		}
+	}
 	respond(c, http.StatusOK, out, err)
 }
 
@@ -193,6 +233,11 @@ func (h *H) listStoneCodes(c *gin.Context) {
 
 func (h *H) listStoneMatrix(c *gin.Context) {
 	out, err := h.S.ListStoneMatrix(c)
+	if err == nil && auth.RoleFrom(c) == auth.Production {
+		for i := range out { // stone rates are commercially sensitive
+			out[i].RatePerCt = decimal.NullDecimal{}
+		}
+	}
 	respond(c, http.StatusOK, out, err)
 }
 

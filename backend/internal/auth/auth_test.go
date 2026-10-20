@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,6 +64,66 @@ func TestRequire(t *testing.T) {
 		})
 	}
 	if _, err := Issue(secret, "u", Role("root"), time.Hour); err == nil {
+		t.Error("unknown role should not issue")
+	}
+}
+
+func TestAuthenticatorValidator(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	calls := 0
+	allow := true
+	a := &Authenticator{Secret: secret, Validate: func(_ context.Context, c Claims) bool {
+		calls++
+		return allow && c.Subject == "42" && c.Role == Designer
+	}}
+	r := gin.New()
+	r.GET("/x", a.Require(AllRoles...), func(c *gin.Context) {
+		c.JSON(200, gin.H{"role": RoleFrom(c), "user": UserIDFrom(c)})
+	})
+	get := func(tok string) (int, string) {
+		req := httptest.NewRequest(http.MethodGet, "/x", nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w.Code, w.Body.String()
+	}
+	tok, _ := Issue(secret, "42", Designer, time.Hour)
+
+	if code, body := get(tok); code != 200 || !strings.Contains(body, `"user":"42"`) || !strings.Contains(body, `"role":"designer"`) {
+		t.Fatalf("valid: %d %s", code, body)
+	}
+	allow = false // e.g. the user was disabled
+	if code, _ := get(tok); code != 401 {
+		t.Errorf("rejected by validator should be 401, got %d", code)
+	}
+	allow = true
+	other, _ := Issue(secret, "7", Designer, time.Hour) // validator says no for another user
+	if code, _ := get(other); code != 401 {
+		t.Errorf("other user: %d", code)
+	}
+	// Validator is not consulted for tokens that fail signature or expiry.
+	before := calls
+	bad, _ := Issue([]byte("another-secret-another-secret-123"), "42", Designer, time.Hour)
+	expired, _ := Issue(secret, "42", Designer, -time.Minute)
+	get(bad)
+	get(expired)
+	if calls != before {
+		t.Error("validator ran for an invalid token")
+	}
+	// A token without a subject is invalid.
+	noSub, _ := Issue(secret, "", Designer, time.Hour)
+	if code, _ := get(noSub); code != 401 {
+		t.Errorf("no subject: %d", code)
+	}
+}
+
+func TestIssueAtReportsExpiry(t *testing.T) {
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	_, exp, err := IssueAt(secret, "1", Admin, 8*time.Hour, now)
+	if err != nil || !exp.Equal(now.Add(8*time.Hour)) {
+		t.Fatalf("exp=%v err=%v", exp, err)
+	}
+	if _, _, err := IssueAt(secret, "1", Role("root"), time.Hour, now); err == nil {
 		t.Error("unknown role should not issue")
 	}
 }
