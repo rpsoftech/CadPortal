@@ -28,6 +28,7 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { toApiError } from '../../core/errors';
 import { fixed } from '../../core/format';
+import { saveBlob } from '../../shared/download';
 import { DesignFilter, DesignListItem, TAG_GROUPS } from '../../core/models';
 import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design-dialog.component';
 import { DesignImportDialogComponent } from './design-import-dialog.component';
@@ -217,5 +218,21 @@ export class CatalogComponent {
         this.pageIndex.set(0);
         this.pageChanged$.next();
       });
+  }
+
+  protected readonly exporting = signal(false);
+
+  protected exportDesigns(): void {
+    this.exporting.set(true);
+    this.api.designsCsv().subscribe({
+      next: (blob) => {
+        saveBlob(blob, 'designs.csv');
+        this.exporting.set(false);
+      },
+      error: async (e) => {
+        this.exporting.set(false);
+        this.snack.open((await toApiError(e)).message, 'Dismiss', { duration: 6000 });
+      },
+    });
   }
 }

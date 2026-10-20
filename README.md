@@ -189,7 +189,7 @@ publish images anywhere.
 | Variations | `POST /designs/:id/variations`, `PUT /variations/:id/base-input`, `DELETE /variations/:id` |
 | Seats and BOM | `GET/PUT /variations/:id/seats`, `POST /variations/:id/clone-seats`, `GET /variations/:id/simulate-bom?code=2HD` |
 | CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl`, `DELETE /variations/:id/cad?kind=3dm\|stl` |
-| Exports | `POST /exports/job-bag-pdf`, `POST /exports/costing-csv` |
+| Exports | `POST /exports/job-bag-pdf`, `POST /exports/costing-csv`, `GET /exports/designs-csv` (any role) |
 
 All paths are under `/api/v1`. Alongside the routes above:
 
@@ -238,6 +238,12 @@ left out; a header row is optional).
   reported as a problem. Categories, tags and alloys must already exist.
 
 Up to 1000 rows per import. Imports appear in the audit log as `design.import`.
+
+**Export CSV** on the same screen (any role) downloads every design in exactly this format:
+tags as `Group:Name`, one row per variation, name, category and tags on the first row of each
+design. It contains no wastage or rates. The file imports cleanly into an empty installation and
+rebuilds the same weights; variation numbers are assigned again in file order, so a gap left by a
+deleted variation closes. Deleted designs are not exported.
 
 ### Audit log
 

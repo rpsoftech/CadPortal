@@ -287,3 +287,31 @@ func importDecimal(name, v string) (decimal.Decimal, error) {
 	}
 	return d, nil
 }
+
+// ExportDesigns returns every live design in the shape ImportDesigns reads, so an export can
+// be imported into a fresh installation. A design's name, category and tags appear on its first
+// row only; each variation adds a row with its base input. Variation numbers are not kept: they
+// are assigned again in file order on import.
+func (s *Service) ExportDesigns(ctx context.Context) ([]ImportRow, error) {
+	recs, err := s.Q.ListDesignExportRows(ctx)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	rows := make([]ImportRow, 0, len(recs))
+	last := ""
+	for _, r := range recs {
+		row := ImportRow{Code: r.Code, RefMetal: r.RefMetal}
+		if r.Code != last {
+			row.Name, row.Category, row.Tags = r.Name, r.CategoryName, r.Tags
+			last = r.Code
+		}
+		if r.BaseVolumeMm3.Valid {
+			row.VolumeMM3 = r.BaseVolumeMm3.Decimal.String()
+		}
+		if r.BaseRefWeightG.Valid {
+			row.RefWeightG = r.BaseRefWeightG.Decimal.String()
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}

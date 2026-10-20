@@ -58,6 +58,7 @@ var auditRoutes = map[string]auditRoute{
 	"GET /api/v1/variations/:id/download":     {action: "cad.download_link", entity: "variation", idParam: "id", reads: true},
 	"POST /api/v1/exports/job-bag-pdf":        {action: "export.job_bag", entity: "variation"},
 	"POST /api/v1/exports/costing-csv":        {action: "export.costing", entity: "variation"},
+	"GET /api/v1/exports/designs-csv":         {action: "export.designs", entity: "design", reads: true},
 }
 
 const auditNoteKey = "audit.note"

@@ -178,3 +178,20 @@ WHERE id = $1;
 -- name: ListExistingDesignCodes :many
 -- Codes already taken, deleted designs included (their codes stay reserved).
 SELECT code FROM master_designs WHERE code = ANY($1::text[]);
+
+-- name: ListDesignExportRows :many
+-- One row per variation, plus one row for a design that has none, in the same shape the
+-- import reads. Tags are "Group:Name" joined by ';' so they never depend on a name being unique.
+SELECT d.code, d.name, c.name AS category_name,
+    COALESCE((SELECT string_agg(t.tag_group || ':' || t.name, ';' ORDER BY t.tag_group, t.name)
+              FROM design_tags dt JOIN tags t ON t.id = dt.tag_id
+              WHERE dt.design_id = d.id), '')::text AS tags,
+    v.seq AS variation_seq,
+    v.base_volume_mm3, v.base_ref_weight_g,
+    COALESCE(m.code, '')::text AS ref_metal
+FROM master_designs d
+JOIN categories c ON c.id = d.category_id
+LEFT JOIN cad_variations v ON v.design_id = d.id
+LEFT JOIN metals m ON m.id = v.base_ref_metal_id
+WHERE d.deleted_at IS NULL
+ORDER BY d.code, v.seq NULLS FIRST;

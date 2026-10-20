@@ -2,6 +2,9 @@
   <div class="row head">
     <h1>Catalog</h1>
     <span class="spacer"></span>
+    <button mat-stroked-button (click)="exportDesigns()" [disabled]="exporting()">
+      Export CSV
+    </button>
     @if (auth.canEdit()) {
       <button mat-stroked-button (click)="importDesigns()">Import</button>
       <button mat-flat-button (click)="newDesign()">New design</button>
