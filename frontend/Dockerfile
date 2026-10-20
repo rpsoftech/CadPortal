@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- build ----
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 
 # The project uses Yarn 4. The image's yarn hands off to the release committed under
