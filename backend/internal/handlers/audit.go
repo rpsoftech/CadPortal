@@ -53,6 +53,7 @@ var auditRoutes = map[string]auditRoute{
 	"POST /api/v1/variations/:id/clone-seats": {action: "variation.clone_seats", entity: "variation", idParam: "id"},
 	"DELETE /api/v1/variations/:id":           {action: "variation.delete", entity: "variation", idParam: "id"},
 	"POST /api/v1/variations/:id/upload-cad":  {action: "cad.upload", entity: "variation", idParam: "id"},
+	"DELETE /api/v1/variations/:id/cad":       {action: "cad.remove", entity: "variation", idParam: "id"},
 	"GET /api/v1/variations/:id/download":     {action: "cad.download_link", entity: "variation", idParam: "id", reads: true},
 	"POST /api/v1/exports/job-bag-pdf":        {action: "export.job_bag", entity: "variation"},
 	"POST /api/v1/exports/costing-csv":        {action: "export.costing", entity: "variation"},

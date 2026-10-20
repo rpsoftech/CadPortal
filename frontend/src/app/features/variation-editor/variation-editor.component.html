@@ -48,6 +48,7 @@
               [progress]="uploads()['3dm'].progress"
               [error]="uploads()['3dm'].error"
               (picked)="upload('3dm', $event)"
+              (removed)="removeFile('3dm')"
             />
           </div>
           <div>
@@ -57,6 +58,7 @@
               [progress]="uploads().stl.progress"
               [error]="uploads().stl.error"
               (picked)="upload('stl', $event)"
+              (removed)="removeFile('stl')"
             />
           </div>
         </div>

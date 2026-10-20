@@ -172,3 +172,50 @@ func TestUploadCADFailures(t *testing.T) {
 type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("connection reset") }
+
+func TestRemoveCADFreesTheChecksumAndObject(t *testing.T) {
+	s, mem := newCADService(t)
+	ctx := context.Background()
+	des := newDesign(t, s, "LR033")
+	v1, _ := s.CreateVariation(ctx, des.ID, BaseInput{VolumeMM3: dp("200")})
+	v2, _ := s.CreateVariation(ctx, des.ID, BaseInput{VolumeMM3: dp("300")})
+	data := randBytes(t, 800)
+
+	if _, err := s.UploadCAD(ctx, v1.ID, "wrong.3dm", bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UploadCAD(ctx, v1.ID, "keep.stl", bytes.NewReader(randBytes(t, 300))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UploadCAD(ctx, v2.ID, "right.3dm", bytes.NewReader(data)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("setup: want conflict, got %v", err)
+	}
+
+	if err := s.RemoveCAD(ctx, v1.ID, "3dm"); err != nil {
+		t.Fatal(err)
+	}
+	if len(mem.Keys()) != 1 || !strings.HasSuffix(mem.Keys()[0], ".stl.gz") {
+		t.Errorf("only the stl object should remain: %v", mem.Keys())
+	}
+	got, _ := s.Q.GetVariation(ctx, v1.ID)
+	if got.File3dmKey.Valid || got.File3dmSha256.Valid || got.File3dmName.Valid || got.File3dmSizeBytes.Valid {
+		t.Errorf("3dm columns not cleared: %+v", got)
+	}
+	if !got.FileStlKey.Valid {
+		t.Error("removing the 3dm must not touch the stl")
+	}
+	// The checksum is free again, so the file can go on the other variation.
+	if _, err := s.UploadCAD(ctx, v2.ID, "right.3dm", bytes.NewReader(data)); err != nil {
+		t.Errorf("upload after removal: %v", err)
+	}
+
+	if err := s.RemoveCAD(ctx, v1.ID, "3dm"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("removing twice: %v", err)
+	}
+	if err := s.RemoveCAD(ctx, v1.ID, "step"); !errors.Is(err, ErrInvalid) {
+		t.Errorf("bad kind: %v", err)
+	}
+	if err := s.RemoveCAD(ctx, 999999, "3dm"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown variation: %v", err)
+	}
+}

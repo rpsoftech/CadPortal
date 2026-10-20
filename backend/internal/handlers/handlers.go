@@ -109,6 +109,7 @@ func (h *H) Register(r *gin.Engine) {
 	// CAD vault: uploads by admin/designer, downloads also by production.
 	v1.POST("/variations/:id/upload-cad", editor, h.uploadCAD)
 	v1.GET("/variations/:id/download", anyRole, h.downloadCAD)
+	v1.DELETE("/variations/:id/cad", editor, h.removeCAD)
 	if h.LocalFiles != nil {
 		// Auth is the signed, expiring link itself (like an R2 presigned URL).
 		v1.GET("/local-files/*key", h.serveLocalFile)
@@ -601,6 +602,21 @@ func (h *H) downloadCAD(c *gin.Context) {
 	}
 	out, err := h.S.DownloadCAD(c, id, c.DefaultQuery("kind", "3dm"))
 	respond(c, http.StatusOK, out, err)
+}
+
+// removeCAD detaches the 3dm or stl file of a variation and deletes its object.
+func (h *H) removeCAD(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	kind := c.Query("kind")
+	if err := h.S.RemoveCAD(c, id, kind); err != nil {
+		fail(c, err)
+		return
+	}
+	auditNote(c, "variation", idStr(id), kind)
+	c.Status(http.StatusNoContent)
 }
 
 // ---------- Exports ----------

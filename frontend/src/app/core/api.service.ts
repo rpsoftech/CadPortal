@@ -208,6 +208,10 @@ export class ApiService {
       }),
     );
   }
+  removeCad(variationId: number, kind: '3dm' | 'stl'): Observable<void> {
+    const params = new HttpParams().set('kind', kind);
+    return this.http.delete<void>(`${BASE}/variations/${variationId}/cad`, { params });
+  }
   downloadLink(variationId: number, kind: '3dm' | 'stl'): Observable<DownloadLink> {
     const params = new HttpParams().set('kind', kind);
     return this.http.get<DownloadLink>(`${BASE}/variations/${variationId}/download`, { params });

@@ -170,7 +170,7 @@ publish images anywhere.
 | Designs | `POST/GET /designs` (`q` search, `limit`/`offset`, total in `X-Total-Count`), `GET /designs/:code`, `PUT/DELETE /designs/:id` |
 | Variations | `POST /designs/:id/variations`, `PUT /variations/:id/base-input`, `DELETE /variations/:id` |
 | Seats and BOM | `GET/PUT /variations/:id/seats`, `POST /variations/:id/clone-seats`, `GET /variations/:id/simulate-bom?code=2HD` |
-| CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl` |
+| CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl`, `DELETE /variations/:id/cad?kind=3dm\|stl` |
 | Exports | `POST /exports/job-bag-pdf`, `POST /exports/costing-csv` |
 
 All paths are under `/api/v1`. Alongside the routes above:

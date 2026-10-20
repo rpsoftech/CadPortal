@@ -48,7 +48,12 @@ export interface StoredFile {
 
     <div class="status" aria-live="polite">
       @if (stored().sha256; as sha) {
-        <div class="ok">✓ Stored: {{ stored().name }} · {{ sizeLabel() }}</div>
+        <div class="ok">
+          ✓ Stored: {{ stored().name }} · {{ sizeLabel() }}
+          <button type="button" class="remove" [disabled]="disabled()" (click)="removed.emit()">
+            Remove
+          </button>
+        </div>
         <div class="mono muted small" [title]="sha">
           sha256 {{ sha.slice(0, 16) }}…{{ sha.slice(-6) }}
         </div>
@@ -83,6 +88,16 @@ export interface StoredFile {
     .ok {
       color: var(--mat-sys-primary);
     }
+    .remove {
+      margin-left: 8px;
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--mat-sys-error);
+      cursor: pointer;
+      text-decoration: underline;
+      font: inherit;
+    }
     .small {
       font-size: 0.85rem;
       overflow-wrap: anywhere;
@@ -97,6 +112,7 @@ export class FileDropzoneComponent {
   readonly progress = input<number | null>(null);
   readonly error = input('');
   readonly picked = output<File>();
+  readonly removed = output<void>();
 
   protected readonly over = signal(false);
 

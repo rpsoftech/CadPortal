@@ -164,3 +164,13 @@ FROM cad_variations sv
 JOIN variation_metal_weights w ON w.variation_id = sv.id
 JOIN metals m ON m.id = w.metal_id
 WHERE m.code = $1 AND sv.design_id = ANY($2::bigint[]);
+
+-- name: ClearVariationFile3dm :exec
+UPDATE cad_variations
+SET file_3dm_sha256 = NULL, file_3dm_key = NULL, file_3dm_name = NULL, file_3dm_size_bytes = NULL
+WHERE id = $1;
+
+-- name: ClearVariationFileStl :exec
+UPDATE cad_variations
+SET file_stl_sha256 = NULL, file_stl_key = NULL, file_stl_name = NULL, file_stl_size_bytes = NULL
+WHERE id = $1;
