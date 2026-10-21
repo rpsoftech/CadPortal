@@ -331,6 +331,11 @@ each variation. Each group holds up to **5 files, photos and videos together**.
 - **Content-Security-Policy:** the web container allows images and media from the R2 endpoint
   only (`https://*.r2.cloudflarestorage.com`). If you reach R2 through a custom domain, set
   `MEDIA_ORIGINS` in `.env` to that origin.
+- **Job bags carry the photo:** the job-bag PDF prints a photo at the top right, so the bench
+  sees what to make. It is the variation's own first photo, else the design's cover, else the
+  design's first photo (the 480 px thumbnail, sharp enough at 50 mm). A design without photos, or
+  storage that cannot be reached, gives the same sheet as before: the photo is never a reason for
+  a job bag to fail.
 - Deleting a media file, or a variation, removes its stored objects. Uploads, deletions and cover
   changes are in the audit log (`media.upload`, `media.delete`, `media.cover`).
 

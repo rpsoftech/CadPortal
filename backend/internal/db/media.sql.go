@@ -151,6 +151,28 @@ func (q *Queries) InsertMedia(ctx context.Context, arg InsertMediaParams) (Desig
 	return i, err
 }
 
+const jobBagPhotoKey = `-- name: JobBagPhotoKey :one
+SELECT thumb_key FROM design_media
+WHERE design_id = $1 AND kind = 'image' AND thumb_key IS NOT NULL
+  AND (variation_id = $2 OR variation_id IS NULL)
+ORDER BY (variation_id IS NOT NULL) DESC, is_cover DESC, position, id
+LIMIT 1
+`
+
+type JobBagPhotoKeyParams struct {
+	DesignID    int64       `json:"design_id"`
+	VariationID pgtype.Int8 `json:"variation_id"`
+}
+
+// The thumbnail for a job bag: the variation's own first photo, else the design's cover photo,
+// else the design's first photo.
+func (q *Queries) JobBagPhotoKey(ctx context.Context, arg JobBagPhotoKeyParams) (pgtype.Text, error) {
+	row := q.db.QueryRow(ctx, jobBagPhotoKey, arg.DesignID, arg.VariationID)
+	var thumb_key pgtype.Text
+	err := row.Scan(&thumb_key)
+	return thumb_key, err
+}
+
 const listMediaByDesign = `-- name: ListMediaByDesign :many
 SELECT id, design_id, variation_id, kind, content_type, filename, size_bytes, object_key, thumb_key, width, height, position, is_cover, created_by, created_at FROM design_media WHERE design_id = $1
 ORDER BY variation_id NULLS FIRST, position, id

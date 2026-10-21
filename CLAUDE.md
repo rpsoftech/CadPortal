@@ -141,5 +141,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   17. Sign-in rate limit in the web container (per client address), tested in CI
   18. Automatic design codes (prefix + sequence) and the admin setup checklist (`GET /api/v1/masters/setup-status`)
   19. Stone weight in grams everywhere; master-data export (zip of CSVs); design media (images and video)
+  20. Job-bag PDF carries the design photo
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.

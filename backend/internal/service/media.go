@@ -336,3 +336,27 @@ func megabytes(n int64) string {
 	}
 	return fmt.Sprintf("%d KB", n>>10)
 }
+
+const maxJobBagPhotoBytes = 2 << 20
+
+// jobBagPhoto reads the thumbnail printed on a job bag. It is decoration: any problem (no photo,
+// storage off or unreachable, an odd object) gives nil, and the sheet is made without it.
+func (s *Service) jobBagPhoto(ctx context.Context, designID, variationID int64) []byte {
+	if s.Store == nil {
+		return nil
+	}
+	key, err := s.Q.JobBagPhotoKey(ctx, db.JobBagPhotoKeyParams{DesignID: designID, VariationID: pgtype.Int8{Int64: variationID, Valid: true}})
+	if err != nil || !key.Valid {
+		return nil
+	}
+	rc, err := s.Store.Get(ctx, key.String)
+	if err != nil {
+		return nil
+	}
+	defer rc.Close()
+	b, err := io.ReadAll(io.LimitReader(rc, maxJobBagPhotoBytes+1))
+	if err != nil || len(b) == 0 || len(b) > maxJobBagPhotoBytes {
+		return nil
+	}
+	return b
+}

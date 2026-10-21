@@ -191,3 +191,6 @@ func (l *Local) PresignView(ctx context.Context, key, contentType string, ttl ti
 func InlineType(filename string) (string, bool) {
 	return strings.CutPrefix(filename, inlinePrefix)
 }
+
+// Get opens a stored object for reading.
+func (l *Local) Get(_ context.Context, key string) (io.ReadCloser, error) { return l.Open(key) }

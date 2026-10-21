@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"image/jpeg"
 	"io"
 	"strconv"
 	"strings"
@@ -65,6 +66,11 @@ func RenderJobBagPDF(jb service.JobBag) ([]byte, error) {
 	pdf.SetTitle("Job Bag "+jb.VariationCode, false)
 	tr := pdf.UnicodeTranslatorFromDescriptor("") // UTF-8 -> cp1252 for core fonts
 	pdf.AddPage()
+	// The photo sits top right; the text beside it stops short of it, then the page is full width again.
+	hasPhoto := placeJobBagPhoto(pdf, jb.Photo)
+	if hasPhoto {
+		pdf.SetRightMargin(15 + photoBoxW + 5)
+	}
 
 	pdf.SetFont("Helvetica", "B", 20)
 	pdf.CellFormat(0, 10, "JOB BAG", "", 1, "L", false, 0, "")
@@ -86,6 +92,12 @@ func RenderJobBagPDF(jb service.JobBag) ([]byte, error) {
 	kv("Base input", jb.BaseInput)
 	kv("Metal", jb.MetalCode)
 	kv("Stone code", jb.BOM.StoneCode)
+	if hasPhoto {
+		pdf.SetRightMargin(15)
+		if pdf.GetY() < 15+photoBoxH+3 {
+			pdf.SetY(15 + photoBoxH + 3) // never print a table over the photo
+		}
+	}
 	pdf.Ln(2)
 
 	// Weights
@@ -184,4 +196,35 @@ func WriteDesignsCSV(w io.Writer, rows []service.ImportRow) error {
 	}
 	cw.Flush()
 	return cw.Error()
+}
+
+// The photo box on a job bag: top right, as wide as 50 mm and as tall as 45 mm.
+const (
+	photoBoxW = 50.0
+	photoBoxH = 45.0
+)
+
+// placeJobBagPhoto draws a JPEG thumbnail in the top-right corner, scaled to fit its box. It reports
+// whether a photo was drawn; unreadable data is ignored, because the photo is decoration.
+func placeJobBagPhoto(pdf *fpdf.Fpdf, jpg []byte) bool {
+	if len(jpg) == 0 {
+		return false
+	}
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(jpg))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+		return false
+	}
+	w, h := photoBoxW, photoBoxW*float64(cfg.Height)/float64(cfg.Width)
+	if h > photoBoxH {
+		h, w = photoBoxH, photoBoxH*float64(cfg.Width)/float64(cfg.Height)
+	}
+	opts := fpdf.ImageOptions{ImageType: "JPG"}
+	pdf.RegisterImageOptionsReader("jobbag-photo", opts, bytes.NewReader(jpg))
+	if pdf.Err() {
+		pdf.ClearError() // a photo that fpdf cannot use must not spoil the sheet
+		return false
+	}
+	x := 210 - 15 - w // right-aligned to the margin
+	pdf.ImageOptions("jobbag-photo", x, 15, w, h, false, opts, 0, "")
+	return !pdf.Err()
 }

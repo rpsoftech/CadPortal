@@ -36,3 +36,12 @@ UPDATE design_media SET is_cover = true WHERE id = $1;
 -- name: LockDesignForMedia :one
 -- Serialises uploads to one design so the limit of five cannot be beaten by two at once.
 SELECT id FROM master_designs WHERE id = $1 AND deleted_at IS NULL FOR UPDATE;
+
+-- name: JobBagPhotoKey :one
+-- The thumbnail for a job bag: the variation's own first photo, else the design's cover photo,
+-- else the design's first photo.
+SELECT thumb_key FROM design_media
+WHERE design_id = $1 AND kind = 'image' AND thumb_key IS NOT NULL
+  AND (variation_id = sqlc.narg('variation_id') OR variation_id IS NULL)
+ORDER BY (variation_id IS NOT NULL) DESC, is_cover DESC, position, id
+LIMIT 1;
