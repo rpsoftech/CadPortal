@@ -219,6 +219,8 @@ export interface BomLine {
   locked: boolean;
   carats_per_stone: Dec;
   line_carats: Dec;
+  /** line_carats x 0.200, 4 decimal places */
+  line_weight_g: Dec;
 }
 
 export interface MetalTotals {

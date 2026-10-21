@@ -91,7 +91,7 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
 |---|---|
 | Audit log | `GET /api/v1/audit` (admin; filters `action` prefix, `user_id`, `from`, `to`; paging with `X-Total-Count`) |
 | Auth & users | `POST /api/v1/auth/login`, `GET /api/v1/auth/me`, `POST /api/v1/auth/change-password`, `GET/POST /api/v1/users`, `PUT /api/v1/users/:id`, `POST /api/v1/users/:id/password` |
-| Masters | `GET /api/v1/masters/setup-status` (admin; what master data is still missing), `GET/POST/PUT /api/v1/masters/categories[/:id]` (a prefix change restarts numbering for new designs), `GET/POST/PUT /api/v1/masters/tags[/:id]`, `GET/POST /api/v1/masters/metals`, `PUT /api/v1/masters/metals/:id`, `GET/POST /api/v1/masters/stone-codes`, `PUT /api/v1/masters/stone-codes/:id`, `GET/PUT/DELETE /api/v1/masters/stone-matrix`, `GET /api/v1/masters/matrix-gaps`, `GET /api/v1/masters/recalc-status` (writes admin only) |
+| Masters | `GET /api/v1/masters/setup-status` (admin; what master data is still missing), `GET /api/v1/masters/export` (admin; zip of CSVs: alloys, stone codes, stone matrix, categories, tags), `GET/POST/PUT /api/v1/masters/categories[/:id]` (a prefix change restarts numbering for new designs), `GET/POST/PUT /api/v1/masters/tags[/:id]`, `GET/POST /api/v1/masters/metals`, `PUT /api/v1/masters/metals/:id`, `GET/POST /api/v1/masters/stone-codes`, `PUT /api/v1/masters/stone-codes/:id`, `GET/PUT/DELETE /api/v1/masters/stone-matrix`, `GET /api/v1/masters/matrix-gaps`, `GET /api/v1/masters/recalc-status` (writes admin only) |
 | Designs | `POST/GET /api/v1/designs` (POST takes no code: it is assigned; `q` text search, `limit`/`offset` paging, total in `X-Total-Count`), `GET /api/v1/designs/:code`, `PUT/DELETE /api/v1/designs/:id` (soft delete; the code stays reserved), `POST /api/v1/designs/import` (admin/designer; bulk create from CSV rows, all-or-nothing, `dry_run` validates only; never changes existing designs) |
 | Variations & CAD vault | `POST /api/v1/designs/:id/variations`, `POST /api/v1/variations/:id/upload-cad`, `POST /api/v1/variations/:id/clone-seats`, `PUT /api/v1/variations/:id/seats`, `DELETE /api/v1/variations/:id`, `GET /api/v1/variations/:id/download`, `POST /api/v1/designs/:id/media` (editor; multipart `file`, optional `variation_id` BEFORE it; photo or video, max 5 per design or variation), `DELETE /api/v1/media/:id`, `PUT /api/v1/media/:id/cover` (media arrive with `GET /api/v1/designs/:code`), `DELETE /api/v1/variations/:id/cad?kind=3dm\|stl` (frees the checksum) |
 | BOM & exports | `GET /api/v1/variations/:id/simulate-bom?code=2HD`, `POST /api/v1/exports/job-bag-pdf`, `POST /api/v1/exports/costing-csv`, `GET /api/v1/exports/designs-csv` (any role; the import format, no wastage or rates) |
@@ -100,7 +100,7 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
 
 **Uploads:** hash the original bytes (not the gzipped bytes). Reject a duplicate with 409 and name the existing variation. Gzip while streaming to storage.
 
-**Costing CSV:** net gold + wastage %, stone cost (carats × rate), and setting labour (pcs × rate).
+**Costing CSV:** net gold + wastage %, stone weight (carats and grams) and stone cost (carats × rate), and setting labour (pcs × rate). Stone weight in grams is carats × 0.200, shown wherever carats are (BOM lines at 4 dp, totals at 3 dp), including the job-bag PDF.
 
 ## Frontend screens
 1. **Catalog + filter dashboard:** category, target purity, net/gross weight ranges, tags; cards show net/gross for the selected purity.
@@ -140,5 +140,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   16. Browser smoke tests: Playwright (frontend/e2e) against the production stack in the CI docker job
   17. Sign-in rate limit in the web container (per client address), tested in CI
   18. Automatic design codes (prefix + sequence) and the admin setup checklist (`GET /api/v1/masters/setup-status`)
+  19. Stone weight in grams everywhere; master-data export (zip of CSVs); design media (images and video)
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.

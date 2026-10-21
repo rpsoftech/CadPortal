@@ -39,7 +39,7 @@ func TestWriteCostingCSV(t *testing.T) {
 		t.Fatalf("records = %v", recs)
 	}
 	want := []string{"LR001-V1", "18KR", "2HD", "3.050", "10", "3.355", "6000", "20130.00",
-		"0.3470", "17350.00", "37", "25", "925.00", "38405.00"}
+		"0.3470", "0.0694", "17350.00", "37", "25", "925.00", "38405.00"}
 	for i, w := range want {
 		if recs[1][i] != w {
 			t.Errorf("col %s = %q want %q", CostingHeader[i], recs[1][i], w)
@@ -57,8 +57,8 @@ func TestRenderJobBagPDF(t *testing.T) {
 	bom := service.BOMResult{
 		StoneCode: "2HD", TotalPcs: 37, TotalCarats: d("0.3470"), StoneWeightG: d("0.069"),
 		Lines: []service.BOMLineOut{
-			{SizeMM: d("1.10"), StoneCount: 24, StoneCode: "2HD", CaratsPerStone: d("0.0070"), LineCarats: d("0.1680")},
-			{SizeMM: d("2.50"), StoneCount: 1, StoneCode: "2HD", Locked: true, CaratsPerStone: d("0.0650"), LineCarats: d("0.0650")},
+			{SizeMM: d("1.10"), StoneCount: 24, StoneCode: "2HD", CaratsPerStone: d("0.0070"), LineCarats: d("0.1680"), LineWeightG: d("0.0336")},
+			{SizeMM: d("2.50"), StoneCount: 1, StoneCode: "2HD", Locked: true, CaratsPerStone: d("0.0650"), LineCarats: d("0.0650"), LineWeightG: d("0.0130")},
 		},
 	}
 	jb := service.JobBag{
@@ -75,7 +75,7 @@ func TestRenderJobBagPDF(t *testing.T) {
 	if !bytes.HasPrefix(pdf, []byte("%PDF-")) || !bytes.HasSuffix(bytes.TrimSpace(pdf), []byte("%%EOF")) {
 		t.Fatal("not a well-formed PDF")
 	}
-	for _, s := range []string{"JOB BAG", "LR001-V1", "3.119 g", "0.3470", "locked", "not uploaded", strings.Repeat("ab", 32)} {
+	for _, s := range []string{"JOB BAG", "LR001-V1", "3.119 g", "0.3470", "0.0336", "0.0694", "Line g", "locked", "not uploaded", strings.Repeat("ab", 32)} {
 		if !bytes.Contains(pdf, []byte(s)) {
 			t.Errorf("PDF missing %q", s)
 		}

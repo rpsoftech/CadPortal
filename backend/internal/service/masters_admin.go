@@ -255,3 +255,35 @@ func (s *Service) RecalcStatus(ctx context.Context) (RecalcStatus, error) {
 	}
 	return out, nil
 }
+
+// MasterData is every master-data table, for the admin export.
+type MasterData struct {
+	Metals     []db.Metal
+	StoneCodes []db.StoneCode
+	Matrix     []db.ListStoneMatrixRow
+	Categories []db.Category
+	Tags       []db.Tag
+}
+
+// MasterData reads all master data in one pass. It includes wastage and rates, so callers must
+// restrict it to admins.
+func (s *Service) MasterData(ctx context.Context) (MasterData, error) {
+	var (
+		md  MasterData
+		err error
+	)
+	if md.Metals, err = s.ListMetals(ctx); err != nil {
+		return md, err
+	}
+	if md.StoneCodes, err = s.ListStoneCodes(ctx); err != nil {
+		return md, err
+	}
+	if md.Matrix, err = s.ListStoneMatrix(ctx); err != nil {
+		return md, err
+	}
+	if md.Categories, err = s.ListCategories(ctx); err != nil {
+		return md, err
+	}
+	md.Tags, err = s.ListAllTags(ctx) // inactive tags too: it is a record
+	return md, err
+}

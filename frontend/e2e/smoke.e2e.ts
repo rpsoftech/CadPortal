@@ -1,4 +1,5 @@
 import { deflateSync } from 'node:zlib';
+import { readFileSync } from 'node:fs';
 import { Page, expect, test } from '@playwright/test';
 
 const env = (name: string): string => {
@@ -100,6 +101,18 @@ test('master data is entered in the app and the checklist follows', async ({ pag
   // Only the categories still without a prefix are listed.
   await expect(checklist).toContainText('Bangles, Bracelets, Necklaces, Pendant Sets');
   await expect(checklist).not.toContainText('Rings');
+
+  // Everything entered can be kept outside the database: one zip of CSV files.
+  const [zip] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Export all (ZIP)' }).click(),
+  ]);
+  expect(zip.suggestedFilename()).toMatch(/^master-data-\d{4}-\d{2}-\d{2}\.zip$/);
+  const bytes = readFileSync(await zip.path());
+  expect(bytes.subarray(0, 2).toString()).toBe('PK');
+  for (const name of ['alloys.csv', 'stone_matrix.csv', 'categories.csv', 'README.txt']) {
+    expect(bytes.includes(Buffer.from(name))).toBe(true);
+  }
 });
 
 test('importing designs checks first, then numbers them automatically', async ({ page }) => {
@@ -182,7 +195,7 @@ test('a CAD file keeps its bytes and its accented name through upload, download 
   ]);
   expect(download.suggestedFilename()).toBe(name);
   const path = await download.path();
-  const { readFileSync } = await import('node:fs');
+
   expect(readFileSync(path).equals(original)).toBe(true);
 
   await page.goto('/designs/LR0001');

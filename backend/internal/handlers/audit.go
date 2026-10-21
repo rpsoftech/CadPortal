@@ -62,6 +62,7 @@ var auditRoutes = map[string]auditRoute{
 	"POST /api/v1/exports/job-bag-pdf":        {action: "export.job_bag", entity: "variation"},
 	"POST /api/v1/exports/costing-csv":        {action: "export.costing", entity: "variation"},
 	"GET /api/v1/exports/designs-csv":         {action: "export.designs", entity: "design", reads: true},
+	"GET /api/v1/masters/export":              {action: "export.master_data", entity: "master_data", reads: true},
 }
 
 const auditNoteKey = "audit.note"

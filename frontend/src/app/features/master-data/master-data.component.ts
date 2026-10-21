@@ -1,8 +1,13 @@
-import { Component, inject, linkedSignal } from '@angular/core';
+import { Component, inject, linkedSignal, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { MatButtonModule } from '@angular/material/button';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
 import { ActivatedRoute } from '@angular/router';
 import { map } from 'rxjs';
+import { ApiService } from '../../core/api.service';
+import { toApiError } from '../../core/errors';
+import { saveBlob } from '../../shared/download';
 import { SetupChecklistComponent, tabIndex } from '../../shared/setup-checklist.component';
 import { MatrixTabComponent } from './matrix-tab.component';
 import { MetalsTabComponent } from './metals-tab.component';
@@ -13,6 +18,7 @@ import { TaxonomyTabComponent } from './taxonomy-tab.component';
   selector: 'app-master-data',
   imports: [
     MatTabsModule,
+    MatButtonModule,
     MetalsTabComponent,
     MatrixTabComponent,
     TaxonomyTabComponent,
@@ -21,7 +27,18 @@ import { TaxonomyTabComponent } from './taxonomy-tab.component';
   providers: [RecalcWatcher],
   template: `
     <div class="page">
-      <h1>Master data</h1>
+      <div class="head">
+        <h1>Master data</h1>
+        <span class="spacer"></span>
+        <button
+          matButton
+          (click)="exportAll()"
+          [disabled]="exporting()"
+          title="Alloys with wastage, stone codes, the stone matrix with rates, categories and tags, as CSV files in one zip"
+        >
+          Export all (ZIP)
+        </button>
+      </div>
 
       <div class="banner" aria-live="polite">
         @if (recalc.busy()) {
@@ -59,6 +76,14 @@ import { TaxonomyTabComponent } from './taxonomy-tab.component';
     </div>
   `,
   styles: `
+    .head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .spacer {
+      flex: 1;
+    }
     h1 {
       margin: 0 0 8px;
     }
@@ -76,6 +101,24 @@ import { TaxonomyTabComponent } from './taxonomy-tab.component';
 })
 export class MasterDataComponent {
   protected readonly recalc = inject(RecalcWatcher);
+  private readonly api = inject(ApiService);
+  private readonly snack = inject(MatSnackBar);
+  protected readonly exporting = signal(false);
+
+  /** Downloads all master data as CSV files in one zip, for safekeeping outside the database. */
+  protected exportAll(): void {
+    this.exporting.set(true);
+    this.api.masterDataZip().subscribe({
+      next: (blob) => {
+        saveBlob(blob, `master-data-${new Date().toISOString().slice(0, 10)}.zip`);
+        this.exporting.set(false);
+      },
+      error: async (e) => {
+        this.exporting.set(false);
+        this.snack.open((await toApiError(e)).message, 'Dismiss', { duration: 6000 });
+      },
+    });
+  }
   private readonly route = inject(ActivatedRoute);
 
   /** The tab named in ?tab= (the checklist links here), then wherever the user clicks. */

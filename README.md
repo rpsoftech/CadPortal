@@ -291,6 +291,13 @@ and shrinks as you fix them.
 Items are marked *required* when something does not work without them and *recommended*
 otherwise (for example a matrix row with no rate: costing refuses to price that stone).
 
+**Keeping a copy of the master data:** **Export all (ZIP)** at the top of Master data downloads
+one zip of CSV files (admin only): `alloys.csv` (with wastage %), `stone_codes.csv`,
+`stone_matrix.csv`, `categories.csv` (with prefixes and the last number used) and `tags.csv`,
+plus a `README.txt`. `stone_matrix.csv` is exactly the stone matrix import format, so it can be
+loaded back as it is; the others are records to keep and read. The zip contains wastage and
+rates, so store it as carefully as a database backup.
+
 To load a large stone matrix, use **Import CSV / paste**. Columns, in order:
 `size_mm, stone_code, sieve, carats_per_stone, rate_per_ct` (sieve and rate may be empty; a header
 row is optional; tab-separated text pasted from a spreadsheet works). Sizes allow 2 decimals,
