@@ -309,6 +309,31 @@ Changing SG, the baseline stone code or baseline carats rebuilds every variation
 the background; the screen shows when that finishes. A matrix row cannot be deleted while a seat
 is locked to it.
 
+### Photos and video
+
+Every design page has a **Photos & video** section: one group for the whole design and one for
+each variation. Each group holds up to **5 files, photos and videos together**.
+
+- **Who:** admins and designers add, delete and choose covers; every role, production included,
+  can look.
+- **Types:** JPEG, PNG or WebP photos up to 20 MB, and MP4, MOV (iPhone) or WebM video up to
+  300 MB. The type is decided from the file's content, never its name or what the browser says,
+  so a script renamed `.jpg` or a HEIC photo is refused with a clear message.
+- **Cover:** a photo of the whole design can be made the **cover**; it is the picture on the
+  design's card in the catalog. Without one, the first photo is used. A design with no photo shows
+  "No photo yet".
+- **Thumbnails** (480 px, JPEG) are made when a photo is uploaded, so the catalog loads small
+  files. The original is stored untouched. Phone photos are rotated correctly from their EXIF
+  orientation. The original keeps its EXIF data, including GPS if the camera recorded it.
+- **Storage:** the same R2 bucket under `media/<design code>/`, or local disk in development.
+  Photos and video are shown straight from the bucket through short-lived signed links (an hour),
+  and a video can be seeked because the object is stored as it is, not gzipped.
+- **Content-Security-Policy:** the web container allows images and media from the R2 endpoint
+  only (`https://*.r2.cloudflarestorage.com`). If you reach R2 through a custom domain, set
+  `MEDIA_ORIGINS` in `.env` to that origin.
+- Deleting a media file, or a variation, removes its stored objects. Uploads, deletions and cover
+  changes are in the audit log (`media.upload`, `media.delete`, `media.cover`).
+
 ### Importing designs
 
 To load an existing catalog, use **Import** on the Catalog screen (admin and designer). Paste rows

@@ -26,6 +26,12 @@ server {
 
     set $api_upstream "http://${API_UPSTREAM}";
 
+    # The Angular production build has no inline scripts, so script-src needs no 'unsafe-inline'.
+    # Angular Material sets inline styles at runtime, hence style-src 'unsafe-inline'. Photos and
+    # video are shown straight from the object store through signed links, so its address is
+    # allowed for images and media only, never for scripts or connections.
+    set $csp "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: ${MEDIA_ORIGINS}; media-src 'self' ${MEDIA_ORIGINS}; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
     root /usr/share/nginx/html;
     index index.html;
 
@@ -49,7 +55,9 @@ server {
         include /etc/nginx/api-proxy.conf;
     }
 
-    location /api/ {
+    # ^~ so the static-file rule below (anything ending in .jpg, .png, ...) can never take over an
+    # API path: photos are served from /api/v1/local-files/.../name.jpg.
+    location ^~ /api/ {
         include /etc/nginx/api-proxy.conf;
     }
 

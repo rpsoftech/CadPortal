@@ -1,3 +1,4 @@
+import { deflateSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
 import { Page, expect, test } from '@playwright/test';
 
@@ -204,6 +205,140 @@ test('a CAD file keeps its bytes and its accented name through upload, download 
   await expect(page.getByText('No 3dm file stored yet')).toBeVisible();
 });
 
+// A real PNG of any size, made without a library: each row is a filter byte plus RGB pixels.
+function png(w: number, h: number): Buffer {
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const o = y * (w * 3 + 1) + 1 + x * 3;
+      raw[o] = (x * 255) / w;
+      raw[o + 1] = (y * 255) / h;
+      raw[o + 2] = 120;
+    }
+  }
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (b: Buffer) => {
+    let c = 0xffffffff;
+    for (const x of b) c = crcTable[(c ^ x) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const sum = Buffer.alloc(4);
+    sum.writeUInt32BE(crc(body));
+    return Buffer.concat([len, body, sum]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // RGB
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+// Not a playable video, but it carries the MP4 signature the server checks.
+const fakeMp4 = Buffer.concat([
+  Buffer.from('\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2', 'binary'),
+  Buffer.alloc(2048, 7),
+]);
+
+test('photos and video: upload, cover on the catalog card, per-variation, limit of five, delete', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
+  await page.goto('/designs/LR0001');
+  const gallery = page.getByRole('region', { name: 'Photos and video: Whole design' });
+  await expect(gallery.getByText('0 of 5')).toBeVisible();
+
+  // Two photos and a video at once, sent one after another.
+  await gallery.locator('input[type=file]').setInputFiles([
+    { name: 'front.png', mimeType: 'image/png', buffer: png(900, 600) },
+    { name: 'side view.png', mimeType: 'image/png', buffer: png(400, 800) },
+    { name: 'turntable.mp4', mimeType: 'video/mp4', buffer: fakeMp4 },
+  ]);
+  await expect(page.getByText('Added 3 files')).toBeVisible({ timeout: 60_000 });
+  await expect(gallery.getByText('3 of 5')).toBeVisible();
+  await expect(gallery.getByRole('button', { name: 'Open front.png' })).toBeVisible();
+  await expect(gallery.getByRole('button', { name: 'Open turntable.mp4' })).toBeVisible();
+  // The thumbnails really load (signed link, content-security-policy), not just exist.
+  const thumb = gallery.getByRole('img', { name: 'front.png' });
+  await expect(thumb).toBeVisible();
+  await expect
+    .poll(() => thumb.evaluate((i: HTMLImageElement) => i.naturalWidth))
+    .toBeGreaterThan(0);
+
+  // Choose the cover; it shows on the catalog card.
+  await gallery
+    .locator('li', { hasText: 'side view.png' })
+    .getByRole('button', { name: 'Make cover' })
+    .click();
+  await expect(gallery.getByText('Cover', { exact: true })).toBeVisible();
+  await page.goto('/');
+  const cover = page.getByRole('img', { name: 'LR0001 cover photo' });
+  await expect(cover).toBeVisible();
+  await expect
+    .poll(() => cover.evaluate((i: HTMLImageElement) => i.naturalWidth))
+    .toBeGreaterThan(0);
+  // The catalog thumbnail is the portrait photo that was chosen (400 x 800 shrinks to 240 x 480).
+  expect(await cover.evaluate((i: HTMLImageElement) => i.naturalHeight > i.naturalWidth)).toBe(
+    true,
+  );
+
+  // A photo opens large.
+  await page.goto('/designs/LR0001');
+  await gallery.getByRole('button', { name: 'Open front.png' }).click();
+  await expect(page.getByRole('dialog').getByRole('img', { name: 'front.png' })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+
+  // The same design's variation has its own five.
+  const variation = page.getByRole('region', { name: 'Photos and video: LR0001-V1' });
+  await variation.locator('input[type=file]').setInputFiles({
+    name: 'detail.png',
+    mimeType: 'image/png',
+    buffer: png(300, 300),
+  });
+  await expect(variation.getByText('1 of 5')).toBeVisible({ timeout: 30_000 });
+  await expect(variation.getByRole('button', { name: 'Make cover' })).toHaveCount(0);
+
+  // Five fit on the design: three more are offered, two are accepted and one is told there is no room.
+  await gallery.locator('input[type=file]').setInputFiles([
+    { name: 'a.png', mimeType: 'image/png', buffer: png(50, 50) },
+    { name: 'b.png', mimeType: 'image/png', buffer: png(50, 50) },
+    { name: 'c.png', mimeType: 'image/png', buffer: png(50, 50) },
+  ]);
+  await expect(gallery.getByText('5 of 5')).toBeVisible({ timeout: 30_000 });
+  await expect(gallery.getByText('c.png: no room left')).toBeVisible();
+  await expect(gallery.getByRole('button', { name: 'Add photo or video' })).toBeDisabled();
+
+  // A file of the wrong type is refused before anything is sent.
+  await variation.locator('input[type=file]').setInputFiles({
+    name: 'notes.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.7'),
+  });
+  await expect(
+    variation.getByText('use JPEG, PNG or WebP photos, or MP4, MOV or WebM video'),
+  ).toBeVisible();
+
+  // Delete one: room again.
+  page.once('dialog', (d) => void d.accept());
+  await gallery.locator('li', { hasText: 'a.png' }).getByRole('button', { name: 'Delete' }).click();
+  await expect(gallery.getByText('4 of 5')).toBeVisible();
+  await expect(gallery.getByRole('button', { name: 'Add photo or video' })).toBeEnabled();
+});
+
 test('the audit log shows what was done', async ({ page }) => {
   await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
   await page.getByRole('link', { name: 'Audit' }).click();
@@ -219,6 +354,31 @@ test('a production user can read but not edit', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'New design' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Import' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Audit' })).toHaveCount(0);
+
+  // Production sees the photos but has no way to change them, and the server agrees.
+  await expect(page.getByRole('img', { name: 'LR0001 cover photo' })).toBeVisible();
+  await page.goto('/designs/LR0001');
+  const gallery = page.getByRole('region', { name: 'Photos and video: Whole design' });
+  await expect(gallery.getByRole('img', { name: 'front.png' })).toBeVisible();
+  await expect(gallery.getByRole('button', { name: 'Add photo or video' })).toHaveCount(0);
+  await expect(gallery.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+  await expect(gallery.getByRole('button', { name: 'Make cover' })).toHaveCount(0);
+  const denied = await page.evaluate(async () => {
+    const s = JSON.parse(sessionStorage.getItem('cadportal.session') ?? '{}');
+    const form = new FormData();
+    form.append(
+      'file',
+      new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], { type: 'image/jpeg' }),
+      'x.jpg',
+    );
+    const r = await fetch('/api/v1/designs/1/media', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${s.token}` },
+      body: form,
+    });
+    return r.status;
+  });
+  expect(denied).toBe(403);
 
   // The server refuses even when the UI is bypassed, and the route guard bounces the page.
   await page.goto('/audit');

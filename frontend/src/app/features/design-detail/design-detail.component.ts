@@ -20,6 +20,7 @@ import { ApiError, toApiError } from '../../core/errors';
 import { FixedPipe, StoneGramsPipe } from '../../core/format';
 import { BomResult, CostingItem, Variation } from '../../core/models';
 import { saveBlob } from '../../shared/download';
+import { MediaGalleryComponent } from './media-gallery.component';
 import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design-dialog.component';
 import {
   NewVariationData,
@@ -48,6 +49,7 @@ export type BomState =
     MatRadioModule,
     MatSelectModule,
     FixedPipe,
+    MediaGalleryComponent,
     StoneGramsPipe,
   ],
   templateUrl: './design-detail.component.html',
@@ -63,10 +65,8 @@ export class DesignDetailComponent {
   private readonly snack = inject(MatSnackBar);
   protected readonly auth = inject(AuthService);
 
-  private readonly reloadTick = signal(0);
-
   protected readonly design = rxResource({
-    params: () => ({ code: this.code(), tick: this.reloadTick() }),
+    params: () => ({ code: this.code() }),
     stream: ({ params }) => this.api.getDesign(params.code),
   });
   protected readonly designError = computed(() => {
@@ -304,8 +304,12 @@ export class DesignDetailComponent {
       });
   }
 
+  /**
+   * Reloads the design in place: what is on screen stays until the new data arrives, so the page
+   * (and anything being typed or uploaded in it) is not torn down and rebuilt.
+   */
   protected refresh(): void {
-    this.reloadTick.update((n) => n + 1);
+    this.design.reload();
   }
 
   protected size(bytes: number | null): string {

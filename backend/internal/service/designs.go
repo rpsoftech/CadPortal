@@ -71,7 +71,13 @@ func (s *Service) UpdateDesign(ctx context.Context, id int64, in DesignInput) (d
 // orphaned object is harmless, a row pointing at a missing object is not).
 func (s *Service) DeleteVariation(ctx context.Context, id int64) error {
 	var keys []string
+	var photos []db.DesignMedium
 	err := s.inTx(ctx, func(q *db.Queries) error {
+		// The variation's photos go with it (the rows cascade); remember them to remove the objects.
+		var err error
+		if photos, err = q.ListMediaByVariation(ctx, pgtype.Int8{Int64: id, Valid: true}); err != nil {
+			return err
+		}
 		v, err := q.DeleteVariation(ctx, id)
 		if err != nil {
 			return err
@@ -86,6 +92,7 @@ func (s *Service) DeleteVariation(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
+	s.deleteMediaObjects(ctx, photos...)
 	if s.Store != nil {
 		for _, k := range keys {
 			_ = s.Store.Delete(context.WithoutCancel(ctx), k)
@@ -114,6 +121,7 @@ type DesignDetail struct {
 	db.MasterDesign
 	Tags       []db.Tag          `json:"tags"`
 	Variations []VariationDetail `json:"variations"`
+	Media      []MediaItem       `json:"media"` // photos and videos; empty when file storage is off
 }
 
 func (s *Service) GetDesignByCode(ctx context.Context, code string) (DesignDetail, error) {
@@ -136,6 +144,9 @@ func (s *Service) GetDesignByCode(ctx context.Context, code string) (DesignDetai
 			return out, err
 		}
 		out.Variations = append(out.Variations, VariationDetail{CadVariation: v, Weights: w})
+	}
+	if out.Media, err = s.ListMedia(ctx, d.ID); err != nil {
+		return out, err
 	}
 	return out, nil
 }
@@ -166,6 +177,8 @@ func nullDec(d *decimal.Decimal) decimal.NullDecimal {
 // is selected, the net/gross range across its variations for that metal.
 type DesignListItem struct {
 	db.ListDesignsRow
+	// CoverURL is a signed link to the cover photo's thumbnail (empty when the design has no photo).
+	CoverURL string           `json:"cover_url"`
 	NetMin   *decimal.Decimal `json:"net_min"`
 	NetMax   *decimal.Decimal `json:"net_max"`
 	GrossMin *decimal.Decimal `json:"gross_min"`
@@ -214,6 +227,12 @@ func (s *Service) ListDesigns(ctx context.Context, f DesignFilter) ([]DesignList
 			r.TagNames = []string{}
 		}
 		items[i] = DesignListItem{ListDesignsRow: r}
+		if r.CoverThumbKey.Valid && s.Store != nil {
+			// A failed signature only costs the card its picture, never the whole list.
+			if u, err := s.Store.PresignView(ctx, r.CoverThumbKey.String, "image/jpeg", MediaLinkTTL); err == nil {
+				items[i].CoverURL = u
+			}
+		}
 		ids[i] = r.ID
 	}
 	if f.MetalCode == "" || len(items) == 0 {

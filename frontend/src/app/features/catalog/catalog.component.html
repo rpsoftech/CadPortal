@@ -105,6 +105,13 @@
   <div class="grid">
     @for (d of state().items; track d.id) {
       <mat-card appearance="outlined">
+        <a [routerLink]="['/designs', d.code]" class="cover" [attr.aria-label]="'Open ' + d.code">
+          @if (d.cover_url) {
+            <img [src]="d.cover_url" [alt]="d.code + ' cover photo'" loading="lazy" />
+          } @else {
+            <span class="no-photo muted">No photo yet</span>
+          }
+        </a>
         <mat-card-header>
           <mat-card-title>
             <a [routerLink]="['/designs', d.code]" class="mono">{{ d.code }}</a>

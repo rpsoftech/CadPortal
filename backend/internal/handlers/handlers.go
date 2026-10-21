@@ -112,6 +112,12 @@ func (h *H) Register(r *gin.Engine) {
 	v1.POST("/variations/:id/upload-cad", editor, h.uploadCAD)
 	v1.GET("/variations/:id/download", anyRole, h.downloadCAD)
 	v1.DELETE("/variations/:id/cad", editor, h.removeCAD)
+
+	// Photos and video of a design or one of its variations: editors manage them, everyone sees them
+	// (they arrive with GET /designs/:code).
+	v1.POST("/designs/:id/media", editor, h.uploadMedia)
+	v1.DELETE("/media/:id", editor, h.deleteMedia)
+	v1.PUT("/media/:id/cover", editor, h.setCover)
 	if h.LocalFiles != nil {
 		// Auth is the signed, expiring link itself (like an R2 presigned URL).
 		v1.GET("/local-files/*key", h.serveLocalFile)
@@ -145,6 +151,8 @@ func fail(c *gin.Context, err error) {
 		status = http.StatusBadRequest
 	case errors.Is(err, service.ErrStorageDisabled):
 		status = http.StatusServiceUnavailable
+	case errors.Is(err, service.ErrTooLarge):
+		status = http.StatusRequestEntityTooLarge
 	case errors.Is(err, service.ErrInvalidCredentials):
 		status = http.StatusUnauthorized
 	}
@@ -158,6 +166,8 @@ func fail(c *gin.Context, err error) {
 	switch status {
 	case http.StatusBadRequest:
 		msg = strings.TrimPrefix(msg, "invalid input: ")
+	case http.StatusRequestEntityTooLarge:
+		msg = strings.TrimPrefix(msg, "file too large: ")
 	case http.StatusConflict:
 		msg = strings.TrimPrefix(msg, "conflict: ")
 	}
@@ -759,12 +769,18 @@ func (h *H) serveLocalFile(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	disp := storage.Disposition(filename)
 	hd := c.Writer.Header()
-	hd.Set("Content-Type", "application/octet-stream")
-	hd.Set("Content-Encoding", "gzip")
-	hd.Set("Content-Disposition", disp)
-	hd.Set("Cache-Control", "private, no-store")
+	if ct, inline := storage.InlineType(filename); inline {
+		// A photo or video shown in the page: plain bytes, with range support for video.
+		hd.Set("Content-Type", ct)
+		hd.Set("Content-Disposition", "inline")
+		hd.Set("Cache-Control", "private, max-age=3600")
+	} else {
+		hd.Set("Content-Type", "application/octet-stream")
+		hd.Set("Content-Encoding", "gzip")
+		hd.Set("Content-Disposition", storage.Disposition(filename))
+		hd.Set("Cache-Control", "private, no-store")
+	}
 	hd.Set("X-Content-Type-Options", "nosniff")
 	http.ServeContent(c.Writer, c.Request, "", st.ModTime(), f)
 }

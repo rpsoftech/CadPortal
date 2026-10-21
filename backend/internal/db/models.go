@@ -52,6 +52,24 @@ type Category struct {
 	NextSeq    int32              `json:"next_seq"`
 }
 
+type DesignMedium struct {
+	ID          int64              `json:"id"`
+	DesignID    int64              `json:"design_id"`
+	VariationID pgtype.Int8        `json:"variation_id"`
+	Kind        string             `json:"kind"`
+	ContentType string             `json:"content_type"`
+	Filename    string             `json:"filename"`
+	SizeBytes   int64              `json:"size_bytes"`
+	ObjectKey   string             `json:"object_key"`
+	ThumbKey    pgtype.Text        `json:"thumb_key"`
+	Width       pgtype.Int4        `json:"width"`
+	Height      pgtype.Int4        `json:"height"`
+	Position    int32              `json:"position"`
+	IsCover     bool               `json:"is_cover"`
+	CreatedBy   pgtype.Int8        `json:"created_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 type DesignTag struct {
 	DesignID int64 `json:"design_id"`
 	TagID    int64 `json:"tag_id"`

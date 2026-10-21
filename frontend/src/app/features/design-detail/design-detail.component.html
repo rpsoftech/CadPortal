@@ -30,6 +30,14 @@
       </mat-chip-set>
     }
 
+    <app-media-gallery
+      [designId]="d.id"
+      [media]="d.media"
+      [variations]="d.variations"
+      [canEdit]="auth.canEdit()"
+      (changed)="refresh()"
+    />
+
     @if (d.variations.length === 0) {
       <p class="muted">No variations yet. Add one to set its weight, seats and CAD files.</p>
     } @else {

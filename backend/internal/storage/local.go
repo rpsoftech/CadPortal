@@ -170,3 +170,24 @@ func (l *Local) Verify(key, filename, expires, sig string) bool {
 	want, _ := hex.DecodeString(l.sign(key, filename, exp))
 	return hmac.Equal(got, want)
 }
+
+// inlinePrefix marks a signed link that shows the object (instead of downloading it). It travels in
+// the signed filename parameter as "inline:<content type>". A real file name never looks like that,
+// because upload names are reduced to their last path segment and a content type contains a slash.
+const inlinePrefix = "inline:"
+
+// PutMedia stores an object as it is. Local files are plain bytes either way; what differs is how
+// the API serves them, chosen by the signed link (see PresignView).
+func (l *Local) PutMedia(ctx context.Context, key, _ string, r io.Reader) error {
+	return l.Put(ctx, key, r)
+}
+
+// PresignView returns a signed link that serves the object inline with contentType.
+func (l *Local) PresignView(ctx context.Context, key, contentType string, ttl time.Duration) (string, error) {
+	return l.PresignGet(ctx, key, inlinePrefix+contentType, ttl)
+}
+
+// InlineType reports whether a verified link is an inline view, and its content type.
+func InlineType(filename string) (string, bool) {
+	return strings.CutPrefix(filename, inlinePrefix)
+}
