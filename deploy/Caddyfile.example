@@ -1,0 +1,25 @@
+# Example TLS-terminating reverse proxy for the portal (Caddy 2). Replace the hostname.
+# Caddy gets and renews the certificate by itself; ports 80 and 443 must reach this machine.
+#
+#   cadportal.example.com { ... }
+#
+# The portal's web container listens on 127.0.0.1:8080 (WEB_BIND/WEB_PORT in .env). Caddy
+# sends the real client address in X-Forwarded-For, which the web container trusts from a
+# loopback or private peer, so the sign-in rate limit counts clients separately.
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	# CAD uploads can be large (the API allows 512 MB); do not cut them off early.
+	request_body {
+		max_size 512MB
+	}
+
+	reverse_proxy {$PORTAL_UPSTREAM:127.0.0.1:8080} {
+		# Stream uploads and downloads instead of buffering them.
+		flush_interval -1
+	}
+}
