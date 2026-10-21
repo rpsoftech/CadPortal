@@ -91,6 +91,7 @@ func (h *H) Register(r *gin.Engine) {
 	m.DELETE("/stone-matrix", admin, h.deleteMatrixRow)
 	m.GET("/matrix-gaps", admin, h.matrixGaps)
 	m.GET("/recalc-status", admin, h.recalcStatus)
+	m.GET("/setup-status", admin, h.setupStatus)
 
 	// Designs, variations, seats
 	v1.POST("/designs", editor, h.createDesign)
@@ -329,6 +330,10 @@ func (h *H) createDesign(c *gin.Context) {
 	var in designBody
 	if c.ShouldBindJSON(&in) != nil {
 		badRequest(c, "invalid JSON body")
+		return
+	}
+	if strings.TrimSpace(in.Code) != "" {
+		badRequest(c, "design codes are assigned automatically; leave code out")
 		return
 	}
 	out, err := h.S.CreateDesign(c, in.input())

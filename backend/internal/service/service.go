@@ -100,6 +100,10 @@ func (s *Service) CreateCategory(ctx context.Context, name, prefix string) (db.C
 	if name == "" {
 		return db.Category{}, invalid("name is required")
 	}
+	prefix, err := normalizePrefix(prefix)
+	if err != nil {
+		return db.Category{}, err
+	}
 	c, err := s.Q.CreateCategory(ctx, db.CreateCategoryParams{Name: name, CodePrefix: pgText(prefix)})
 	return c, friendly(err, "a category with that name or code prefix already exists")
 }

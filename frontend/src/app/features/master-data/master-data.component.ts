@@ -1,5 +1,9 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, linkedSignal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { MatTabsModule } from '@angular/material/tabs';
+import { ActivatedRoute } from '@angular/router';
+import { map } from 'rxjs';
+import { SetupChecklistComponent, tabIndex } from '../../shared/setup-checklist.component';
 import { MatrixTabComponent } from './matrix-tab.component';
 import { MetalsTabComponent } from './metals-tab.component';
 import { RecalcWatcher } from './recalc-watcher';
@@ -7,7 +11,13 @@ import { TaxonomyTabComponent } from './taxonomy-tab.component';
 
 @Component({
   selector: 'app-master-data',
-  imports: [MatTabsModule, MetalsTabComponent, MatrixTabComponent, TaxonomyTabComponent],
+  imports: [
+    MatTabsModule,
+    MetalsTabComponent,
+    MatrixTabComponent,
+    TaxonomyTabComponent,
+    SetupChecklistComponent,
+  ],
   providers: [RecalcWatcher],
   template: `
     <div class="page">
@@ -29,7 +39,13 @@ import { TaxonomyTabComponent } from './taxonomy-tab.component';
         }
       </div>
 
-      <mat-tab-group animationDuration="0ms">
+      <app-setup-checklist />
+
+      <mat-tab-group
+        animationDuration="0ms"
+        [selectedIndex]="selectedTab()"
+        (selectedIndexChange)="selectedTab.set($event)"
+      >
         <mat-tab label="Alloys">
           <ng-template matTabContent><app-metals-tab /></ng-template>
         </mat-tab>
@@ -60,4 +76,12 @@ import { TaxonomyTabComponent } from './taxonomy-tab.component';
 })
 export class MasterDataComponent {
   protected readonly recalc = inject(RecalcWatcher);
+  private readonly route = inject(ActivatedRoute);
+
+  /** The tab named in ?tab= (the checklist links here), then wherever the user clicks. */
+  private readonly tabFromUrl = toSignal(
+    this.route.queryParamMap.pipe(map((p) => tabIndex(p.get('tab')))),
+    { initialValue: 0 },
+  );
+  protected readonly selectedTab = linkedSignal(() => this.tabFromUrl());
 }

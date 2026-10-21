@@ -49,6 +49,7 @@ type Category struct {
 	CodePrefix pgtype.Text        `json:"code_prefix"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	NextSeq    int32              `json:"next_seq"`
 }
 
 type DesignTag struct {

@@ -1,15 +1,18 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/rpsoftech/cad-portal/backend/internal/auth"
+	"github.com/rpsoftech/cad-portal/backend/internal/service"
 )
 
 func TestImportDesignsOverHTTP(t *testing.T) {
-	r, _, _ := newHTTPEnv(t)
+	r, svc, _ := newHTTPEnv(t)
+	ringsPrefix(t, svc)
 	url := "/api/v1/designs/import"
 	good := []byte(`{"rows":[{"code":"LR300","name":"Ring","category":"Rings","volume_mm3":"200"}]}`)
 
@@ -71,7 +74,8 @@ func TestImportDesignsOverHTTP(t *testing.T) {
 }
 
 func TestDesignsCSVExportOverHTTP(t *testing.T) {
-	r, _, _ := newHTTPEnv(t)
+	r, svc, _ := newHTTPEnv(t)
+	ringsPrefix(t, svc)
 	url := "/api/v1/exports/designs-csv"
 	if w := do(r, "GET", url, "", "", nil); w.Code != 401 {
 		t.Errorf("no token: %d", w.Code)
@@ -95,5 +99,23 @@ func TestDesignsCSVExportOverHTTP(t *testing.T) {
 	rows, _ := fetchAudit(t, r, token(t, auth.Admin), "?action=export.designs")
 	if a := findAction(rows, "export.designs"); a == nil || a.Detail != "1 rows" {
 		t.Errorf("audit = %+v", a)
+	}
+}
+
+// ringsPrefix gives Rings its code prefix: a fresh database has none, and designs cannot be
+// created in a category without one.
+func ringsPrefix(t *testing.T, svc *service.Service) {
+	t.Helper()
+	ctx := context.Background()
+	cats, err := svc.ListCategories(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cats {
+		if c.Name == "Rings" {
+			if _, err := svc.UpdateCategory(ctx, c.ID, c.Name, "LR"); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }

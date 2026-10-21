@@ -1,6 +1,6 @@
 import { HttpClient, HttpEvent, HttpParams, HttpRequest } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
-import { Observable, catchError, map, of, throwError } from 'rxjs';
+import { Injectable, inject, signal } from '@angular/core';
+import { MonoTypeOperatorFunction, Observable, catchError, map, of, tap, throwError } from 'rxjs';
 import {
   AuditFilter,
   AuditRecord,
@@ -20,6 +20,7 @@ import {
   Metal,
   MetalInput,
   RecalcStatus,
+  SetupStatus,
   Seat,
   SeatInput,
   StoneCode,
@@ -37,6 +38,15 @@ const BASE = '/api/v1';
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly http = inject(HttpClient);
+
+  /**
+   * Counts successful master-data writes, so anything derived from master data (the setup
+   * checklist) can reload itself after the admin changes something, wherever they changed it.
+   */
+  readonly mastersChanged = signal(0);
+  private touched<T>(): MonoTypeOperatorFunction<T> {
+    return tap<T>(() => this.mastersChanged.update((n) => n + 1));
+  }
 
   // ----- audit log (admin) -----
   audit(f: AuditFilter): Observable<{ items: AuditRecord[]; total: number }> {
@@ -84,42 +94,49 @@ export class ApiService {
     return this.http.get<Tag[]>(`${BASE}/masters/tags`, { params }).pipe(orEmpty());
   }
   createTag(body: { name: string; tag_group: TagGroup }): Observable<Tag> {
-    return this.http.post<Tag>(`${BASE}/masters/tags`, body);
+    return this.http.post<Tag>(`${BASE}/masters/tags`, body).pipe(this.touched());
   }
   updateTag(id: number, body: { name: string; tag_group: TagGroup; active: boolean }) {
-    return this.http.put<Tag>(`${BASE}/masters/tags/${id}`, body);
+    return this.http.put<Tag>(`${BASE}/masters/tags/${id}`, body).pipe(this.touched());
   }
   createCategory(body: { name: string; code_prefix: string }): Observable<Category> {
-    return this.http.post<Category>(`${BASE}/masters/categories`, body);
+    return this.http.post<Category>(`${BASE}/masters/categories`, body).pipe(this.touched());
   }
   updateCategory(id: number, body: { name: string; code_prefix: string }): Observable<Category> {
-    return this.http.put<Category>(`${BASE}/masters/categories/${id}`, body);
+    return this.http.put<Category>(`${BASE}/masters/categories/${id}`, body).pipe(this.touched());
   }
   createMetal(body: MetalInput & { code: string }): Observable<Metal> {
-    return this.http.post<Metal>(`${BASE}/masters/metals`, body);
+    return this.http.post<Metal>(`${BASE}/masters/metals`, body).pipe(this.touched());
   }
   updateMetal(id: number, body: MetalInput): Observable<Metal> {
-    return this.http.put<Metal>(`${BASE}/masters/metals/${id}`, body);
+    return this.http.put<Metal>(`${BASE}/masters/metals/${id}`, body).pipe(this.touched());
   }
   createStoneCode(code: string): Observable<StoneCode> {
-    return this.http.post<StoneCode>(`${BASE}/masters/stone-codes`, { code });
+    return this.http.post<StoneCode>(`${BASE}/masters/stone-codes`, { code }).pipe(this.touched());
   }
   setStoneCodeActive(id: number, active: boolean): Observable<StoneCode> {
-    return this.http.put<StoneCode>(`${BASE}/masters/stone-codes/${id}`, { active });
+    return this.http
+      .put<StoneCode>(`${BASE}/masters/stone-codes/${id}`, { active })
+      .pipe(this.touched());
   }
   stoneMatrix(): Observable<StoneMatrixRow[]> {
     return this.http.get<StoneMatrixRow[]>(`${BASE}/masters/stone-matrix`).pipe(orEmpty());
   }
   /** Upserts rows and/or moves the baseline code. Weights are rebuilt in the background. */
   saveStoneMatrix(rows: MatrixRowInput[], baselineCode = ''): Observable<unknown> {
-    return this.http.put(`${BASE}/masters/stone-matrix`, { rows, baseline_code: baselineCode });
+    return this.http
+      .put(`${BASE}/masters/stone-matrix`, { rows, baseline_code: baselineCode })
+      .pipe(this.touched());
   }
   deleteMatrixRow(sizeMm: string, stoneCode: string): Observable<void> {
     const params = new HttpParams().set('size_mm', sizeMm).set('stone_code', stoneCode);
-    return this.http.delete<void>(`${BASE}/masters/stone-matrix`, { params });
+    return this.http.delete<void>(`${BASE}/masters/stone-matrix`, { params }).pipe(this.touched());
   }
   matrixGaps(): Observable<MatrixGap[]> {
     return this.http.get<MatrixGap[]>(`${BASE}/masters/matrix-gaps`).pipe(orEmpty());
+  }
+  setupStatus(): Observable<SetupStatus> {
+    return this.http.get<SetupStatus>(`${BASE}/masters/setup-status`);
   }
   recalcStatus(): Observable<RecalcStatus> {
     return this.http.get<RecalcStatus>(`${BASE}/masters/recalc-status`);
@@ -154,7 +171,8 @@ export class ApiService {
       })),
     );
   }
-  createDesign(body: { code: string; name: string; category_id: number; tag_ids: number[] }) {
+  /** The design code is assigned by the server from the category prefix. */
+  createDesign(body: { name: string; category_id: number; tag_ids: number[] }) {
     return this.http.post<{ id: number; code: string }>(`${BASE}/designs`, body);
   }
   /** A rejected import is a normal outcome (HTTP 422 with every problem), not an error. */

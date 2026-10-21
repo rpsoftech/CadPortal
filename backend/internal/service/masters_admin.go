@@ -55,7 +55,11 @@ func (s *Service) UpdateCategory(ctx context.Context, id int64, name, prefix str
 	if name == "" {
 		return db.Category{}, invalid("name is required")
 	}
-	c, err := s.Q.UpdateCategory(ctx, db.UpdateCategoryParams{ID: id, Name: name, CodePrefix: pgText(strings.TrimSpace(prefix))})
+	prefix, err := normalizePrefix(prefix)
+	if err != nil {
+		return db.Category{}, err
+	}
+	c, err := s.Q.UpdateCategory(ctx, db.UpdateCategoryParams{ID: id, Name: name, CodePrefix: pgText(prefix)})
 	return c, friendly(err, "another category already uses that name or code prefix")
 }
 

@@ -67,7 +67,7 @@ func (q *Queries) CountSeatsLockedTo(ctx context.Context, arg CountSeatsLockedTo
 }
 
 const createCategory = `-- name: CreateCategory :one
-INSERT INTO categories (name, code_prefix) VALUES ($1, $2) RETURNING id, name, code_prefix, created_at, updated_at
+INSERT INTO categories (name, code_prefix) VALUES ($1, $2) RETURNING id, name, code_prefix, created_at, updated_at, next_seq
 `
 
 type CreateCategoryParams struct {
@@ -84,6 +84,7 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		&i.CodePrefix,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NextSeq,
 	)
 	return i, err
 }
@@ -182,6 +183,17 @@ func (q *Queries) DeleteStoneMatrixRow(ctx context.Context, arg DeleteStoneMatri
 	return result.RowsAffected(), nil
 }
 
+const designCodeTaken = `-- name: DesignCodeTaken :one
+SELECT EXISTS (SELECT 1 FROM master_designs WHERE code = $1)
+`
+
+func (q *Queries) DesignCodeTaken(ctx context.Context, code string) (bool, error) {
+	row := q.db.QueryRow(ctx, designCodeTaken, code)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const enqueueRecalcJob = `-- name: EnqueueRecalcJob :one
 INSERT INTO weight_recalc_jobs (reason) VALUES ($1) RETURNING id
 `
@@ -224,6 +236,24 @@ func (q *Queries) GetBaselineStoneCode(ctx context.Context) (StoneCode, error) {
 		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getCategory = `-- name: GetCategory :one
+SELECT id, name, code_prefix, created_at, updated_at, next_seq FROM categories WHERE id = $1
+`
+
+func (q *Queries) GetCategory(ctx context.Context, id int64) (Category, error) {
+	row := q.db.QueryRow(ctx, getCategory, id)
+	var i Category
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CodePrefix,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.NextSeq,
 	)
 	return i, err
 }
@@ -381,7 +411,7 @@ func (q *Queries) ListAllTags(ctx context.Context) ([]Tag, error) {
 }
 
 const listCategories = `-- name: ListCategories :many
-SELECT id, name, code_prefix, created_at, updated_at FROM categories ORDER BY name
+SELECT id, name, code_prefix, created_at, updated_at, next_seq FROM categories ORDER BY name
 `
 
 func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
@@ -399,6 +429,7 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 			&i.CodePrefix,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.NextSeq,
 		); err != nil {
 			return nil, err
 		}
@@ -584,6 +615,41 @@ func (q *Queries) ListTags(ctx context.Context) ([]Tag, error) {
 	return items, nil
 }
 
+const nextCategoryNumber = `-- name: NextCategoryNumber :one
+UPDATE categories SET next_seq = next_seq + 1 WHERE id = $1 RETURNING id, name, code_prefix, created_at, updated_at, next_seq
+`
+
+// Hands out the next design number of a category. Runs inside the creating transaction, so
+// the row lock serialises creators and a rollback gives the number back.
+func (q *Queries) NextCategoryNumber(ctx context.Context, id int64) (Category, error) {
+	row := q.db.QueryRow(ctx, nextCategoryNumber, id)
+	var i Category
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CodePrefix,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.NextSeq,
+	)
+	return i, err
+}
+
+const raiseCategoryNumber = `-- name: RaiseCategoryNumber :exec
+UPDATE categories SET next_seq = GREATEST(next_seq, $2) WHERE id = $1
+`
+
+type RaiseCategoryNumberParams struct {
+	ID      int64 `json:"id"`
+	NextSeq int32 `json:"next_seq"`
+}
+
+// Keeps the counter past a code that was supplied explicitly (an import).
+func (q *Queries) RaiseCategoryNumber(ctx context.Context, arg RaiseCategoryNumberParams) error {
+	_, err := q.db.Exec(ctx, raiseCategoryNumber, arg.ID, arg.NextSeq)
+	return err
+}
+
 const recalcQueueStatus = `-- name: RecalcQueueStatus :one
 SELECT
     count(*) FILTER (WHERE status = 'pending')::int AS pending,
@@ -638,7 +704,9 @@ func (q *Queries) SetStoneCodeActive(ctx context.Context, arg SetStoneCodeActive
 }
 
 const updateCategory = `-- name: UpdateCategory :one
-UPDATE categories SET name = $2, code_prefix = $3 WHERE id = $1 RETURNING id, name, code_prefix, created_at, updated_at
+UPDATE categories SET name = $2, code_prefix = $3,
+    next_seq = CASE WHEN code_prefix IS DISTINCT FROM $3 THEN 0 ELSE next_seq END
+WHERE id = $1 RETURNING id, name, code_prefix, created_at, updated_at, next_seq
 `
 
 type UpdateCategoryParams struct {
@@ -647,6 +715,7 @@ type UpdateCategoryParams struct {
 	CodePrefix pgtype.Text `json:"code_prefix"`
 }
 
+// A new prefix starts counting again; codes already taken are skipped when numbers are handed out.
 func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error) {
 	row := q.db.QueryRow(ctx, updateCategory, arg.ID, arg.Name, arg.CodePrefix)
 	var i Category
@@ -656,6 +725,7 @@ func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) 
 		&i.CodePrefix,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NextSeq,
 	)
 	return i, err
 }

@@ -6,8 +6,11 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/api.service';
+import { normalizePrefix } from '../../core/code-prefix';
+import { toApiError } from '../../core/errors';
 import { Category, TAG_GROUPS, Tag } from '../../core/models';
 import { CategoryDialogComponent, TagDialogComponent } from './master-data-dialogs';
+import { nextDesignCode } from '../../shared/new-design-dialog.component';
 
 @Component({
   selector: 'app-taxonomy-tab',
@@ -20,8 +23,10 @@ import { CategoryDialogComponent, TagDialogComponent } from './master-data-dialo
         <button matButton="filled" (click)="editCategory(null)">Add category</button>
       </div>
       <p class="muted">
-        Each design has exactly one category. The code prefix (for example LR) is optional until the
-        numbering scheme is decided.
+        Each design has exactly one category. Design codes are assigned automatically: the
+        category's prefix plus a number, for example LR0001, LR0002. A category without a prefix
+        cannot take new designs. Type a prefix straight into the table; it saves when you leave the
+        field.
       </p>
       @if (categories.isLoading()) {
         <mat-progress-bar mode="indeterminate" />
@@ -31,6 +36,7 @@ import { CategoryDialogComponent, TagDialogComponent } from './master-data-dialo
           <tr>
             <th>Name</th>
             <th>Code prefix</th>
+            <th>Next code</th>
             <th></th>
           </tr>
         </thead>
@@ -38,11 +44,23 @@ import { CategoryDialogComponent, TagDialogComponent } from './master-data-dialo
           @for (c of categories.value() ?? []; track c.id) {
             <tr>
               <td>{{ c.name }}</td>
+              <td>
+                <input
+                  class="prefix-input mono"
+                  maxlength="6"
+                  autocomplete="off"
+                  placeholder="not set"
+                  [attr.aria-label]="'Code prefix for ' + c.name"
+                  [value]="c.code_prefix ?? ''"
+                  (change)="savePrefix(c, $any($event.target))"
+                  (keydown.enter)="$any($event.target).blur()"
+                />
+              </td>
               <td class="mono">
                 @if (c.code_prefix) {
-                  {{ c.code_prefix }}
+                  {{ nextCode(c) }}
                 } @else {
-                  <span class="muted">not set</span>
+                  <span class="muted">–</span>
                 }
               </td>
               <td><button matButton (click)="editCategory(c)">Edit</button></td>
@@ -85,6 +103,18 @@ import { CategoryDialogComponent, TagDialogComponent } from './master-data-dialo
     </section>
   `,
   styles: `
+    .prefix-input {
+      width: 6.5rem;
+      padding: 6px 8px;
+      text-transform: uppercase;
+      border-radius: 8px;
+      border: 1px solid var(--mat-sys-outline-variant);
+      background: transparent;
+      color: inherit;
+    }
+    .prefix-input:focus {
+      outline: 2px solid var(--mat-sys-primary);
+    }
     section {
       margin: 0 0 24px;
     }
@@ -116,6 +146,36 @@ export class TaxonomyTabComponent {
   private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly snack = inject(MatSnackBar);
+
+  /** Saves a prefix typed straight into the table. A bad one is refused and the old one shown. */
+  protected savePrefix(c: Category, input: HTMLInputElement): void {
+    const prefix = normalizePrefix(input.value);
+    if (prefix === null) {
+      input.value = c.code_prefix ?? '';
+      this.snack.open('A code prefix is 1 to 6 letters, for example LR.', 'OK', { duration: 5000 });
+      return;
+    }
+    if (prefix === (c.code_prefix ?? '')) {
+      input.value = prefix;
+      return;
+    }
+    this.api.updateCategory(c.id, { name: c.name, code_prefix: prefix }).subscribe({
+      next: () =>
+        this.saved(
+          prefix
+            ? `${c.name} will be numbered ${prefix}0001, ${prefix}0002…`
+            : `Removed the prefix of ${c.name}`,
+        ),
+      error: async (e) => {
+        input.value = c.code_prefix ?? '';
+        this.snack.open((await toApiError(e)).message, 'Dismiss', { duration: 6000 });
+      },
+    });
+  }
+
+  protected nextCode(c: Category): string {
+    return nextDesignCode(c.code_prefix ?? '', c.next_seq);
+  }
 
   private readonly tick = signal(0);
   protected readonly categories = rxResource({

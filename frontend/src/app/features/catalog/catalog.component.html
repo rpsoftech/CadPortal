@@ -11,6 +11,10 @@
     }
   </div>
 
+  @if (auth.isAdmin()) {
+    <app-setup-checklist [compact]="true" />
+  }
+
   <form [formGroup]="form" class="filters" aria-label="Catalog filters">
     <div class="row">
       <mat-form-field appearance="outline" class="search">

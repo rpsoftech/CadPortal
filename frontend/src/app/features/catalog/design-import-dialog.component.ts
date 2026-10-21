@@ -16,18 +16,21 @@ import { DesignImportResult } from '../../core/models';
       <p class="muted">
         Paste rows copied from a spreadsheet, or choose a CSV file. Columns, in order:
         <span class="mono">code, name, category, tags, volume_mm3, ref_weight_g, ref_metal</span>.
-        Put several tags in one cell separated by <span class="mono">;</span> (write
-        <span class="mono">Group:Name</span> if a tag name exists in two groups). Give each
-        variation either a volume, or a reference weight with its alloy. Repeat a code on another
-        row to add a variation to the same design. Categories, tags and alloys must already exist,
-        and existing designs are never changed.
+        Leave <span class="mono">code</span> empty: codes are assigned automatically (LR0001,
+        LR0002, …) from the category's prefix. A row with a category starts a new design; a row with
+        no category adds another variation to the design above it. Put several tags in one cell
+        separated by <span class="mono">;</span> (write <span class="mono">Group:Name</span>
+        if a tag name exists in two groups). Give each variation either a volume, or a reference
+        weight with its alloy. Categories (with a code prefix), tags and alloys must already exist.
+        A code is only needed to bring over designs that already have one, such as an earlier
+        export: it must be the category's prefix plus digits. Existing designs are never changed.
       </p>
       <input type="file" accept=".csv,.tsv,.txt,text/csv" (change)="onFile($event)" />
       <textarea
         class="paste mono"
         rows="8"
         spellcheck="false"
-        placeholder="LR001,Lotus ring,Rings,Floral;Bridal,200,,"
+        placeholder=",Lotus ring,Rings,Floral;Bridal,200,,"
         [value]="text()"
         (input)="setText($any($event.target).value)"
         aria-label="Design data"
@@ -110,7 +113,7 @@ import { DesignImportResult } from '../../core/models';
   `,
 })
 export class DesignImportDialogComponent {
-  private readonly ref = inject(MatDialogRef<DesignImportDialogComponent, number>);
+  private readonly ref = inject(MatDialogRef<DesignImportDialogComponent, DesignImportResult>);
   private readonly api = inject(ApiService);
 
   protected readonly text = signal('');
@@ -154,7 +157,7 @@ export class DesignImportDialogComponent {
     this.run(false, (res) => {
       if (res.errors.length)
         this.checked.set(res); // changed since the check, e.g. a code taken
-      else this.ref.close(res.designs);
+      else this.ref.close(res);
     });
   }
 
