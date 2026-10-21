@@ -19,6 +19,10 @@ FROM nginxinc/nginx-unprivileged:stable-alpine
 
 # nginx renders templates/*.template with the environment on start.
 ENV API_UPSTREAM=api:8080
+# Where photos and video may be loaded from (the R2 endpoint). Space-separated origins.
+ENV MEDIA_ORIGINS="https://*.r2.cloudflarestorage.com"
+# Where photos and video may be loaded from (the R2 endpoint). Space-separated origins.
+ENV MEDIA_ORIGINS="https://*.r2.cloudflarestorage.com"
 COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
 COPY nginx/api-proxy.conf /etc/nginx/api-proxy.conf
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template

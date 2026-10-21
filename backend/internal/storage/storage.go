@@ -24,6 +24,12 @@ type Store interface {
 	// PresignGet returns a time-limited download URL. The object is stored with
 	// Content-Encoding: gzip, so clients receive the original file named filename.
 	PresignGet(ctx context.Context, key, filename string, ttl time.Duration) (string, error)
+	// PutMedia stores r under key exactly as it is, with contentType and no gzip: photos and video
+	// are already compressed, and a video must be playable with range requests.
+	PutMedia(ctx context.Context, key, contentType string, r io.Reader) error
+	// PresignView returns a time-limited URL that shows the object inline with its content type
+	// (for <img> and <video>), where PresignGet makes a download.
+	PresignView(ctx context.Context, key, contentType string, ttl time.Duration) (string, error)
 }
 
 // Config describes an S3-compatible bucket. For R2, Endpoint is
@@ -150,4 +156,35 @@ func Disposition(filename string) string {
 		return d
 	}
 	return "attachment"
+}
+
+func (r *R2) PutMedia(ctx context.Context, key, contentType string, body io.Reader) error {
+	_, err := r.uploader.Upload(ctx, &s3.PutObjectInput{
+		Bucket:      &r.bucket,
+		Key:         &key,
+		Body:        body, // streamed in multipart chunks, so a long video is never held in memory
+		ContentType: aws.String(contentType),
+	})
+	return err
+}
+
+func (r *R2) PresignView(ctx context.Context, key, contentType string, ttl time.Duration) (string, error) {
+	req, err := r.presign.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket:                     &r.bucket,
+		Key:                        &key,
+		ResponseContentType:        aws.String(contentType),
+		ResponseContentDisposition: aws.String("inline"),
+	}, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return "", err
+	}
+	return req.URL, nil
+}
+
+func (m *Memory) PutMedia(ctx context.Context, key, _ string, r io.Reader) error {
+	return m.Put(ctx, key, r)
+}
+
+func (m *Memory) PresignView(_ context.Context, key, contentType string, ttl time.Duration) (string, error) {
+	return fmt.Sprintf("memory://%s?view=%s&ttl=%s", key, contentType, ttl), nil
 }

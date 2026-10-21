@@ -504,6 +504,9 @@ SELECT d.id, d.code, d.name, d.category_id, d.deleted_at, d.created_at, d.update
     ARRAY(SELECT t.name FROM design_tags dt JOIN tags t ON t.id = dt.tag_id
           WHERE dt.design_id = d.id ORDER BY t.tag_group, t.name)::text[] AS tag_names,
     (SELECT count(*) FROM cad_variations cv WHERE cv.design_id = d.id)::int AS variation_count,
+    -- the cover photo (or, failing that, the first photo) for the catalog card
+    (SELECT m.thumb_key FROM design_media m WHERE m.design_id = d.id AND m.kind = 'image'
+     ORDER BY m.is_cover DESC, m.variation_id NULLS FIRST, m.position, m.id LIMIT 1) AS cover_thumb_key,
     count(*) OVER ()::bigint AS total_count   -- matches before LIMIT/OFFSET, for pagination
 FROM master_designs d
 JOIN categories c ON c.id = d.category_id
@@ -562,6 +565,7 @@ type ListDesignsRow struct {
 	CategoryName   string             `json:"category_name"`
 	TagNames       []string           `json:"tag_names"`
 	VariationCount int32              `json:"variation_count"`
+	CoverThumbKey  pgtype.Text        `json:"cover_thumb_key"`
 	TotalCount     int64              `json:"total_count"`
 }
 
@@ -599,6 +603,7 @@ func (q *Queries) ListDesigns(ctx context.Context, arg ListDesignsParams) ([]Lis
 			&i.CategoryName,
 			&i.TagNames,
 			&i.VariationCount,
+			&i.CoverThumbKey,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err

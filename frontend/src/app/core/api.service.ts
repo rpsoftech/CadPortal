@@ -14,6 +14,7 @@ import {
   DesignImportRow,
   DesignListItem,
   DesignPage,
+  MediaItem,
   DownloadLink,
   MatrixGap,
   MatrixRowInput,
@@ -243,6 +244,29 @@ export class ApiService {
   removeCad(variationId: number, kind: '3dm' | 'stl'): Observable<void> {
     const params = new HttpParams().set('kind', kind);
     return this.http.delete<void>(`${BASE}/variations/${variationId}/cad`, { params });
+  }
+  // ----- photos and video -----
+  /**
+   * Streams a multipart upload of one photo or video. variation_id goes first: the server reads
+   * the form as it arrives and needs it before the file.
+   */
+  uploadMedia(
+    designId: number,
+    file: File,
+    variationId: number | null,
+  ): Observable<HttpEvent<MediaItem>> {
+    const form = new FormData();
+    if (variationId !== null) form.append('variation_id', String(variationId));
+    form.append('file', file, file.name);
+    return this.http.request<MediaItem>(
+      new HttpRequest('POST', `${BASE}/designs/${designId}/media`, form, { reportProgress: true }),
+    );
+  }
+  deleteMedia(id: number): Observable<void> {
+    return this.http.delete<void>(`${BASE}/media/${id}`);
+  }
+  setCover(id: number): Observable<void> {
+    return this.http.put<void>(`${BASE}/media/${id}/cover`, null);
   }
   downloadLink(variationId: number, kind: '3dm' | 'stl'): Observable<DownloadLink> {
     const params = new HttpParams().set('kind', kind);

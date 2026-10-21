@@ -68,6 +68,9 @@ services:
         condition: service_healthy
     environment:
       API_UPSTREAM: api:8080
+      # Where photos and video load from (signed links to the object store). Change it only if
+      # R2 is reached through a custom domain.
+      MEDIA_ORIGINS: ${MEDIA_ORIGINS:-https://*.r2.cloudflarestorage.com}
     ports:
       - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
     read_only: true

@@ -124,6 +124,8 @@ export interface DesignListItem {
   category_name: string;
   tag_names: string[];
   variation_count: number;
+  /** A signed link to the cover photo's thumbnail, or empty when the design has no photo. */
+  cover_url: string;
   net_min: Dec | null;
   net_max: Dec | null;
   gross_min: Dec | null;
@@ -185,6 +187,7 @@ export interface DesignDetail {
   category_id: number;
   tags: Tag[];
   variations: Variation[];
+  media: MediaItem[];
 }
 
 export interface BaseInput {
@@ -296,4 +299,23 @@ export interface SetupItem {
 export interface SetupStatus {
   complete: boolean;
   items: SetupItem[];
+}
+
+/** A photo or video of a design (variation_id null) or of one of its variations. */
+export interface MediaItem {
+  id: number;
+  design_id: number;
+  variation_id: number | null;
+  kind: 'image' | 'video';
+  content_type: string;
+  filename: string;
+  size_bytes: number;
+  width: number | null;
+  height: number | null;
+  position: number;
+  /** Only a photo of the whole design can be the cover of its catalog card. */
+  is_cover: boolean;
+  /** Signed links that expire; the page asks again when it reloads. */
+  url: string;
+  thumb_url?: string;
 }

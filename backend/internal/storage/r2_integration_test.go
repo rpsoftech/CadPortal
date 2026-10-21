@@ -200,3 +200,58 @@ func TestR2PutFailsCleanlyWhenTheSourceBreaks(t *testing.T) {
 		t.Error("an object exists after a failed upload")
 	}
 }
+
+func TestR2MediaIsServedInlineWithItsTypeAndRanges(t *testing.T) {
+	r, prefix := newTestR2(t)
+	ctx := context.Background()
+	// 12 MiB, larger than one multipart part: the video path streams without knowing the length.
+	data := make([]byte, 12<<20)
+	rand.Read(data) //nolint:errcheck
+	key := prefix + "turntable.mp4"
+	pr, pw := io.Pipe()
+	go func() { pw.Write(data); pw.Close() }() //nolint:errcheck
+	if err := r.PutMedia(ctx, key, "video/mp4", pr); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Delete(ctx, key) })
+
+	url, err := r.PresignView(ctx, key, "video/mp4", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Even a client that accepts gzip gets the plain bytes back: the object is not gzip.
+	resp, body := get(t, url, true)
+	if resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "video/mp4" || resp.Header.Get("Content-Disposition") != "inline" {
+		t.Fatalf("view: %d %q %q", resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("Content-Disposition"))
+	}
+	if resp.Header.Get("Content-Encoding") != "" {
+		t.Errorf("Content-Encoding = %q, want none", resp.Header.Get("Content-Encoding"))
+	}
+	if sum(body) != sum(data) {
+		t.Errorf("served bytes differ (%d vs %d)", len(body), len(data))
+	}
+
+	// A video player seeks with Range requests.
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Range", "bytes=1000-1999")
+	rr, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	part, _ := io.ReadAll(rr.Body)
+	rr.Body.Close()
+	if rr.StatusCode != http.StatusPartialContent || !bytes.Equal(part, data[1000:2000]) {
+		t.Errorf("range: %d, %d bytes", rr.StatusCode, len(part))
+	}
+
+	// The type shown follows what was stored, so a photo is an image and not a download.
+	pkey := prefix + "front.png"
+	if err := r.PutMedia(ctx, pkey, "image/png", bytes.NewReader([]byte("\x89PNG\r\n\x1a\nxx"))); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Delete(ctx, pkey) })
+	purl, _ := r.PresignView(ctx, pkey, "image/png", time.Minute)
+	if resp, _ := get(t, purl, true); resp.Header.Get("Content-Type") != "image/png" || resp.Header.Get("Content-Disposition") != "inline" {
+		t.Errorf("photo headers: %q %q", resp.Header.Get("Content-Type"), resp.Header.Get("Content-Disposition"))
+	}
+}
