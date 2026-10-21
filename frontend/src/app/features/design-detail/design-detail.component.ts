@@ -17,7 +17,7 @@ import { catchError, from, map, of, startWith, switchMap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { ApiError, toApiError } from '../../core/errors';
-import { FixedPipe } from '../../core/format';
+import { FixedPipe, StoneGramsPipe } from '../../core/format';
 import { BomResult, CostingItem, Variation } from '../../core/models';
 import { saveBlob } from '../../shared/download';
 import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design-dialog.component';
@@ -48,6 +48,7 @@ export type BomState =
     MatRadioModule,
     MatSelectModule,
     FixedPipe,
+    StoneGramsPipe,
   ],
   templateUrl: './design-detail.component.html',
   styleUrl: './design-detail.component.scss',

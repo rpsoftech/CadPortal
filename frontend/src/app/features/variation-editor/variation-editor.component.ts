@@ -14,7 +14,7 @@ import { catchError, map, of } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { toApiError } from '../../core/errors';
-import { FixedPipe, fixed } from '../../core/format';
+import { FixedPipe, StoneGramsPipe, fixed } from '../../core/format';
 import { BaseInput, Seat, Variation } from '../../core/models';
 import { BaseInputComponent } from '../../shared/base-input.component';
 import { FileDropzoneComponent } from '../../shared/file-dropzone.component';
@@ -55,6 +55,7 @@ function seatGroup(size = '', count = '', locked = '') {
     BaseInputComponent,
     FileDropzoneComponent,
     FixedPipe,
+    StoneGramsPipe,
   ],
   templateUrl: './variation-editor.component.html',
   styleUrl: './variation-editor.component.scss',

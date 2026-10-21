@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-pdf/fpdf"
 
+	"github.com/rpsoftech/cad-portal/backend/internal/calc"
 	"github.com/rpsoftech/cad-portal/backend/internal/service"
 )
 
@@ -28,7 +29,7 @@ func safeCell(s string) string {
 
 var CostingHeader = []string{
 	"variation", "metal", "stone_code", "net_g", "wastage_pct", "gold_g_with_wastage",
-	"gold_rate_per_g", "gold_cost", "stone_ct", "stone_cost",
+	"gold_rate_per_g", "gold_cost", "stone_ct", "stone_g", "stone_cost",
 	"setting_pcs", "setting_rate_per_pc", "setting_cost", "total",
 }
 
@@ -43,7 +44,7 @@ func WriteCostingCSV(w io.Writer, rows []service.CostRow) error {
 			safeCell(r.VariationCode), safeCell(r.MetalCode), safeCell(r.StoneCode),
 			r.NetG.StringFixed(3), r.WastagePct.String(), r.GoldG.StringFixed(3),
 			r.GoldRatePerG.String(), r.GoldCost.StringFixed(2),
-			r.StoneCarats.StringFixed(4), r.StoneCost.StringFixed(2),
+			r.StoneCarats.StringFixed(4), calc.RoundLineGrams(calc.StoneWeight(r.StoneCarats)).StringFixed(4), r.StoneCost.StringFixed(2),
 			strconv.Itoa(r.SettingPcs), r.SettingRatePerPc.String(), r.SettingCost.StringFixed(2),
 			r.Total.StringFixed(2),
 		}
@@ -107,7 +108,7 @@ func RenderJobBagPDF(jb service.JobBag) ([]byte, error) {
 		h     string
 		w     float64
 		align string
-	}{{"Size (mm)", 28, "L"}, {"Pcs", 20, "R"}, {"Code", 24, "L"}, {"Seat", 24, "L"}, {"ct / stone", 32, "R"}, {"Line ct", 32, "R"}}
+	}{{"Size (mm)", 28, "L"}, {"Pcs", 20, "R"}, {"Code", 24, "L"}, {"Seat", 24, "L"}, {"ct / stone", 28, "R"}, {"Line ct", 28, "R"}, {"Line g", 28, "R"}}
 	pdf.SetFont("Helvetica", "B", 10)
 	pdf.SetFillColor(235, 235, 235)
 	for _, c := range cols {
@@ -121,7 +122,7 @@ func RenderJobBagPDF(jb service.JobBag) ([]byte, error) {
 			seat = "locked"
 		}
 		vals := []string{l.SizeMM.StringFixed(2), strconv.Itoa(l.StoneCount), l.StoneCode, seat,
-			l.CaratsPerStone.StringFixed(4), l.LineCarats.StringFixed(4)}
+			l.CaratsPerStone.StringFixed(4), l.LineCarats.StringFixed(4), l.LineWeightG.StringFixed(4)}
 		for i, c := range cols {
 			pdf.CellFormat(c.w, 6, vals[i], "1", 0, c.align, false, 0, "")
 		}
@@ -131,7 +132,8 @@ func RenderJobBagPDF(jb service.JobBag) ([]byte, error) {
 	pdf.CellFormat(cols[0].w, 7, "Total", "1", 0, "L", true, 0, "")
 	pdf.CellFormat(cols[1].w, 7, strconv.Itoa(jb.BOM.TotalPcs), "1", 0, "R", true, 0, "")
 	pdf.CellFormat(cols[2].w+cols[3].w+cols[4].w, 7, "", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(cols[5].w, 7, jb.BOM.TotalCarats.StringFixed(4), "1", 1, "R", true, 0, "")
+	pdf.CellFormat(cols[5].w, 7, jb.BOM.TotalCarats.StringFixed(4), "1", 0, "R", true, 0, "")
+	pdf.CellFormat(cols[6].w, 7, calc.RoundLineGrams(calc.StoneWeight(jb.BOM.TotalCarats)).StringFixed(4), "1", 1, "R", true, 0, "")
 	if len(jb.BOM.Lines) == 0 {
 		pdf.SetFont("Helvetica", "I", 10)
 		pdf.CellFormat(0, 7, "No stone seats.", "", 1, "L", false, 0, "")
