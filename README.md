@@ -204,11 +204,15 @@ publish anything on a pull request or a merge.
 7. **Backups:** schedule `scripts/backup.sh` (cron or a systemd timer), copy the dumps off the
    machine, and try `scripts/restore.sh` once on a spare copy so you know it works for you.
 8. **After the first start**, check by hand: sign in, create a design, upload a small `.3dm`,
-   download it again and compare it with the original, remove it. This is the one path CI cannot
-   cover, because CI uses local disk instead of R2.
+   download it again and compare it with the original, remove it. CI uses local disk, so it
+   cannot cover your real bucket and credentials. To check a bucket before going live, run
+   `go test ./internal/storage -run R2 -v` with `R2_TEST_*` set in `.env` (a scratch bucket, see
+   `.env.example`).
 
-What has **not** been verified against real services: uploads and downloads on a real R2
-bucket, and the published-image workflow (it first runs when you push a version tag).
+Checked against a real R2 bucket: uploads (including multipart), browser downloads that return
+the original bytes under the original (even accented) name, expiring and tampered links, and
+deletion. Not yet verified against a real service: the published-image workflow (it first runs
+when you push a version tag).
 
 ### Releases and published images
 
