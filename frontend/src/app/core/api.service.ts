@@ -257,6 +257,10 @@ export class ApiService {
   }): Observable<Blob> {
     return this.http.post(`${BASE}/exports/job-bag-pdf`, body, { responseType: 'blob' });
   }
+  /** Every master-data table as CSV files in one zip (admin only). */
+  masterDataZip(): Observable<Blob> {
+    return this.http.get(`${BASE}/masters/export`, { responseType: 'blob' });
+  }
   designsCsv(): Observable<Blob> {
     return this.http.get(`${BASE}/exports/designs-csv`, { responseType: 'blob' });
   }

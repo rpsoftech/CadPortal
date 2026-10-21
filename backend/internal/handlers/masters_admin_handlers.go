@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 
+	"github.com/rpsoftech/cad-portal/backend/internal/export"
 	"github.com/rpsoftech/cad-portal/backend/internal/service"
 )
 
@@ -140,4 +143,24 @@ func (h *H) recalcStatus(c *gin.Context) {
 func (h *H) setupStatus(c *gin.Context) {
 	out, err := h.S.SetupStatus(c)
 	respond(c, http.StatusOK, out, err)
+}
+
+// masterDataZip downloads every master-data table as CSV files in one zip. Admin only: it holds
+// wastage percentages and stone rates.
+func (h *H) masterDataZip(c *gin.Context) {
+	md, err := h.S.MasterData(c)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	now := time.Now()
+	var buf bytes.Buffer
+	if err := export.WriteMasterDataZip(&buf, md, now); err != nil {
+		fail(c, err)
+		return
+	}
+	auditNote(c, "master_data", "", fmt.Sprintf("%d alloys, %d matrix rows, %d categories", len(md.Metals), len(md.Matrix), len(md.Categories)))
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="master-data-%s.zip"`, now.UTC().Format("2006-01-02")))
+	c.Header("Cache-Control", "private, no-store")
+	c.Data(http.StatusOK, "application/zip", buf.Bytes())
 }

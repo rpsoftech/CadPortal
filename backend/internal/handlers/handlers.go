@@ -91,6 +91,7 @@ func (h *H) Register(r *gin.Engine) {
 	m.GET("/matrix-gaps", admin, h.matrixGaps)
 	m.GET("/recalc-status", admin, h.recalcStatus)
 	m.GET("/setup-status", admin, h.setupStatus)
+	m.GET("/export", admin, h.masterDataZip)
 
 	// Designs, variations, seats
 	v1.POST("/designs", editor, h.createDesign)
