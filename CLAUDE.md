@@ -20,6 +20,7 @@ frontend/           Angular 22 app (standalone components, Signals, zoneless, Vi
 docker-compose.yml  Postgres 18 for local dev
 docker-compose.prod.yml  production-style stack: db + api + web (nginx); images from backend/Dockerfile and frontend/Dockerfile
 docker-compose.images.yml  overlay for prod: run the published ghcr.io images instead of building (see README, Releases)
+deploy/             Caddyfile.example: TLS reverse proxy for going live
 scripts/            backup.sh, restore.sh, e2e.sh, ratelimit_test.sh and their tests (run in CI)
 ```
 

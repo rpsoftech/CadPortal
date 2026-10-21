@@ -182,6 +182,34 @@ scripts/restore.sh backups/cad_portal-20261021-020000.dump
 CI builds both images and validates the compose files when their inputs change, but does not
 publish anything on a pull request or a merge.
 
+### Going live: checklist
+
+1. **A server** with Docker and Compose, a DNS name pointing at it, and ports 80 and 443 open.
+   Only the web container is published, and only on `127.0.0.1:8080`.
+2. **`.env`** (from `.env.example`, never committed): `POSTGRES_PASSWORD` and `JWT_SECRET`
+   (`openssl rand -hex 24` and `openssl rand -hex 32`), and the R2 values (`S3_ENDPOINT`,
+   `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`). Leave `STORAGE` empty.
+3. **R2:** a private bucket, and an API token limited to that bucket with object read and write.
+   Downloads send the browser straight to a short-lived signed link (a page navigation, so no
+   CORS rule is needed).
+4. **Start it:** `docker compose -f docker-compose.prod.yml up -d --build --wait` (or the
+   published images, see Releases below). The API applies migrations when it starts.
+5. **TLS:** run a reverse proxy in front. `deploy/Caddyfile.example` is a complete one for Caddy
+   (automatic certificates, `Strict-Transport-Security`, large uploads, streaming). Through it,
+   the sign-in rate limit counts each client separately, and a spoofed `X-Forwarded-For` header
+   cannot be used to get around it (both checked).
+6. **First admin:** `docker compose -f docker-compose.prod.yml exec api /app/adduser -email you@example.com -name "Your Name" -role admin`
+   (prefix with `MSYS_NO_PATHCONV=1` in Git Bash). Then sign in and follow the setup banner:
+   alloys, category prefixes and the stone matrix (see First-time setup above).
+7. **Backups:** schedule `scripts/backup.sh` (cron or a systemd timer), copy the dumps off the
+   machine, and try `scripts/restore.sh` once on a spare copy so you know it works for you.
+8. **After the first start**, check by hand: sign in, create a design, upload a small `.3dm`,
+   download it again and compare it with the original, remove it. This is the one path CI cannot
+   cover, because CI uses local disk instead of R2.
+
+What has **not** been verified against real services: uploads and downloads on a real R2
+bucket, and the published-image workflow (it first runs when you push a version tag).
+
 ### Releases and published images
 
 Images are published to GitHub Container Registry only when you push a version tag:
