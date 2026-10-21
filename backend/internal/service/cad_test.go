@@ -219,3 +219,44 @@ func TestRemoveCADFreesTheChecksumAndObject(t *testing.T) {
 		t.Errorf("unknown variation: %v", err)
 	}
 }
+
+func TestCleanFilename(t *testing.T) {
+	long := strings.Repeat("a", 300) + ".3dm"
+	for _, c := range []struct{ in, want string }{
+		{"ring.3dm", "ring.3dm"},
+		{"bague \u00e9t\u00e9.3dm", "bague \u00e9t\u00e9.3dm"},
+		{`C:\Users\me\ring.3DM`, "ring.3DM"},
+		{"/tmp/../etc/ring.stl", "ring.stl"},
+		{"bad\xe9t\xe9.3dm", "bad_t_.3dm"}, // Latin-1 bytes from a legacy client
+		{"line\r\nbreak\x00.3dm", "linebreak.3dm"},
+		{"  spaced.3dm  ", "spaced.3dm"},
+	} {
+		if got := cleanFilename(c.in); got != c.want {
+			t.Errorf("cleanFilename(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+	got := cleanFilename(long)
+	if len([]rune(got)) != maxFilenameRunes || !strings.HasSuffix(got, ".3dm") {
+		t.Errorf("a long name keeps its extension and is cut to %d runes, got %d runes %q", maxFilenameRunes, len([]rune(got)), got[len(got)-8:])
+	}
+}
+
+func TestUploadCADAcceptsANonUTF8AndAccentedFilename(t *testing.T) {
+	s, mem := newCADService(t)
+	ctx := context.Background()
+	des := newDesign(t, s, "LR0600")
+	v, _ := s.CreateVariation(ctx, des.ID, BaseInput{VolumeMM3: dp("200")})
+
+	// What a client in a Latin-1 code page sends: not valid UTF-8. It used to end in a 500 from Postgres.
+	res, err := s.UploadCAD(ctx, v.ID, "bague \xe9t\xe9.3dm", bytes.NewReader(randBytes(t, 500)))
+	if err != nil || res.Filename != "bague _t_.3dm" {
+		t.Fatalf("latin-1 name: %+v %v", res, err)
+	}
+	res, err = s.UploadCAD(ctx, v.ID, "bague \u00e9t\u00e9.3dm", bytes.NewReader(randBytes(t, 600)))
+	if err != nil || res.Filename != "bague \u00e9t\u00e9.3dm" {
+		t.Fatalf("utf-8 name: %+v %v", res, err)
+	}
+	if len(mem.Keys()) != 1 {
+		t.Errorf("objects = %v (replacing should leave one)", mem.Keys())
+	}
+}

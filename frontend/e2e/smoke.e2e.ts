@@ -152,18 +152,40 @@ test('the weight matrix matches the spec fixtures', async ({ page }) => {
   await expect(row('18KR')).toContainText('Net 3.050');
 });
 
-test('a CAD file can be uploaded, then removed', async ({ page }) => {
+test('a CAD file keeps its bytes and its accented name through upload, download and removal', async ({
+  page,
+}) => {
+  test.setTimeout(180_000); // a real bucket over the internet is slower than local disk
   await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
   await page.goto('/designs/LR0001');
   await page.getByRole('link', { name: 'Edit seats & files' }).click();
 
+  // 6 MiB of non-repeating bytes: large enough for a multipart upload to R2, and gzip cannot
+  // shrink it, so a truncated or doubled stream would show.
+  const name = 'bague été.3dm';
+  const original = Buffer.alloc(6 << 20);
+  for (let i = 0; i < original.length; i += 4)
+    original.writeUInt32LE(Math.imul(i + 1, 2654435761) >>> 0, i);
   await page.locator('input[type=file][accept=".3dm"]').setInputFiles({
-    name: 'smoke.3dm',
+    name,
     mimeType: 'application/octet-stream',
-    buffer: Buffer.from('not a real 3dm file, but bytes are bytes'),
+    buffer: original,
   });
-  await expect(page.getByText('Stored: smoke.3dm')).toBeVisible();
+  await expect(page.getByText(`Stored: ${name}`)).toBeVisible({ timeout: 120_000 });
 
+  // Download it from the design page, as a user would.
+  await page.goto('/designs/LR0001');
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Download', exact: true }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe(name);
+  const path = await download.path();
+  const { readFileSync } = await import('node:fs');
+  expect(readFileSync(path).equals(original)).toBe(true);
+
+  await page.goto('/designs/LR0001');
+  await page.getByRole('link', { name: 'Edit seats & files' }).click();
   page.once('dialog', (d) => void d.accept());
   await page.getByRole('button', { name: 'Remove' }).click();
   await expect(page.getByText('No 3dm file stored yet')).toBeVisible();

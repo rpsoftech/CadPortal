@@ -60,7 +60,7 @@ func (s *Service) UploadCAD(ctx context.Context, variationID int64, filename str
 	if s.Store == nil {
 		return UploadResult{}, ErrStorageDisabled
 	}
-	filename = filepath.Base(filename)
+	filename = cleanFilename(filename)
 	kind, ok := KindFromFilename(filename)
 	if !ok {
 		return UploadResult{}, invalid("file must have a .3dm or .stl extension")
@@ -224,4 +224,32 @@ func (s *Service) RemoveCAD(ctx context.Context, variationID int64, kind string)
 		_ = s.Store.Delete(context.WithoutCancel(ctx), oldKey) // best effort; an orphan is harmless
 	}
 	return nil
+}
+
+const maxFilenameRunes = 200
+
+// cleanFilename makes an uploaded file name safe to store and to put in a header: only the base
+// name (browsers send that, but a script may send a path with either kind of separator), valid
+// UTF-8 (a client in a legacy code page can send Latin-1 bytes, which Postgres refuses), no
+// control characters, and a bounded length that keeps the extension.
+func cleanFilename(name string) string {
+	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
+		name = name[i+1:]
+	}
+	name = strings.ToValidUTF8(name, "_")
+	name = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, name)
+	name = strings.TrimSpace(name)
+	if r := []rune(name); len(r) > maxFilenameRunes {
+		ext := filepath.Ext(name)
+		if len([]rune(ext)) > 10 {
+			ext = ""
+		}
+		name = string(r[:maxFilenameRunes-len([]rune(ext))]) + ext
+	}
+	return name
 }
