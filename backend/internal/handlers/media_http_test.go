@@ -262,3 +262,27 @@ func TestMediaOnLocalStorageIsServedInlineWithRanges(t *testing.T) {
 		t.Errorf("cover thumbnail: %d", c.Code)
 	}
 }
+
+func TestJobBagPDFCarriesThePhotoOverHTTP(t *testing.T) {
+	r, svc, _ := newHTTPEnv(t)
+	design, _, variation := mediaDesignOverHTTP(t, svc)
+	body := []byte(fmt.Sprintf(`{"variation_id":%d,"metal_code":"18KR","stone_code":"1HD"}`, variation))
+	pdf := func() []byte {
+		w := do(r, "POST", "/api/v1/exports/job-bag-pdf", token(t, auth.Production), "application/json", body)
+		if w.Code != 200 || !bytes.HasPrefix(w.Body.Bytes(), []byte("%PDF-")) {
+			t.Fatalf("job bag: %d", w.Code)
+		}
+		return w.Body.Bytes()
+	}
+	if bytes.Contains(pdf(), []byte("/Subtype /Image")) {
+		t.Fatal("no photo yet, so no image")
+	}
+	b, ct := mediaForm(t, "", "front.png", photoPNG(600, 400))
+	if w := do(r, "POST", fmt.Sprintf("/api/v1/designs/%d/media", design), token(t, auth.Designer), ct, b); w.Code != 201 {
+		t.Fatalf("upload: %d %s", w.Code, w.Body)
+	}
+	// Production, who may not edit anything, still gets the photo on the sheet it prints.
+	if !bytes.Contains(pdf(), []byte("/Subtype /Image")) {
+		t.Error("the job bag has no photo although the design has one")
+	}
+}

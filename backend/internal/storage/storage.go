@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -30,6 +31,8 @@ type Store interface {
 	// PresignView returns a time-limited URL that shows the object inline with its content type
 	// (for <img> and <video>), where PresignGet makes a download.
 	PresignView(ctx context.Context, key, contentType string, ttl time.Duration) (string, error)
+	// Get opens a stored object for reading (the job bag reads a photo's thumbnail). The caller closes it.
+	Get(ctx context.Context, key string) (io.ReadCloser, error)
 }
 
 // Config describes an S3-compatible bucket. For R2, Endpoint is
@@ -187,4 +190,22 @@ func (m *Memory) PutMedia(ctx context.Context, key, _ string, r io.Reader) error
 
 func (m *Memory) PresignView(_ context.Context, key, contentType string, ttl time.Duration) (string, error) {
 	return fmt.Sprintf("memory://%s?view=%s&ttl=%s", key, contentType, ttl), nil
+}
+
+func (r *R2) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	out, err := r.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &r.bucket, Key: &key})
+	if err != nil {
+		return nil, err
+	}
+	return out.Body, nil
+}
+
+func (m *Memory) Get(_ context.Context, key string) (io.ReadCloser, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, ok := m.Objects[key]
+	if !ok {
+		return nil, fmt.Errorf("storage: no object %q", key)
+	}
+	return io.NopCloser(bytes.NewReader(b)), nil
 }

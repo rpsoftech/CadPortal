@@ -393,3 +393,63 @@ func TestMediaNeedsFileStorage(t *testing.T) {
 		t.Errorf("list without storage: %v", err)
 	}
 }
+
+func TestJobBagPhotoPrefersTheVariationThenTheCover(t *testing.T) {
+	s, mem, design, _ := mediaDesign(t)
+	ctx := context.Background()
+	v1, _ := s.CreateVariation(ctx, design, BaseInput{VolumeMM3: dp("200")})
+	v2, _ := s.CreateVariation(ctx, design, BaseInput{VolumeMM3: dp("300")})
+	vid1 := v1.ID
+
+	jb, err := s.JobBag(ctx, v1.ID, "18KR", "1HD")
+	if err != nil || jb.Photo != nil {
+		t.Fatalf("a design with no photo: %v, %d bytes", err, len(jb.Photo))
+	}
+
+	first, _ := add(t, s, design, nil, "first.png", testPNG(60, 40))
+	cover, _ := add(t, s, design, nil, "cover.png", testPNG(60, 40))
+	own, _ := add(t, s, design, &vid1, "own.png", testPNG(60, 40))
+	thumbOf := func(id int64) []byte {
+		row, err := s.Q.GetMedia(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return mem.Objects[row.ThumbKey.String]
+	}
+	if _, err := s.SetCover(ctx, cover.ID); err != nil {
+		t.Fatal(err)
+	}
+	pick := func(variation int64) []byte {
+		jb, err := s.JobBag(ctx, variation, "18KR", "1HD")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return jb.Photo
+	}
+	if !bytes.Equal(pick(v1.ID), thumbOf(own.ID)) {
+		t.Error("a variation's own photo comes first")
+	}
+	if !bytes.Equal(pick(v2.ID), thumbOf(cover.ID)) {
+		t.Error("without its own photo a variation shows the design's cover")
+	}
+	if _, err := s.DeleteMedia(ctx, cover.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(pick(v2.ID), thumbOf(first.ID)) {
+		t.Error("with the cover gone, the design's first photo")
+	}
+	if len(pick(v2.ID)) == 0 || len(pick(v2.ID)) > maxJobBagPhotoBytes {
+		t.Error("a thumbnail is small")
+	}
+
+	// Storage trouble costs the sheet its photo, never the sheet.
+	row, _ := s.Q.GetMedia(ctx, first.ID)
+	delete(mem.Objects, row.ThumbKey.String)
+	if jb, err := s.JobBag(ctx, v2.ID, "18KR", "1HD"); err != nil || jb.Photo != nil {
+		t.Errorf("missing object: %v, %d bytes", err, len(jb.Photo))
+	}
+	s.Store = nil
+	if jb, err := s.JobBag(ctx, v2.ID, "18KR", "1HD"); err != nil || jb.Photo != nil {
+		t.Errorf("no storage: %v, %d bytes", err, len(jb.Photo))
+	}
+}

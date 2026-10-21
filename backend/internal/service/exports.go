@@ -176,6 +176,9 @@ type JobBag struct {
 	FileStlName   string
 	FileStlSHA256 string
 	GeneratedAt   time.Time
+	// Photo is a JPEG thumbnail of the variation (or, failing that, the design) for the top of the
+	// sheet; nil when there is none or storage cannot be read. The job bag never fails for want of it.
+	Photo []byte
 }
 
 // JobBag assembles the spec sheet for one variation in one metal, with the
@@ -241,5 +244,6 @@ func (s *Service) JobBag(ctx context.Context, variationID int64, metalCode, ston
 	}
 	jb.File3dmName, jb.File3dmSHA256 = v.File3dmName.String, v.File3dmSha256.String
 	jb.FileStlName, jb.FileStlSHA256 = v.FileStlName.String, v.FileStlSha256.String
+	jb.Photo = s.jobBagPhoto(ctx, d.ID, variationID)
 	return jb, nil
 }

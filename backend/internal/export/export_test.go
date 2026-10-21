@@ -3,6 +3,9 @@ package export
 import (
 	"bytes"
 	"encoding/csv"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"strings"
 	"testing"
 	"time"
@@ -85,5 +88,70 @@ func TestRenderJobBagPDF(t *testing.T) {
 	jb.BOM.Lines, jb.BOM.TotalPcs = nil, 0
 	if _, err := RenderJobBagPDF(jb); err != nil {
 		t.Errorf("no seats: %v", err)
+	}
+}
+
+func jobBagFixture() service.JobBag {
+	return service.JobBag{
+		DesignCode: "LR0001", DesignName: "Lotus", Category: "Rings", Tags: []string{"Floral"},
+		VariationCode: "LR0001-V1", BaseInput: "Volume 200.000 mm3", MetalCode: "18KR",
+		NetG: d("3.050"), GrossG: d("3.119"),
+		BOM:         service.BOMResult{StoneCode: "2HD"},
+		GeneratedAt: time.Date(2026, 10, 20, 9, 30, 0, 0, time.UTC),
+	}
+}
+
+func testJPEG(w, h int) []byte {
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{uint8(x), uint8(y), 80, 255})
+		}
+	}
+	var b bytes.Buffer
+	jpeg.Encode(&b, img, nil) //nolint:errcheck
+	return b.Bytes()
+}
+
+func TestJobBagPDFShowsThePhotoWhenThereIsOne(t *testing.T) {
+	compress = false
+	defer func() { compress = true }()
+
+	without, err := RenderJobBagPDF(jobBagFixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(without, []byte("/Subtype /Image")) {
+		t.Error("a job bag without a photo should hold no image")
+	}
+
+	for name, size := range map[string][2]int{"landscape": {480, 320}, "portrait": {240, 480}, "tiny": {16, 16}} {
+		jb := jobBagFixture()
+		jb.Photo = testJPEG(size[0], size[1])
+		pdf, err := RenderJobBagPDF(jb)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !bytes.Contains(pdf, []byte("/Subtype /Image")) || !bytes.Contains(pdf, []byte("/DCTDecode")) {
+			t.Errorf("%s: the photo is not in the PDF", name)
+		}
+		if !bytes.Contains(pdf, []byte("LR0001-V1")) {
+			t.Errorf("%s: the text is gone", name)
+		}
+	}
+}
+
+func TestJobBagPDFSurvivesAPhotoThatCannotBeUsed(t *testing.T) {
+	for name, bad := range map[string][]byte{
+		"garbage":   []byte("not an image"),
+		"truncated": testJPEG(200, 200)[:100],
+		"png bytes": []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR"),
+	} {
+		jb := jobBagFixture()
+		jb.Photo = bad
+		pdf, err := RenderJobBagPDF(jb)
+		if err != nil || !bytes.HasPrefix(pdf, []byte("%PDF-")) {
+			t.Errorf("%s: the sheet must still be made: %v", name, err)
+		}
 	}
 }
