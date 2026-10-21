@@ -118,6 +118,12 @@ func TestSimulateBOM(t *testing.T) {
 	if res.TotalPcs != 37 || res.TotalCarats.StringFixed(4) != "0.3470" || res.StoneWeightG.StringFixed(3) != "0.069" {
 		t.Errorf("totals: %d pcs %s ct %s g", res.TotalPcs, res.TotalCarats, res.StoneWeightG)
 	}
+	// Stone weight per line is carats x 0.200 at 4 dp: 0.1680 ct = 0.0336 g, and so on.
+	for i, w := range []string{"0.0336", "0.0228", "0.0130"} {
+		if got := res.Lines[i].LineWeightG.StringFixed(4); got != w {
+			t.Errorf("line %d grams = %s want %s", i, got, w)
+		}
+	}
 	for i, w := range []string{"0.1680", "0.1140", "0.0650"} {
 		if got := res.Lines[i].LineCarats.StringFixed(4); got != w {
 			t.Errorf("line %d = %s want %s", i, got, w)

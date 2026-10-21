@@ -21,3 +21,33 @@ export class FixedPipe implements PipeTransform {
     return fixed(value, dp);
   }
 }
+
+/**
+ * Stone weight in grams for a weight in carats (1 ct = 0.200 g), as an exact decimal string with
+ * `dp` places, rounded half up. Done with integers, never floating point, so 0.3470 ct is exactly
+ * 0.0694 g. Null, empty or unreadable input gives null.
+ */
+export function caratsToGrams(carats: string | null | undefined, dp = 4): string | null {
+  const m = /^(\d+)(?:\.(\d+))?$/.exec((carats ?? '').trim());
+  if (!m) return null;
+  const frac = m[2] ?? '';
+  // carats = digits / 10^frac.length, so grams = digits x 2 / 10^(frac.length + 1)
+  let num = BigInt(m[1] + frac) * 2n;
+  const exp = frac.length + 1;
+  if (exp <= dp) {
+    num *= 10n ** BigInt(dp - exp);
+  } else {
+    const div = 10n ** BigInt(exp - dp);
+    num = (num + div / 2n) / div;
+  }
+  const s = num.toString().padStart(dp + 1, '0');
+  return dp > 0 ? `${s.slice(0, s.length - dp)}.${s.slice(s.length - dp)}` : s;
+}
+
+@Pipe({ name: 'stoneGrams' })
+export class StoneGramsPipe implements PipeTransform {
+  /** Grams for a carat value, or an en dash when there is none. */
+  transform(carats: string | null | undefined, dp = 4): string {
+    return caratsToGrams(carats, dp) ?? '–';
+  }
+}

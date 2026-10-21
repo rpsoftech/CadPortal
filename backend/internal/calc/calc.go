@@ -19,6 +19,10 @@ var thousand = decimal.NewFromInt(1000)
 func RoundGrams(d decimal.Decimal) decimal.Decimal  { return d.Round(3) }
 func RoundCarats(d decimal.Decimal) decimal.Decimal { return d.Round(4) }
 
+// RoundLineGrams rounds the stone weight of a single BOM line or a cost row to 4 dp. A line is
+// often a few hundredths of a gram, so the 3 dp used for a whole piece would hide most of it.
+func RoundLineGrams(d decimal.Decimal) decimal.Decimal { return d.Round(4) }
+
 // NetFromVolume: net_g = volume_mm3 x SG / 1000.
 func NetFromVolume(volumeMM3, sg decimal.Decimal) decimal.Decimal {
 	return volumeMM3.Mul(sg).Div(thousand)
