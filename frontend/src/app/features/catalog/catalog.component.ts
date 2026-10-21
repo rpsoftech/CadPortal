@@ -29,9 +29,10 @@ import { AuthService } from '../../core/auth.service';
 import { toApiError } from '../../core/errors';
 import { fixed } from '../../core/format';
 import { saveBlob } from '../../shared/download';
-import { DesignFilter, DesignListItem, TAG_GROUPS } from '../../core/models';
+import { DesignFilter, DesignImportResult, DesignListItem, TAG_GROUPS } from '../../core/models';
 import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design-dialog.component';
 import { DesignImportDialogComponent } from './design-import-dialog.component';
+import { SetupChecklistComponent } from '../../shared/setup-checklist.component';
 import { positiveDecimal } from '../../shared/validators';
 
 interface ListState {
@@ -63,6 +64,7 @@ export function weightRange(min: string | null, max: string | null): string | nu
     MatPaginatorModule,
     MatProgressBarModule,
     MatSelectModule,
+    SetupChecklistComponent,
   ],
   templateUrl: './catalog.component.html',
   styleUrl: './catalog.component.scss',
@@ -205,16 +207,20 @@ export class CatalogComponent {
 
   protected importDesigns(): void {
     this.dialog
-      .open<DesignImportDialogComponent, void, number>(DesignImportDialogComponent, {
+      .open<DesignImportDialogComponent, void, DesignImportResult>(DesignImportDialogComponent, {
         width: '720px',
         maxWidth: '95vw',
       })
       .afterClosed()
-      .subscribe((count) => {
-        if (!count) return;
-        this.snack.open(`Imported ${count} design${count === 1 ? '' : 's'}`, 'OK', {
-          duration: 4000,
-        });
+      .subscribe((res) => {
+        if (!res?.designs) return;
+        const shown = res.codes.slice(0, 3).join(', ');
+        const more = res.codes.length > 3 ? ` and ${res.codes.length - 3} more` : '';
+        this.snack.open(
+          `Imported ${res.designs} design${res.designs === 1 ? '' : 's'} (${shown}${more})`,
+          'OK',
+          { duration: 6000 },
+        );
         this.pageIndex.set(0);
         this.pageChanged$.next();
       });

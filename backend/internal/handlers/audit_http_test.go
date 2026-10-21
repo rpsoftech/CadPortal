@@ -76,7 +76,10 @@ func TestAuditRecordsActionsWithoutSecrets(t *testing.T) {
 	do(r, "PUT", "/api/v1/masters/metals/"+itoa(m.ID), adm, "application/json",
 		jsonBody(map[string]any{"specific_gravity": "15.25", "wastage_pct": "12.5", "is_default_input": true, "active": true}))
 	cats, _ := svc.ListCategories(ctx)
-	dw := do(r, "POST", "/api/v1/designs", adm, "application/json", jsonBody(map[string]any{"code": "LR001", "name": "Ring", "category_id": cats[0].ID}))
+	if _, err := svc.UpdateCategory(ctx, cats[0].ID, cats[0].Name, "LR"); err != nil {
+		t.Fatal(err)
+	}
+	dw := do(r, "POST", "/api/v1/designs", adm, "application/json", jsonBody(map[string]any{"name": "Ring", "category_id": cats[0].ID}))
 	var design struct{ ID int64 }
 	json.Unmarshal(dw.Body.Bytes(), &design) //nolint:errcheck
 	vw := do(r, "POST", "/api/v1/designs/"+itoa(design.ID)+"/variations", adm, "application/json", jsonBody(map[string]string{"volume_mm3": "200"}))
@@ -110,10 +113,10 @@ func TestAuditRecordsActionsWithoutSecrets(t *testing.T) {
 		t.Errorf("metal.update = %+v", a)
 	}
 	if a := findWhere(rows, func(r auditRow) bool { return r.Action == "design.create" && r.Status == 201 }); a == nil ||
-		a.EntityID != itoa(design.ID) || a.Detail != "LR001" {
+		a.EntityID != itoa(design.ID) || a.Detail != "LR0001" {
 		t.Errorf("design.create = %+v", a)
 	}
-	if a := findAction(rows, "variation.create"); a == nil || a.EntityType != "variation" || a.Detail != "LR001-V1" {
+	if a := findAction(rows, "variation.create"); a == nil || a.EntityType != "variation" || a.Detail != "LR0001-V1" {
 		t.Errorf("variation.create = %+v", a)
 	}
 	// A refused attempt is recorded, with who tried it.
@@ -154,9 +157,12 @@ func TestAuditEndpointAccessFiltersAndPaging(t *testing.T) {
 	adm := bearer(t, r, "admin@example.com")
 	des := bearer(t, r, "designer@example.com")
 	cats, _ := svc.ListCategories(ctx)
+	if _, err := svc.UpdateCategory(ctx, cats[0].ID, cats[0].Name, "LR"); err != nil {
+		t.Fatal(err)
+	}
 	for i := 1; i <= 5; i++ {
 		do(r, "POST", "/api/v1/designs", des, "application/json",
-			jsonBody(map[string]any{"code": "LR00" + itoa(int64(i)), "category_id": cats[0].ID}))
+			jsonBody(map[string]any{"category_id": cats[0].ID}))
 	}
 
 	// Admin only.

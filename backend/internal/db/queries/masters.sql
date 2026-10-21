@@ -80,7 +80,10 @@ SET status = $2, error = $3, finished_at = now()
 WHERE id = $1;
 
 -- name: UpdateCategory :one
-UPDATE categories SET name = $2, code_prefix = $3 WHERE id = $1 RETURNING *;
+-- A new prefix starts counting again; codes already taken are skipped when numbers are handed out.
+UPDATE categories SET name = $2, code_prefix = $3,
+    next_seq = CASE WHEN code_prefix IS DISTINCT FROM $3 THEN 0 ELSE next_seq END
+WHERE id = $1 RETURNING *;
 
 -- name: ListAllTags :many
 SELECT * FROM tags ORDER BY tag_group, name;
@@ -127,3 +130,18 @@ FROM weight_recalc_jobs;
 -- name: LastFailedRecalcError :one
 SELECT COALESCE(error, '')::text FROM weight_recalc_jobs
 WHERE status = 'failed' ORDER BY id DESC LIMIT 1;
+
+-- name: NextCategoryNumber :one
+-- Hands out the next design number of a category. Runs inside the creating transaction, so
+-- the row lock serialises creators and a rollback gives the number back.
+UPDATE categories SET next_seq = next_seq + 1 WHERE id = $1 RETURNING *;
+
+-- name: RaiseCategoryNumber :exec
+-- Keeps the counter past a code that was supplied explicitly (an import).
+UPDATE categories SET next_seq = GREATEST(next_seq, $2) WHERE id = $1;
+
+-- name: GetCategory :one
+SELECT * FROM categories WHERE id = $1;
+
+-- name: DesignCodeTaken :one
+SELECT EXISTS (SELECT 1 FROM master_designs WHERE code = $1);

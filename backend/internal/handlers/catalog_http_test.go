@@ -101,11 +101,26 @@ func TestDesignEditDeleteOverHTTP(t *testing.T) {
 		t.Errorf("production delete: %d", w.Code)
 	}
 
-	// A new design with a taken code is a readable 409.
-	dup := jsonBody(map[string]any{"code": "LR100", "category_id": cats[0].ID})
-	w := do(r, "POST", "/api/v1/designs", des, "application/json", dup)
-	if w.Code != 409 || !strings.Contains(w.Body.String(), "already exists") {
-		t.Errorf("duplicate code: %d %s", w.Code, w.Body)
+	// Codes are assigned automatically: a supplied code is refused outright, and a category
+	// without a prefix cannot take designs yet.
+	manual := jsonBody(map[string]any{"code": "LR101", "category_id": cats[0].ID})
+	w := do(r, "POST", "/api/v1/designs", des, "application/json", manual)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "assigned automatically") {
+		t.Errorf("manual code: %d %s", w.Code, w.Body)
+	}
+	noPrefix := jsonBody(map[string]any{"category_id": cats[0].ID})
+	w = do(r, "POST", "/api/v1/designs", des, "application/json", noPrefix)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "no code prefix") {
+		t.Errorf("category without a prefix: %d %s", w.Code, w.Body)
+	}
+	if _, err := svc.UpdateCategory(ctx, cats[0].ID, cats[0].Name, "zz"); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ZZ0001", "ZZ0002"} {
+		w = do(r, "POST", "/api/v1/designs", des, "application/json", noPrefix)
+		if w.Code != 201 || !strings.Contains(w.Body.String(), `"code":"`+want+`"`) {
+			t.Errorf("auto code %s: %d %s", want, w.Code, w.Body)
+		}
 	}
 
 	// Variation delete, then design delete.

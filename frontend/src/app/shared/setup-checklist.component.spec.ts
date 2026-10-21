@@ -1,0 +1,32 @@
+import { describe, expect, it } from 'vitest';
+import { SetupItem } from '../core/models';
+import { summarize, tabIndex } from './setup-checklist.component';
+
+const item = (severity: SetupItem['severity']): SetupItem => ({
+  key: severity,
+  severity,
+  title: 't',
+  detail: 'd',
+  tab: 'alloys',
+});
+
+describe('tabIndex', () => {
+  it.each([
+    ['alloys', 0],
+    ['matrix', 1],
+    ['categories', 2],
+    ['nonsense', 0],
+    [null, 0],
+    [undefined, 0],
+  ])('%s opens tab %i', (tab, want) => expect(tabIndex(tab)).toBe(want));
+});
+
+describe('summarize', () => {
+  it('counts items by severity', () => {
+    expect(summarize([item('required'), item('required'), item('recommended')])).toEqual({
+      required: 2,
+      recommended: 1,
+    });
+    expect(summarize([])).toEqual({ required: 0, recommended: 0 });
+  });
+});

@@ -134,3 +134,10 @@ func (h *H) recalcStatus(c *gin.Context) {
 	out, err := h.S.RecalcStatus(c)
 	respond(c, http.StatusOK, out, err)
 }
+
+// setupStatus lists the master data still missing. Admin only: it speaks about wastage and
+// rates, which the production role never sees.
+func (h *H) setupStatus(c *gin.Context) {
+	out, err := h.S.SetupStatus(c)
+	respond(c, http.StatusOK, out, err)
+}

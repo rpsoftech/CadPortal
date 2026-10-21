@@ -12,23 +12,26 @@ import (
 )
 
 type DesignInput struct {
-	Code       string // required on create; ignored on update
+	Code       string // leave empty: the code is assigned from the category. Ignored on update
 	Name       string
 	CategoryID int64
 	TagIDs     []int64
 }
 
 func (s *Service) CreateDesign(ctx context.Context, in DesignInput) (db.MasterDesign, error) {
-	if in.Code == "" {
-		return db.MasterDesign{}, invalid("code is required")
-	}
 	if in.CategoryID == 0 {
 		return db.MasterDesign{}, invalid("category_id is required")
 	}
 	var d db.MasterDesign
 	err := s.inTx(ctx, func(q *db.Queries) error {
 		var err error
-		if d, err = q.CreateDesign(ctx, db.CreateDesignParams{Code: in.Code, Name: in.Name, CategoryID: in.CategoryID}); err != nil {
+		code := in.Code
+		if code == "" { // the normal case: the number is assigned
+			if code, err = allocateCode(ctx, q, in.CategoryID); err != nil {
+				return err
+			}
+		}
+		if d, err = q.CreateDesign(ctx, db.CreateDesignParams{Code: code, Name: in.Name, CategoryID: in.CategoryID}); err != nil {
 			return friendly(err, "a design with that code already exists (codes of deleted designs stay reserved)")
 		}
 		return setTags(ctx, q, d.ID, in.TagIDs)

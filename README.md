@@ -214,7 +214,7 @@ the new API starts.
 | Group | Endpoints |
 |---|---|
 | Masters | `GET/POST /masters/categories`, `PUT /masters/categories/:id`, `GET/POST /masters/tags`, `PUT /masters/tags/:id`, `GET/POST /masters/metals`, `PUT /masters/metals/:id`, `GET/POST /masters/stone-codes`, `PUT /masters/stone-codes/:id`, `GET/PUT/DELETE /masters/stone-matrix`, `GET /masters/matrix-gaps`, `GET /masters/recalc-status` |
-| Designs | `POST/GET /designs` (`q` search, `limit`/`offset`, total in `X-Total-Count`), `GET /designs/:code`, `PUT/DELETE /designs/:id`, `POST /designs/import` (bulk create from CSV rows; `dry_run` validates only) |
+| Designs | `POST/GET /designs` (POST assigns the code, a supplied one is refused; `q` search, `limit`/`offset`, total in `X-Total-Count`), `GET /designs/:code`, `PUT/DELETE /designs/:id`, `POST /designs/import` (bulk create from CSV rows; `dry_run` validates only) |
 | Variations | `POST /designs/:id/variations`, `PUT /variations/:id/base-input`, `DELETE /variations/:id` |
 | Seats and BOM | `GET/PUT /variations/:id/seats`, `POST /variations/:id/clone-seats`, `GET /variations/:id/simulate-bom?code=2HD` |
 | CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl`, `DELETE /variations/:id/cad?kind=3dm\|stl` |
@@ -235,7 +235,29 @@ Admins maintain the reference data under **Master data** (no API calls needed):
 - **Stone matrix:** carats per stone and rate per carat for each (size, stone code), the baseline
   stone code, and stone codes themselves. A **Missing for the baseline code** panel lists sizes
   that seats use but the matrix lacks, with an Add shortcut.
-- **Categories and tags:** names, category code prefixes, and deactivating tags.
+- **Categories and tags:** names, category code prefixes, and deactivating tags. Type a prefix
+  straight into the table; it saves when you leave the field.
+
+### First-time setup
+
+A fresh installation has the alloys and their specific gravities but none of your business
+data. Costing and design numbering do not work until an admin enters it, and the app says what
+is missing: the Catalog shows a banner, and the top of **Master data** lists every open item
+and shrinks as you fix them.
+
+- **Alloys:** wastage % for every active alloy (costing refuses to run without it; it never
+  assumes zero) and the default input alloy.
+- **Category code prefixes:** 1 to 6 letters per category, for example `LR`. **Design codes are
+  assigned automatically**, never typed: the prefix plus a 4-digit number counted per category
+  (`LR0001`, `LR0002`, …; past 9999 the number simply grows). A category without a prefix cannot
+  take new designs. Changing a prefix later restarts the count for new designs and never
+  renames existing ones. Two categories cannot share a prefix.
+- **Stone matrix:** the stone sizes with carats per stone and rate per carat (use **Import CSV
+  / paste** for a long list), and a baseline stone code. Sizes your seats use but the matrix
+  lacks are listed as gaps.
+
+Items are marked *required* when something does not work without them and *recommended*
+otherwise (for example a matrix row with no rate: costing refuses to price that stone).
 
 To load a large stone matrix, use **Import CSV / paste**. Columns, in order:
 `size_mm, stone_code, sieve, carats_per_stone, rate_per_ct` (sieve and rate may be empty; a header
@@ -255,11 +277,16 @@ from a spreadsheet or choose a CSV file. Columns, in order:
 `code, name, category, tags, volume_mm3, ref_weight_g, ref_metal` (trailing empty columns may be
 left out; a header row is optional).
 
+- **Codes:** leave `code` empty. Each row that has a category starts a new design and gets the
+  next number of that category (`LR0001`, `LR0002`, …, in file order). A code is only for
+  bringing over designs that already have one, such as an earlier export: it must be the
+  category's prefix plus digits, and the numbering carries on after the highest one.
 - **Tags** go in one cell separated by `;`. Write `Group:Name` when a tag name exists in two
   groups.
-- **Variations:** give a row either a volume, or a reference weight with its alloy. Repeat a
-  code on another row to add a variation to the same design (`LR001-V1`, `LR001-V2`, in file
-  order). A row with no base input creates the design alone.
+- **Variations:** give a row either a volume, or a reference weight with its alloy. A row with
+  no category (and no code) adds another variation to the design above it, and so does repeating
+  that design's code (`LR0001-V1`, `LR0001-V2`, in file order). A row with no base input creates
+  the design alone.
 - **Check first:** **Check** validates everything on the server and lists every problem with its
   line number, so a file can be fixed in one pass. **Import** is enabled only after a clean check
   and is all-or-nothing.

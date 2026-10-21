@@ -25,6 +25,8 @@ export interface Category {
   id: number;
   name: string;
   code_prefix: string | null;
+  /** The last design number handed out in this category. */
+  next_seq: number;
 }
 
 export type TagGroup = 'Audience' | 'Sub-Style' | 'Motif' | 'Attribute';
@@ -277,4 +279,21 @@ export interface DesignImportResult {
   designs: number;
   variations: number;
   errors: { line: number; message: string }[];
+  /** The codes of the designs an import created, in file order. */
+  codes: string[];
+}
+
+/** One thing an admin still has to enter, from GET /masters/setup-status. */
+export interface SetupItem {
+  key: string;
+  severity: 'required' | 'recommended';
+  title: string;
+  detail: string;
+  /** The Master data tab where it is fixed. */
+  tab: 'alloys' | 'matrix' | 'categories';
+}
+
+export interface SetupStatus {
+  complete: boolean;
+  items: SetupItem[];
 }

@@ -1,4 +1,5 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -8,6 +9,11 @@ import { MatSelectModule } from '@angular/material/select';
 import { ApiService } from '../core/api.service';
 import { toApiError } from '../core/errors';
 import { Category, TAG_GROUPS, Tag } from '../core/models';
+
+/** The code after the last number handed out in a category, for example LR0007. */
+export function nextDesignCode(prefix: string, lastNumber: number): string {
+  return `${prefix}${String(lastNumber + 1).padStart(4, '0')}`;
+}
 
 export interface NewDesignData {
   categories: Category[];
@@ -30,16 +36,6 @@ export interface NewDesignData {
     <h2 mat-dialog-title>{{ data.design ? 'Edit ' + data.design.code : 'New master design' }}</h2>
     <form [formGroup]="form" (ngSubmit)="save()">
       <mat-dialog-content class="col">
-        @if (!data.design) {
-          <mat-form-field appearance="outline">
-            <mat-label>Design code</mat-label>
-            <input matInput formControlName="code" placeholder="LR001" class="mono" />
-            <mat-hint>Letters, digits and dashes. Variations become CODE-V1, CODE-V2…</mat-hint>
-            @if (form.controls.code.invalid && form.controls.code.touched) {
-              <mat-error>Required: letters, digits and dashes only</mat-error>
-            }
-          </mat-form-field>
-        }
         <mat-form-field appearance="outline">
           <mat-label>Name</mat-label>
           <input matInput formControlName="name" />
@@ -48,11 +44,22 @@ export interface NewDesignData {
           <mat-label>Category</mat-label>
           <mat-select formControlName="categoryId">
             @for (c of data.categories; track c.id) {
-              <mat-option [value]="c.id">{{ c.name }}</mat-option>
+              <mat-option [value]="c.id" [disabled]="!data.design && !c.code_prefix">
+                {{ c.name }}{{ data.design || c.code_prefix ? '' : ' (no code prefix yet)' }}
+              </mat-option>
             }
           </mat-select>
           <mat-error>Choose a category</mat-error>
         </mat-form-field>
+        @if (!data.design) {
+          <p class="code-note" aria-live="polite">
+            @if (nextCode(); as next) {
+              Design code: <strong class="mono">{{ next }}</strong> (assigned automatically)
+            } @else {
+              Choose a category: the design code is assigned automatically from its prefix.
+            }
+          </p>
+        }
         <mat-form-field appearance="outline">
           <mat-label>Tags</mat-label>
           <mat-select formControlName="tagIds" multiple>
@@ -86,6 +93,9 @@ export interface NewDesignData {
       gap: 4px;
       min-width: 340px;
     }
+    .code-note {
+      margin: 0 0 8px;
+    }
   `,
 })
 export class NewDesignDialogComponent {
@@ -101,18 +111,21 @@ export class NewDesignDialogComponent {
   }));
 
   protected readonly form = new FormGroup({
-    code: new FormControl(this.data.design?.code ?? '', {
-      nonNullable: true,
-      validators: this.data.design
-        ? []
-        : [Validators.required, Validators.pattern(/^[A-Za-z0-9-]+$/)],
-    }),
     name: new FormControl(this.data.design?.name ?? '', { nonNullable: true }),
     categoryId: new FormControl<number | null>(
       this.data.design?.categoryId ?? null,
       Validators.required,
     ),
     tagIds: new FormControl<number[]>(this.data.design?.tagIds ?? [], { nonNullable: true }),
+  });
+
+  private readonly selectedCategory = toSignal(this.form.controls.categoryId.valueChanges, {
+    initialValue: this.form.controls.categoryId.value,
+  });
+  /** The code the next design in the chosen category will get (the server decides for real). */
+  protected readonly nextCode = computed(() => {
+    const c = this.data.categories.find((x) => x.id === this.selectedCategory());
+    return c?.code_prefix ? nextDesignCode(c.code_prefix, c.next_seq) : null;
   });
 
   save(): void {
@@ -122,9 +135,7 @@ export class NewDesignDialogComponent {
     this.error.set('');
     const design = this.data.design;
     const body = { name: v.name.trim(), category_id: v.categoryId!, tag_ids: v.tagIds };
-    const req = design
-      ? this.api.updateDesign(design.id, body)
-      : this.api.createDesign({ ...body, code: v.code.trim() });
+    const req = design ? this.api.updateDesign(design.id, body) : this.api.createDesign(body);
     req.subscribe({
       next: (d) => this.ref.close(d.code),
       error: async (e) => {

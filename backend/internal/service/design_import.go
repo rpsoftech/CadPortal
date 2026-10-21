@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/shopspring/decimal"
@@ -15,14 +16,15 @@ import (
 // MaxImportRows bounds one import so a bad file cannot hold a transaction open for long.
 const MaxImportRows = 1000
 
-var (
-	importCodeRE   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
-	importNumberRE = regexp.MustCompile(`^\d+(\.\d+)?$`)
-)
+var importNumberRE = regexp.MustCompile(`^\d+(\.\d+)?$`)
 
-// ImportRow is one line of an import file. Rows sharing a Code belong to one design: the
-// first row defines name, category and tags (later rows may repeat the name and category or
-// leave them blank) and each row with a base input adds one variation.
+// ImportRow is one line of an import file.
+//
+// A design starts on a row that has a category. Its Code is normally left empty and is assigned
+// automatically (LR0001, LR0002, ...). A code may be given to bring over designs that already
+// have numbers, for example an earlier export, but it must be the category's prefix followed by
+// digits. A row with no category and no code adds a variation to the design above it, and so
+// does a row repeating that design's code. Each row with a base input adds one variation.
 type ImportRow struct {
 	Line       int    `json:"line"`
 	Code       string `json:"code"`
@@ -44,14 +46,18 @@ type ImportResult struct {
 	Designs    int           `json:"designs"`
 	Variations int           `json:"variations"`
 	Errors     []ImportError `json:"errors"`
+	// Codes are the design codes of an import that was carried out, in file order.
+	Codes []string `json:"codes"`
 }
 
 type importDesign struct {
-	code, name string
-	categoryID int64
-	tagIDs     []int64
-	line       int
-	bases      []BaseInput
+	code     string // empty until assigned for an automatic design
+	number   int32  // the numeric part of an explicit code
+	name     string
+	category db.Category
+	tagIDs   []int64
+	line     int
+	bases    []BaseInput
 }
 
 // ImportDesigns validates every row and, unless dryRun, creates all designs and variations in
@@ -59,7 +65,7 @@ type importDesign struct {
 // so the file can be fixed in one pass. Existing designs are never modified: a code that is
 // already taken (deleted designs included) is an error.
 func (s *Service) ImportDesigns(ctx context.Context, rows []ImportRow, dryRun bool) (ImportResult, error) {
-	res := ImportResult{DryRun: dryRun, Errors: []ImportError{}}
+	res := ImportResult{DryRun: dryRun, Errors: []ImportError{}, Codes: []string{}}
 	if len(rows) == 0 {
 		return res, invalid("no rows to import")
 	}
@@ -78,9 +84,9 @@ func (s *Service) ImportDesigns(ctx context.Context, rows []ImportRow, dryRun bo
 	if err != nil {
 		return res, mapErr(err)
 	}
-	catByName := map[string]int64{}
+	catByName := map[string]db.Category{}
 	for _, c := range cats {
-		catByName[strings.ToLower(c.Name)] = c.ID
+		catByName[strings.ToLower(c.Name)] = c
 	}
 	tagByName := map[string][]int64{} // a bare name can exist in more than one group
 	tagByQualified := map[string]int64{}
@@ -99,41 +105,67 @@ func (s *Service) ImportDesigns(ctx context.Context, rows []ImportRow, dryRun bo
 		errs = append(errs, ImportError{Line: line, Message: fmt.Sprintf(format, a...)})
 	}
 
-	designs := map[string]*importDesign{}
-	var order []string
+	var all []*importDesign              // file order
+	byCode := map[string]*importDesign{} // explicit codes
+	var cur *importDesign                // the design a continuation row belongs to
 	for i, r := range rows {
 		line := r.Line
 		if line <= 0 {
 			line = i + 1
 		}
 		code := strings.TrimSpace(r.Code)
-		if !importCodeRE.MatchString(code) {
-			bad(line, "code %q must be 1 to 32 letters, digits, '-' or '_'", code)
-			continue
-		}
 		name := strings.TrimSpace(r.Name)
 		catName := strings.TrimSpace(r.Category)
-		catID, catKnown := catByName[strings.ToLower(catName)]
-		d, seen := designs[code]
-		if !seen {
-			d = &importDesign{code: code, name: name, line: line, categoryID: catID}
-			designs[code] = d
-			order = append(order, code)
-			if !catKnown {
+		hasTags := strings.TrimSpace(r.Tags) != ""
+
+		var d *importDesign
+		switch {
+		case code != "" && byCode[code] != nil:
+			d = byCode[code] // another variation of a design given earlier
+		case code == "" && catName == "" && name == "" && !hasTags:
+			if cur == nil {
+				bad(line, "the first row needs a category")
+				continue
+			}
+			d = cur
+		default:
+			d = &importDesign{name: name, line: line}
+			cat, known := catByName[strings.ToLower(catName)]
+			switch {
+			case !known:
 				bad(line, "unknown category %q", catName)
+			case !cat.CodePrefix.Valid || cat.CodePrefix.String == "":
+				bad(line, "category %q has no code prefix; set one in Master data first", cat.Name)
+			default:
+				d.category = cat
+			}
+			if code != "" {
+				d.code = code
+				byCode[code] = d
+				if d.category.ID != 0 {
+					n, ok := codeNumber(d.category.CodePrefix.String, code)
+					if !ok {
+						bad(line, "code %q must be %s followed by digits, or left empty to be assigned", code, d.category.CodePrefix.String)
+					}
+					d.number = n
+				}
 			}
 			d.tagIDs = resolveImportTags(r.Tags, tagByName, tagByQualified, func(msg string) { bad(line, "%s", msg) })
-		} else {
+			all = append(all, d)
+		}
+		if d.line != line {
+			// A continuation row: only the base input belongs on it.
 			if name != "" && name != d.name {
 				bad(line, "name %q differs from line %d (%q)", name, d.line, d.name)
 			}
-			if catName != "" && (!catKnown || catID != d.categoryID) {
+			if catName != "" && !strings.EqualFold(catName, d.category.Name) {
 				bad(line, "category differs from line %d", d.line)
 			}
-			if strings.TrimSpace(r.Tags) != "" {
-				bad(line, "tags belong on the first row of %s (line %d)", code, d.line)
+			if hasTags {
+				bad(line, "tags belong on the first row of the design (line %d)", d.line)
 			}
 		}
+		cur = d
 		base, has, msg := parseImportBase(r, metalOK)
 		if msg != "" {
 			bad(line, "%s", msg)
@@ -142,12 +174,18 @@ func (s *Service) ImportDesigns(ctx context.Context, rows []ImportRow, dryRun bo
 		}
 	}
 
-	taken, err := s.Q.ListExistingDesignCodes(ctx, order)
+	var explicit []string
+	for _, d := range all {
+		if d.code != "" {
+			explicit = append(explicit, d.code)
+		}
+	}
+	taken, err := s.Q.ListExistingDesignCodes(ctx, explicit)
 	if err != nil {
 		return res, mapErr(err)
 	}
 	for _, c := range taken {
-		bad(designs[c].line, "design %s already exists (codes of deleted designs stay reserved)", c)
+		bad(byCode[c].line, "design %s already exists (codes of deleted designs stay reserved)", c)
 	}
 
 	if len(errs) > 0 {
@@ -155,43 +193,39 @@ func (s *Service) ImportDesigns(ctx context.Context, rows []ImportRow, dryRun bo
 		res.Errors = errs
 		return res, nil
 	}
-	for _, c := range order {
+	for _, d := range all {
 		res.Designs++
-		res.Variations += len(designs[c].bases)
+		res.Variations += len(d.bases)
 	}
 	if dryRun {
 		return res, nil
 	}
 
 	err = s.inTx(ctx, func(q *db.Queries) error {
-		for _, c := range order {
-			d := designs[c]
-			md, err := q.CreateDesign(ctx, db.CreateDesignParams{Code: d.code, Name: d.name, CategoryID: d.categoryID})
-			if err != nil {
-				return friendly(err, fmt.Sprintf("design %s was created by someone else while importing; run the import again", d.code))
+		// Designs that bring their own number go first and push the counter past it, so an
+		// automatic number handed out later in this same import can never collide with one.
+		for _, d := range all {
+			if d.code == "" {
+				continue
 			}
-			if err := setTags(ctx, q, md.ID, d.tagIDs); err != nil {
+			if err := q.RaiseCategoryNumber(ctx, db.RaiseCategoryNumberParams{ID: d.category.ID, NextSeq: d.number}); err != nil {
 				return err
 			}
-			for _, b := range d.bases {
-				vol, w, metal, err := s.resolveBase(ctx, q, b)
-				if err != nil {
-					return err
-				}
-				seq, err := q.NextVariationSeq(ctx, md.ID)
-				if err != nil {
-					return err
-				}
-				v, err := q.CreateVariation(ctx, db.CreateVariationParams{
-					DesignID: md.ID, Seq: seq, Code: fmt.Sprintf("%s-V%d", md.Code, seq),
-					BaseVolumeMm3: vol, BaseRefWeightG: w, BaseRefMetalID: metal,
-				})
-				if err != nil {
-					return err
-				}
-				if err := RecalcVariation(ctx, q, v.ID); err != nil {
-					return err
-				}
+			if err := s.createImported(ctx, q, d); err != nil {
+				return err
+			}
+		}
+		for _, d := range all {
+			if d.code != "" {
+				continue
+			}
+			code, err := allocateCode(ctx, q, d.category.ID)
+			if err != nil {
+				return err
+			}
+			d.code = code
+			if err := s.createImported(ctx, q, d); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -200,7 +234,55 @@ func (s *Service) ImportDesigns(ctx context.Context, rows []ImportRow, dryRun bo
 		res.Designs, res.Variations = 0, 0
 		return res, err
 	}
+	for _, d := range all {
+		res.Codes = append(res.Codes, d.code)
+	}
 	return res, nil
+}
+
+// createImported inserts one validated design with its tags and variations.
+func (s *Service) createImported(ctx context.Context, q *db.Queries, d *importDesign) error {
+	md, err := q.CreateDesign(ctx, db.CreateDesignParams{Code: d.code, Name: d.name, CategoryID: d.category.ID})
+	if err != nil {
+		return friendly(err, fmt.Sprintf("design %s was created by someone else while importing; run the import again", d.code))
+	}
+	if err := setTags(ctx, q, md.ID, d.tagIDs); err != nil {
+		return err
+	}
+	for _, b := range d.bases {
+		vol, w, metal, err := s.resolveBase(ctx, q, b)
+		if err != nil {
+			return err
+		}
+		seq, err := q.NextVariationSeq(ctx, md.ID)
+		if err != nil {
+			return err
+		}
+		v, err := q.CreateVariation(ctx, db.CreateVariationParams{
+			DesignID: md.ID, Seq: seq, Code: fmt.Sprintf("%s-V%d", md.Code, seq),
+			BaseVolumeMm3: vol, BaseRefWeightG: w, BaseRefMetalID: metal,
+		})
+		if err != nil {
+			return err
+		}
+		if err := RecalcVariation(ctx, q, v.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// codeNumber returns the number in a code of the form PREFIX + digits.
+func codeNumber(prefix, code string) (int32, bool) {
+	rest, ok := strings.CutPrefix(code, prefix)
+	if !ok || len(rest) == 0 || len(rest) > 9 {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(rest, 10, 32)
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return int32(n), true
 }
 
 func resolveImportTags(list string, byName map[string][]int64, qualified map[string]int64, bad func(string)) []int64 {

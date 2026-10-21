@@ -49,3 +49,26 @@ describe('parseDesignCsv', () => {
     expect(r.errors[0]).toMatch(/Too many rows/);
   });
 });
+
+describe('parseDesignCsv with automatic codes', () => {
+  it('keeps rows whose code is empty, so the server can number them', () => {
+    const r = parseDesignCsv(
+      'code,name,category,tags,volume_mm3,ref_weight_g,ref_metal\n,Lotus ring,Rings,,200,,\n,,,,300,,',
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.rows.map((x) => [x.line, x.code, x.category, x.volume_mm3])).toEqual([
+      [2, '', 'Rings', '200'],
+      [3, '', '', '300'],
+    ]);
+  });
+
+  it('reads a file that starts straight with an empty code column', () => {
+    const r = parseDesignCsv(',Stud,Earrings,,,3.116,18kY');
+    expect(r.rows[0]).toMatchObject({
+      code: '',
+      name: 'Stud',
+      ref_weight_g: '3.116',
+      ref_metal: '18KY',
+    });
+  });
+});

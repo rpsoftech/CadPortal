@@ -7,6 +7,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { ApiService } from '../../core/api.service';
+import { PREFIX_PATTERN } from '../../core/code-prefix';
 import { toApiError } from '../../core/errors';
 import { parseMatrixCsv } from '../../core/matrix-csv';
 import {
@@ -271,10 +272,15 @@ export class MatrixRowDialogComponent {
 
       @if (text().trim()) {
         <div [class.error-box]="parsed().errors.length" [class.ok]="!parsed().errors.length">
-          {{ parsed().rows.length }} valid row{{ parsed().rows.length === 1 ? '' : 's' }}
-          @if (parsed().errors.length) {
-            , {{ parsed().errors.length }} problem{{ parsed().errors.length === 1 ? '' : 's' }}
-          }
+          {{ parsed().rows.length }} valid row{{ parsed().rows.length === 1 ? '' : 's'
+          }}{{
+            parsed().errors.length
+              ? ', ' +
+                parsed().errors.length +
+                ' problem' +
+                (parsed().errors.length === 1 ? '' : 's')
+              : ''
+          }}
         </div>
         @if (parsed().errors.length) {
           <ul class="errors">
@@ -382,8 +388,21 @@ export class MatrixImportDialogComponent {
         </mat-form-field>
         <mat-form-field appearance="outline">
           <mat-label>Code prefix</mat-label>
-          <input matInput formControlName="prefix" maxlength="10" class="mono" />
-          <mat-hint>e.g. LR for Rings. Leave empty until decided.</mat-hint>
+          <input
+            matInput
+            formControlName="prefix"
+            maxlength="6"
+            class="mono"
+            style="text-transform: uppercase"
+            autocomplete="off"
+          />
+          <mat-hint
+            >1 to 6 letters, e.g. LR: designs become LR0001, LR0002… A change affects new designs
+            only.</mat-hint
+          >
+          @if (form.controls.prefix.invalid) {
+            <mat-error>Letters only, 1 to 6</mat-error>
+          }
         </mat-form-field>
         @if (error()) {
           <div class="error-box" role="alert">{{ error() }}</div>
@@ -408,13 +427,16 @@ export class CategoryDialogComponent {
       nonNullable: true,
       validators: [Validators.required],
     }),
-    prefix: new FormControl(this.data?.code_prefix ?? '', { nonNullable: true }),
+    prefix: new FormControl(this.data?.code_prefix ?? '', {
+      nonNullable: true,
+      validators: [Validators.pattern(PREFIX_PATTERN)],
+    }),
   });
 
   protected save(): void {
     if (this.form.invalid) return;
     const v = this.form.getRawValue();
-    const body = { name: v.name.trim(), code_prefix: v.prefix.trim() };
+    const body = { name: v.name.trim(), code_prefix: v.prefix.trim().toUpperCase() };
     this.busy.set(true);
     this.error.set('');
     const req = this.data
