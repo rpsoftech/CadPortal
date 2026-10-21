@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -156,6 +157,9 @@ func configureStorage(svc *service.Service, jwtSecret string) (*storage.Local, e
 	case err != nil:
 		return nil, err
 	case mode == "r2":
+		if err := checkR2Env(os.Getenv); err != nil {
+			return nil, err
+		}
 		store, err := storage.NewR2(storage.Config{
 			Endpoint: os.Getenv("S3_ENDPOINT"), Region: os.Getenv("S3_REGION"),
 			Bucket:      os.Getenv("S3_BUCKET"),
@@ -234,4 +238,24 @@ func runAuditRetention(ctx context.Context, svc *service.Service, days int) {
 			prune()
 		}
 	}
+}
+
+// checkR2Env says exactly what is wrong with an incomplete or placeholder R2 setup, instead of a
+// generic "required" that leaves the API restarting in a loop with nobody knowing which of the
+// four values to fix.
+func checkR2Env(getenv func(string) string) error {
+	var missing []string
+	for _, name := range []string{"S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"} {
+		if strings.TrimSpace(getenv(name)) == "" {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("R2 storage is selected (S3_BUCKET is set) but %s %s empty: fill them in, or clear S3_BUCKET to run without file storage, or set STORAGE=local to try it out on local disk",
+			strings.Join(missing, ", "), map[bool]string{true: "is", false: "are"}[len(missing) == 1])
+	}
+	if strings.ContainsAny(getenv("S3_ENDPOINT"), "<>") {
+		return fmt.Errorf("S3_ENDPOINT still holds the placeholder from .env.example (%q): put your Cloudflare account id in it", getenv("S3_ENDPOINT"))
+	}
+	return nil
 }
