@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -759,10 +758,7 @@ func (h *H) serveLocalFile(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	disp := mime.FormatMediaType("attachment", map[string]string{"filename": filename})
-	if disp == "" {
-		disp = "attachment"
-	}
+	disp := storage.Disposition(filename)
 	hd := c.Writer.Header()
 	hd.Set("Content-Type", "application/octet-stream")
 	hd.Set("Content-Encoding", "gzip")
