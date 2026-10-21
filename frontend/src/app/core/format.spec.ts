@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fixed } from './format';
+import { caratsToGrams, fixed } from './format';
 
 describe('fixed', () => {
   it.each([
@@ -31,4 +31,23 @@ describe('fixed', () => {
       fixed('0.1000000000000000055511151231257827', 40).startsWith('0.1000000000000000055'),
     ).toBe(true);
   });
+});
+
+describe('caratsToGrams', () => {
+  it.each([
+    ['0.3470', 4, '0.0694'], // the spec fixture: 37 pcs, 0.3470 ct = 0.069 g
+    ['0.1680', 4, '0.0336'],
+    ['0.1140', 4, '0.0228'],
+    ['0.0650', 4, '0.0130'],
+    ['0.3470', 3, '0.069'],
+    ['1', 3, '0.200'],
+    ['0', 4, '0.0000'],
+    ['12345.6789', 4, '2469.1358'], // 2469.13578 rounds half up
+    ['0.00005', 4, '0.0000'],
+    ['0.0003', 4, '0.0001'], // 0.00006 g
+  ])('%s ct at %i dp is %s g', (ct, dp, want) => expect(caratsToGrams(ct, dp)).toBe(want));
+
+  it.each([null, undefined, '', 'abc', '-1', '1,5'])('%j has no grams', (v) =>
+    expect(caratsToGrams(v)).toBeNull(),
+  );
 });

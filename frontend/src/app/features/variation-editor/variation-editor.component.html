@@ -195,7 +195,10 @@
             Baseline stone and gross are unknown: the stone matrix has no row for one of these sizes
             at the baseline stone code.
           } @else {
-            Baseline stone: {{ v.baseline_stone_carats | fixed: 4 }} ct
+            Baseline stone: {{ v.baseline_stone_carats | fixed: 4 }} ct ({{
+              v.baseline_stone_carats | stoneGrams: 4
+            }}
+            g)
             @if (v.baseline_gross_weight_g) {
               · baseline gross {{ v.baseline_gross_weight_g | fixed: 3 }} g
             }

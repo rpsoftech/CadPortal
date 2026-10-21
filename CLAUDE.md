@@ -100,7 +100,7 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
 
 **Uploads:** hash the original bytes (not the gzipped bytes). Reject a duplicate with 409 and name the existing variation. Gzip while streaming to storage.
 
-**Costing CSV:** net gold + wastage %, stone cost (carats × rate), and setting labour (pcs × rate).
+**Costing CSV:** net gold + wastage %, stone weight (carats and grams) and stone cost (carats × rate), and setting labour (pcs × rate). Stone weight in grams is carats × 0.200, shown wherever carats are (BOM lines at 4 dp, totals at 3 dp), including the job-bag PDF.
 
 ## Frontend screens
 1. **Catalog + filter dashboard:** category, target purity, net/gross weight ranges, tags; cards show net/gross for the selected purity.
