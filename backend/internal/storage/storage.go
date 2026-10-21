@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"mime"
 	"sync"
 	"time"
 
@@ -86,7 +87,7 @@ func (r *R2) PresignGet(ctx context.Context, key, filename string, ttl time.Dura
 	req, err := r.presign.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket:                     &r.bucket,
 		Key:                        &key,
-		ResponseContentDisposition: aws.String(fmt.Sprintf("attachment; filename=%q", filename)),
+		ResponseContentDisposition: aws.String(Disposition(filename)),
 	}, s3.WithPresignExpires(ttl))
 	if err != nil {
 		return "", err
@@ -138,4 +139,15 @@ func (m *Memory) Keys() []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// Disposition is the Content-Disposition value for a download named filename. mime.FormatMediaType
+// writes a plain filename for ASCII and the RFC 2231 form (filename*=utf-8”...) for anything
+// else, so names with accents, spaces or quotes arrive intact and cannot inject header text.
+// The local-disk handler uses the same function, so both stores answer alike.
+func Disposition(filename string) string {
+	if d := mime.FormatMediaType("attachment", map[string]string{"filename": filename}); d != "" {
+		return d
+	}
+	return "attachment"
 }
