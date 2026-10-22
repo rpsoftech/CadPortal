@@ -23,8 +23,14 @@ h1 {
 .clone {
   margin-bottom: 8px;
 }
+.scroll-x {
+  max-width: 100%;
+  overflow-x: auto;
+}
 .seat-table {
   min-width: 480px;
+  // keep the table a real table inside the scrolling box, whatever the page-wide phone rule says
+  display: table;
 }
 .cell {
   width: 150px;

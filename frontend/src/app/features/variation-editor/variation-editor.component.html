@@ -96,7 +96,8 @@
 
         <form [formGroup]="seatForm" (ngSubmit)="saveSeats()">
           <div formArrayName="seats">
-            <table class="plain seat-table">
+            <div class="scroll-x">
+            <table class="seat-table plain">
               <thead>
                 <tr>
                   <th>#</th>
@@ -167,6 +168,7 @@
                 }
               </tbody>
             </table>
+            </div>
           </div>
 
           <div class="row actions">
