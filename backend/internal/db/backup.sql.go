@@ -11,6 +11,30 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const backupInProgress = `-- name: BackupInProgress :one
+SELECT EXISTS (SELECT 1 FROM backup_runs WHERE finished_at IS NULL AND started_at > now() - interval '3 hours')
+`
+
+// A run that started recently and has not finished. Older unfinished rows are runs that were killed.
+func (q *Queries) BackupInProgress(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, backupInProgress)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const claimBackupRequests = `-- name: ClaimBackupRequests :execrows
+UPDATE backup_requests SET picked_up_at = now() WHERE picked_up_at IS NULL
+`
+
+func (q *Queries) ClaimBackupRequests(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, claimBackupRequests)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const finishBackupRun = `-- name: FinishBackupRun :exec
 UPDATE backup_runs
 SET finished_at = now(), ok = $2, db_key = $3, db_bytes = $4, files_copied = $5, files_bytes = $6,
@@ -43,6 +67,17 @@ func (q *Queries) FinishBackupRun(ctx context.Context, arg FinishBackupRunParams
 		arg.Error,
 	)
 	return err
+}
+
+const hasPendingBackupRequest = `-- name: HasPendingBackupRequest :one
+SELECT EXISTS (SELECT 1 FROM backup_requests WHERE picked_up_at IS NULL)
+`
+
+func (q *Queries) HasPendingBackupRequest(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, hasPendingBackupRequest)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const lastBackupRun = `-- name: LastBackupRun :one
@@ -125,6 +160,20 @@ func (q *Queries) ListBackupRuns(ctx context.Context, limit int32) ([]BackupRun,
 		return nil, err
 	}
 	return items, nil
+}
+
+const requestBackup = `-- name: RequestBackup :one
+INSERT INTO backup_requests (requested_by) VALUES ($1)
+ON CONFLICT DO NOTHING
+RETURNING id
+`
+
+// Null requested_by is fine. ON CONFLICT: a request is already waiting, so there is nothing to add.
+func (q *Queries) RequestBackup(ctx context.Context, requestedBy pgtype.Int8) (int64, error) {
+	row := q.db.QueryRow(ctx, requestBackup, requestedBy)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const startBackupRun = `-- name: StartBackupRun :one

@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/rpsoftech/cad-portal/backend/internal/backup"
 	"github.com/rpsoftech/cad-portal/backend/internal/handlers"
 	"github.com/rpsoftech/cad-portal/backend/internal/migrate"
 	"github.com/rpsoftech/cad-portal/backend/internal/service"
@@ -115,6 +116,13 @@ func run() error {
 	svc.BackupMaxAge, err = backupMaxAge(os.Getenv("BACKUP_MAX_AGE_HOURS"), os.Getenv("STORAGE"), os.Getenv("S3_BUCKET"))
 	if err != nil {
 		return err
+	}
+	bucket, err := backupBucket(os.Getenv)
+	if err != nil {
+		return err
+	}
+	if bucket != nil {
+		svc.BackupBucket = bucket
 	}
 	purgeDone := make(chan struct{})
 	go func() {
@@ -272,6 +280,40 @@ func checkR2Env(getenv func(string) string) error {
 		return fmt.Errorf("S3_ENDPOINT still holds the placeholder from .env.example (%q): put your Cloudflare account id in it", getenv("S3_ENDPOINT"))
 	}
 	return nil
+}
+
+// backupBucket gives the portal a read-only view of the backup bucket, so the Backups screen can list
+// and offer the stored dumps. It uses its own token (BACKUP_VIEW_*), never the one the backup service
+// writes with. Nothing set means the screen shows run history only; a half-filled setup is an error.
+func backupBucket(getenv func(string) string) (*backup.S3, error) {
+	val := func(n string) string { return strings.TrimSpace(getenv(n)) }
+	required := []string{"BACKUP_S3_BUCKET", "BACKUP_VIEW_ACCESS_KEY_ID", "BACKUP_VIEW_SECRET_ACCESS_KEY"}
+	var missing []string
+	for _, n := range required {
+		if val(n) == "" {
+			missing = append(missing, n)
+		}
+	}
+	if len(missing) == len(required) {
+		return nil, nil // not configured: the screen shows run history only
+	}
+	endpoint := val("BACKUP_S3_ENDPOINT")
+	if endpoint == "" {
+		endpoint = val("S3_ENDPOINT")
+	}
+	if endpoint == "" {
+		missing = append(missing, "BACKUP_S3_ENDPOINT")
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("the backup bucket view is half configured: %s empty (set all of them, or none)", strings.Join(missing, ", "))
+	}
+	if w := val("BACKUP_S3_ACCESS_KEY_ID"); w != "" && w == val("BACKUP_VIEW_ACCESS_KEY_ID") {
+		return nil, errors.New("BACKUP_VIEW_ACCESS_KEY_ID is the backup service's write token: give the portal a separate read-only token")
+	}
+	return backup.NewS3(backup.S3Config{
+		Endpoint: endpoint, Region: val("BACKUP_S3_REGION"), Bucket: val("BACKUP_S3_BUCKET"),
+		AccessKeyID: val("BACKUP_VIEW_ACCESS_KEY_ID"), SecretAccessKey: val("BACKUP_VIEW_SECRET_ACCESS_KEY"),
+	})
 }
 
 // backupMaxAge parses BACKUP_MAX_AGE_HOURS: how old the last good backup may be before the setup

@@ -58,6 +58,13 @@ export const routes: Routes = [
           import('./features/audit/audit.component').then((m) => m.AuditComponent),
       },
       {
+        path: 'backups',
+        title: 'Backups',
+        canActivate: [roleGuard('admin')],
+        loadComponent: () =>
+          import('./features/backups/backups.component').then((m) => m.BackupsComponent),
+      },
+      {
         path: 'users',
         title: 'Users',
         canActivate: [roleGuard('admin')],

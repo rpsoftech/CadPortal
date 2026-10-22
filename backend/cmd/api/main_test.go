@@ -157,3 +157,34 @@ func TestBackupMaxAge(t *testing.T) {
 		}
 	}
 }
+
+func TestBackupBucketView(t *testing.T) {
+	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+	if b, err := backupBucket(env(nil)); b != nil || err != nil {
+		t.Errorf("nothing set must mean not configured, got %v %v", b, err)
+	}
+	full := map[string]string{
+		"S3_ENDPOINT": "https://acct.r2.cloudflarestorage.com", "BACKUP_S3_BUCKET": "bk",
+		"BACKUP_VIEW_ACCESS_KEY_ID": "view", "BACKUP_VIEW_SECRET_ACCESS_KEY": "s",
+	}
+	if b, err := backupBucket(env(full)); b == nil || err != nil {
+		t.Errorf("complete setup (endpoint inherited from S3_ENDPOINT): %v %v", b, err)
+	}
+	// Half a setup is an error that names what is missing, not a silently dead screen.
+	half := map[string]string{"BACKUP_S3_BUCKET": "bk"}
+	if _, err := backupBucket(env(half)); err == nil || !strings.Contains(err.Error(), "BACKUP_VIEW_ACCESS_KEY_ID") {
+		t.Errorf("half configured: %v", err)
+	}
+	noEndpoint := map[string]string{"BACKUP_S3_BUCKET": "bk", "BACKUP_VIEW_ACCESS_KEY_ID": "v", "BACKUP_VIEW_SECRET_ACCESS_KEY": "s"}
+	if _, err := backupBucket(env(noEndpoint)); err == nil || !strings.Contains(err.Error(), "BACKUP_S3_ENDPOINT") {
+		t.Errorf("no endpoint: %v", err)
+	}
+	// The portal must not be handed the token that can write backups.
+	same := map[string]string{
+		"BACKUP_S3_ENDPOINT": "https://x", "BACKUP_S3_BUCKET": "bk", "BACKUP_S3_ACCESS_KEY_ID": "write",
+		"BACKUP_VIEW_ACCESS_KEY_ID": "write", "BACKUP_VIEW_SECRET_ACCESS_KEY": "s",
+	}
+	if _, err := backupBucket(env(same)); err == nil || !strings.Contains(err.Error(), "read-only") {
+		t.Errorf("write token as view token: %v", err)
+	}
+}

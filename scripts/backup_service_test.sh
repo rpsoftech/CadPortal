@@ -19,7 +19,7 @@ PG_IMAGE=${PG_IMAGE:-postgres:18-alpine}
 net=bktest-$$
 tmp=$(mktemp)
 fail() { echo "FAIL: $*" >&2; exit 1; }
-cleanup() { rm -f "$tmp"; docker rm -f "$net-s3" "$net-pg" >/dev/null 2>&1 || true; docker network rm "$net" >/dev/null 2>&1 || true; }
+cleanup() { rm -f "$tmp"; docker rm -f "$net-s3" "$net-pg" "$net-daemon" >/dev/null 2>&1 || true; docker network rm "$net" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 docker network create "$net" >/dev/null
@@ -39,7 +39,9 @@ aws s3 mb s3://vault >/dev/null
 aws s3 mb s3://backups >/dev/null
 
 # The portal's table for run history, and some data to protect.
-docker exec -i "$net-pg" psql -v ON_ERROR_STOP=1 -q -U cad -d cad_portal <backend/migrations/000011_backup_runs.up.sql
+for m in 000011_backup_runs 000012_backup_requests; do
+  docker exec -i "$net-pg" psql -v ON_ERROR_STOP=1 -q -U cad -d cad_portal <"backend/migrations/$m.up.sql"
+done
 sql "CREATE TABLE demo (v text); INSERT INTO demo VALUES ('one'), ('two')" >/dev/null
 
 # Files as the portal stores them: CAD gzipped and flagged, a photo plain.
@@ -105,6 +107,24 @@ aws s3 rm s3://vault/cad/LR0001/1/a.3dm.gz >/dev/null
 svc -- restore-files || fail "restore-files failed"
 [ "$(aws s3 cp s3://vault/cad/LR0001/1/a.3dm.gz - | sha256sum)" = "$a" ] || fail "the restored file differs"
 [ "$(head_enc vault cad/LR0001/1/a.3dm.gz)" = "gzip" ] || fail "the restored file lost its Content-Encoding"
+
+# ---- "Back up now" from the portal: the running service picks the request up within a minute
+before=$(sql "SELECT count(*) FROM backup_runs")
+sql "INSERT INTO backup_requests (requested_by) VALUES (NULL)" >/dev/null
+docker run -d --name "$net-daemon" --network "$net" \
+  -e DATABASE_URL="postgres://cad:pw@$net-pg:5432/cad_portal?sslmode=disable" \
+  -e S3_ENDPOINT="http://$net-s3:9000" -e S3_BUCKET=vault -e S3_ACCESS_KEY_ID=testkey -e S3_SECRET_ACCESS_KEY=testsecret123 \
+  -e BACKUP_S3_BUCKET=backups -e BACKUP_S3_ACCESS_KEY_ID=testkey -e BACKUP_S3_SECRET_ACCESS_KEY=testsecret123 \
+  -e BACKUP_S3_ENDPOINT="http://$net-s3:9000" -e BACKUP_AGE_RECIPIENT="$pub" "$IMAGE" >/dev/null
+picked=""
+for _ in $(seq 1 40); do
+  picked=$(sql "SELECT count(*) FROM backup_requests WHERE picked_up_at IS NOT NULL AND (SELECT count(*) FROM backup_runs WHERE ok) > $before")
+  [ "$picked" = "1" ] && break
+  sleep 3
+done
+docker logs "$net-daemon" 2>&1 | tail -5
+docker rm -f "$net-daemon" >/dev/null 2>&1
+[ "$picked" = "1" ] || fail "a requested backup was not picked up by the running service"
 
 # ---- a broken backup is recorded as a failure, and exits non-zero
 if docker run --rm --network "$net" \

@@ -284,6 +284,19 @@ docker compose -f docker-compose.prod.yml --profile backup run --rm backup keyge
 4. `docker compose -f docker-compose.prod.yml up -d`, then `docker compose -f docker-compose.prod.yml logs backup`.
    To take one right now: `docker compose -f docker-compose.prod.yml run --rm backup once`.
 
+**The Backups screen** (admins only, in the top bar) shows when the last good backup finished, every recent
+run with what it copied and what went wrong, and a **Back up now** button. Pressing it only records a
+request; the backup service notices it within about a minute (one request waits at a time, and it refuses
+while a backup is running).
+
+To also list the stored dumps and **download** one, give the portal a *second*, **read-only** token for the
+backup bucket and set `BACKUP_VIEW_ACCESS_KEY_ID` and `BACKUP_VIEW_SECRET_ACCESS_KEY` in `.env` (the API
+reads `BACKUP_S3_BUCKET` and the endpoint too). The portal never gets the token the backup service writes
+with, and refuses to start if you give it that one. Without these two values the screen shows history and
+"Back up now" only. A download is a short-lived signed link to the **encrypted** `.age` file, recorded in the
+audit log; without the secret key kept offline it opens nothing, so a stolen admin login alone cannot read
+your data from a dump. Only objects named like dumps can be downloaded this way, never the files.
+
 **Restoring** (keep the secret key in a file, here `secret.key`):
 
 ```bash
