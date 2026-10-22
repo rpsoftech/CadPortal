@@ -40,6 +40,9 @@ services:
       # Removed or replaced CAD files, photos and videos are kept this many days and can be restored;
       # 0 deletes them at once.
       DELETED_FILE_RETENTION_DAYS: ${DELETED_FILE_RETENTION_DAYS:-30}
+      # Admins are warned in the setup checklist when no good backup is newer than this many hours
+      # (0 = never warn). Left empty it is 36 with R2 and off otherwise.
+      BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (32+ characters)}
       # Object storage. Production uses Cloudflare R2; STORAGE=local is development only.
       STORAGE: ${STORAGE:-}
@@ -61,6 +64,50 @@ services:
       - no-new-privileges:true
     stop_grace_period: 40s      # the API gives in-flight uploads 30s to finish
     # No published ports: the web container proxies /api to this service.
+
+  # Nightly backups: a database dump (7 daily, 4 weekly, 12 monthly, and one per year kept for good) and a
+  # copy of every new CAD file, photo and video, both to a SECOND bucket. Off until you ask for it with
+  # COMPOSE_PROFILES=backup in .env (see "Backups" in the README); the portal warns admins while no good
+  # backup exists.
+  backup:
+    profiles: ["backup"]
+    build:
+      context: ./backend
+      target: backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-cad}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-cad_portal}?sslmode=disable
+      # The vault to copy from (the same bucket the API uses).
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      # The backup bucket: a different bucket, with its own token.
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION:-}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      BACKUP_S3_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
+      BACKUP_UNENCRYPTED: ${BACKUP_UNENCRYPTED:-}
+      BACKUP_AT: ${BACKUP_AT:-02:00}
+      BACKUP_TZ: ${BACKUP_TZ:-UTC}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-7}
+      BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-4}
+      BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-12}
+    volumes:
+      - backup-scratch:/scratch   # a dump is written here while it is checked and uploaded
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   web:
     build:
@@ -90,3 +137,4 @@ services:
 volumes:
   pgdata:
   uploads:
+  backup-scratch:

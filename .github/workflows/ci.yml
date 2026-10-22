@@ -209,6 +209,10 @@ jobs:
           if-no-files-found: ignore
       - name: Backup and restore round trip
         run: scripts/backup_restore_test.sh
+      - name: Backup service (nightly dump and file copy to a second bucket)
+        run: |
+          docker build --target backup -t cadportal-backup:test backend
+          scripts/backup_service_test.sh
       - name: Show logs on failure
         if: failure()
         run: docker compose -f docker-compose.prod.yml logs --no-color --tail 80

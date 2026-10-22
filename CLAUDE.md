@@ -21,7 +21,8 @@ docker-compose.yml  Postgres 18 for local dev
 docker-compose.prod.yml  production-style stack: db + api + web (nginx); images from backend/Dockerfile and frontend/Dockerfile
 docker-compose.images.yml  overlay for prod: run the published ghcr.io images instead of building (see README, Releases)
 deploy/             Caddyfile.example: TLS reverse proxy for going live
-scripts/            backup.sh, restore.sh, e2e.sh, ratelimit_test.sh and their tests (run in CI)
+scripts/            backup.sh, restore.sh, e2e.sh, ratelimit_test.sh, backup_service_test.sh and their tests (run in CI)
+backend/cmd/backup  the backup service (own image, target `backup`): nightly encrypted database dump + incremental copy of files to a second bucket
 ```
 
 ## Stack decisions
@@ -146,5 +147,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   21. Undo: deleted designs and removed or replaced files are recoverable (Removed screen, retention period)
   22. Stone weight in grams first; stone price per piece (default) or per carat
   23. Weight per stone kept to 8 decimals of carats; ready-made CZ stone weight list (docs/imports/cz-stone-weights.csv)
+  24. Backups: nightly database dump (7 daily, 4 weekly, 12 monthly, one per year forever; age-encrypted) and incremental copy of all stored files to a second bucket, run history in `backup_runs`, setup-checklist warning when stale; photos and video stay un-gzipped on purpose
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.

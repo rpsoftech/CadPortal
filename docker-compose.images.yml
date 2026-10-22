@@ -12,3 +12,6 @@ services:
   web:
     image: ghcr.io/rpsoftech/cadportal-web:${CADPORTAL_VERSION:?set CADPORTAL_VERSION, e.g. 1.2.3}
     pull_policy: always
+  backup:
+    image: ghcr.io/rpsoftech/cadportal-backup:${CADPORTAL_VERSION:?set CADPORTAL_VERSION, e.g. 1.2.3}
+    pull_policy: always

@@ -302,8 +302,8 @@ export interface SetupItem {
   severity: 'required' | 'recommended';
   title: string;
   detail: string;
-  /** The Master data tab where it is fixed. */
-  tab: 'alloys' | 'matrix' | 'categories';
+  /** The Master data tab where it is fixed; empty for something fixed outside the app (backups). */
+  tab: 'alloys' | 'matrix' | 'categories' | '';
 }
 
 export interface SetupStatus {

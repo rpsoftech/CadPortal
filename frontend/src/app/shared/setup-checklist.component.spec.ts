@@ -30,3 +30,16 @@ describe('summarize', () => {
     expect(summarize([])).toEqual({ required: 0, recommended: 0 });
   });
 });
+
+describe('summarize with an item fixed outside the app', () => {
+  it('counts a backup warning that has no master data tab', () => {
+    const backup: SetupItem = {
+      key: 'backup',
+      severity: 'required',
+      title: 'Backups have stopped',
+      detail: 'The last good backup finished 3 days ago.',
+      tab: '',
+    };
+    expect(summarize([backup])).toEqual({ required: 1, recommended: 0 });
+  });
+});

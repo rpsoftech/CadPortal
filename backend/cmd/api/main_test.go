@@ -132,3 +132,28 @@ func TestFileRetention(t *testing.T) {
 		}
 	}
 }
+
+func TestBackupMaxAge(t *testing.T) {
+	cases := []struct {
+		v, storage, bucket string
+		want               time.Duration
+	}{
+		{"", "", "cad-vault", 36 * time.Hour}, // R2 is configured: a real installation
+		{"", "r2", "", 36 * time.Hour},
+		{"", "local", "", 0}, // development has no backup service
+		{"", "", "", 0},
+		{"48", "", "cad-vault", 48 * time.Hour},
+		{"0", "", "cad-vault", 0}, // switched off
+		{"12", "local", "", 12 * time.Hour},
+	}
+	for _, c := range cases {
+		if got, err := backupMaxAge(c.v, c.storage, c.bucket); err != nil || got != c.want {
+			t.Errorf("backupMaxAge(%q,%q,%q) = %v, %v; want %v", c.v, c.storage, c.bucket, got, err, c.want)
+		}
+	}
+	for _, bad := range []string{"-1", "x", "1.5", "9000"} {
+		if _, err := backupMaxAge(bad, "", ""); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
