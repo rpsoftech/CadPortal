@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { caratsToGrams, fixed } from './format';
+import { caratsToGrams, exactGrams, fixed } from './format';
 
 describe('fixed', () => {
   it.each([
@@ -49,5 +49,23 @@ describe('caratsToGrams', () => {
 
   it.each([null, undefined, '', 'abc', '-1', '1,5'])('%j has no grams', (v) =>
     expect(caratsToGrams(v)).toBeNull(),
+  );
+});
+
+describe('exactGrams', () => {
+  it.each([
+    ['0.007', 5, '0.0014'.padEnd(7, '0')], // 0.00140: padded to five decimals
+    ['0.00905', 5, '0.00181'],
+    ['0.12345678', 5, '0.024691356'], // eight decimals of carats need nine of grams
+    ['0.0123457', 5, '0.00246914'],
+    ['1', 0, '0.2'],
+    ['10', 0, '2'],
+    ['0', 3, '0.000'],
+  ])('%s ct (at least %i decimals) is %s g', (ct, min, want) =>
+    expect(exactGrams(ct, min)).toBe(want),
+  );
+
+  it.each([null, undefined, '', 'x', '-1'])('%j has no grams', (v) =>
+    expect(exactGrams(v)).toBeNull(),
   );
 });

@@ -42,7 +42,7 @@ scripts/            backup.sh, restore.sh, e2e.sh, ratelimit_test.sh and their t
 ## Formulas (source of truth)
 - Net weight from volume: `net_g = volume_mm3 × SG / 1000`
 - Net weight from a reference weight: `net_target = net_ref × (SG_target / SG_ref)`
-- Stone weight: `stone_g = total_carats × 0.200` (grams are the unit people enter and read; carats are what is stored)
+- Stone weight: `stone_g = total_carats × 0.200` (grams are the unit people enter and read; carats are what is stored; a weight per stone keeps 8 decimals of carats, totals are rounded to 4)
 - Gross weight: `gross_g = net_g + total_carats × 0.200`
 - Line carats: `stone_count × carats_per_stone`, where `carats_per_stone` comes from `stone_size_matrix(size_mm, stone_code)`
 
@@ -145,5 +145,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   20. Job-bag PDF carries the design photo
   21. Undo: deleted designs and removed or replaced files are recoverable (Removed screen, retention period)
   22. Stone weight in grams first; stone price per piece (default) or per carat
+  23. Weight per stone kept to 8 decimals of carats; ready-made CZ stone weight list (docs/imports/cz-stone-weights.csv)
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.

@@ -71,7 +71,7 @@ describe('parseMatrixCsv, the older five columns', () => {
     ['1.10,,,0.007,', 'stone_code'],
     ['1.10,2 HD,,0.007,', 'stone_code'],
     ['1.10,2HD,,-0.1,', 'carats_per_stone "-0.1" is not a number'],
-    ['1.10,2HD,,0.00701,', 'carats_per_stone "0.00701" has more than 4 decimal places'],
+    ['1.10,2HD,,0.000000001,', 'carats_per_stone "0.000000001" has more than 8 decimal places'],
     ['1.10,2HD,,,', 'carats_per_stone or grams_per_stone is required'],
     ['1.10,2HD,,0.007,12.345', 'rate_per_ct "12.345" has more than 2 decimal places'],
     ['1.10,2HD,,0.007,-5', 'rate_per_ct'],
@@ -160,10 +160,10 @@ describe('parseMatrixCsv with a header: grams and prices per piece or per carat'
   });
 
   it('refuses a weight that would have to be rounded, and says what it came to', () => {
-    const r = parseMatrixCsv('size_mm,stone_code,grams_per_stone\n1.10,2HD,0.00035');
+    const r = parseMatrixCsv('size_mm,stone_code,grams_per_stone\n1.10,2HD,0.000000001');
     expect(r.rows).toEqual([]);
     expect(r.errors[0]).toContain('Line 2');
-    expect(r.errors[0]).toContain('0.00175 ct');
+    expect(r.errors[0]).toContain('0.000000005 ct');
   });
 
   it.each([

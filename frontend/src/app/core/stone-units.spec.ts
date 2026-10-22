@@ -34,11 +34,22 @@ describe('weightToCarats', () => {
     expect(weightToCarats('0.0003', 'g')).toEqual({ ok: true, carats: '0.0015' });
   });
 
+  it('keeps seven and eight decimals of carats, the precision the trade quotes', () => {
+    expect(weightToCarats('0.0123457', 'ct')).toEqual({ ok: true, carats: '0.0123457' });
+    expect(weightToCarats('0.12345678', 'ct')).toEqual({ ok: true, carats: '0.12345678' });
+    expect(weightToCarats('0.00000001', 'g')).toEqual({ ok: true, carats: '0.00000005' });
+  });
+
+  it('keeps the five decimals a supplier list in grams per 1000 needs', () => {
+    expect(weightToCarats('0.00181', 'g')).toEqual({ ok: true, carats: '0.00905' });
+    expect(weightToCarats('0.00905', 'ct')).toEqual({ ok: true, carats: '0.00905' });
+  });
+
   it('refuses what would need rounding, saying why', () => {
-    const g = weightToCarats('0.00035', 'g'); // 0.00175 ct
-    expect(g.ok === false && g.error).toContain('0.00175 ct');
-    const ct = weightToCarats('0.00701', 'ct');
-    expect(ct.ok === false && ct.error).toContain('more than 4 decimal places');
+    const g = weightToCarats('0.000000001', 'g'); // 0.000000005 ct
+    expect(g.ok === false && g.error).toContain('0.000000005 ct');
+    const ct = weightToCarats('0.000000001', 'ct');
+    expect(ct.ok === false && ct.error).toContain('more than 8 decimal places');
   });
 
   it.each(['', 'x', '-0.1', '1,5'])('refuses %j', (v) => {

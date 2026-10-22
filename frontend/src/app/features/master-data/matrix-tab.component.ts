@@ -10,7 +10,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/api.service';
 import { toApiError } from '../../core/errors';
-import { FixedPipe, StoneGramsPipe, caratsToGrams, fixed } from '../../core/format';
+import { FixedPipe, StoneGramsPipe, exactGrams, fixed } from '../../core/format';
 import { MATRIX_COLUMNS } from '../../core/matrix-csv';
 import { StoneCode, StoneMatrixRow } from '../../core/models';
 import { saveBlob } from '../../shared/download';
@@ -377,7 +377,7 @@ export class MatrixTabComponent {
           r.stone_code,
           cell(r.sieve),
           fixed(r.carats_per_stone, 4),
-          caratsToGrams(r.carats_per_stone, 5) ?? '',
+          exactGrams(r.carats_per_stone, 5) ?? '',
           r.rate_basis,
           r.rate_per_pc ? fixed(r.rate_per_pc, 2) : '',
           r.rate_per_ct ? fixed(r.rate_per_ct, 2) : '',

@@ -48,6 +48,25 @@ export function caratsToGrams(carats: string | null | undefined, dp = 4): string
 export class StoneGramsPipe implements PipeTransform {
   /** Grams for a carat value, or an en dash when there is none. */
   transform(carats: string | null | undefined, dp = 4): string {
-    return caratsToGrams(carats, dp) ?? '–';
+    return exactGrams(carats, dp) ?? '–';
   }
+}
+
+/**
+ * Stone weight in grams for a weight in carats, exact and never cut short: a weight of n decimals of
+ * carats is n + 1 decimals of grams (0.12345678 ct is 0.024691356 g). At least `minDp` decimals are
+ * shown (so columns line up); extra trailing zeros beyond that are dropped. Null for unreadable input.
+ */
+export function exactGrams(carats: string | null | undefined, minDp = 0): string | null {
+  const m = /^(\d+)(?:\.(\d+))?$/.exec((carats ?? '').trim());
+  if (!m) return null;
+  const dp = Math.max((m[2] ?? '').length + 1, minDp);
+  const g = caratsToGrams(carats, dp);
+  if (g === null) return null;
+  if (!g.includes('.')) return g;
+  let trimmed = g;
+  while (trimmed.endsWith('0') && trimmed.length - trimmed.indexOf('.') - 1 > minDp) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return trimmed.endsWith('.') ? trimmed.slice(0, -1) : trimmed;
 }
