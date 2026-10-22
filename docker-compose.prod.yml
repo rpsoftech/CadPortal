@@ -43,6 +43,15 @@ services:
       # Admins are warned in the setup checklist when no good backup is newer than this many hours
       # (0 = never warn). Left empty it is 36 with R2 and off otherwise.
       BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-}
+      # "Forgot password" by email. Empty SMTP_HOST means off: people are told to ask an admin for a reset link
+      # (Users screen). APP_BASE_URL is the public address, used in the emailed link.
+      APP_BASE_URL: ${APP_BASE_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_TLS: ${SMTP_TLS:-}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       # The Backups screen lists and offers the stored dumps with a READ-ONLY token for the backup bucket
       # (not the one the backup service writes with). Leave empty to show run history only.
       BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}

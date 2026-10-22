@@ -454,6 +454,62 @@ test('the Backups screen shows the history and queues one backup at a time', asy
   await expect(page.getByRole('button', { name: 'Back up now' })).toBeDisabled();
 });
 
+test('forgot password: an admin makes a reset link, the user chooses a password with it, once', async ({
+  page,
+  browser,
+}) => {
+  // Without a mail server the page says to ask an admin instead of pretending to send something.
+  await page.goto('/login');
+  await page.getByRole('link', { name: 'Forgot password?' }).click();
+  await expect(page.getByText('Resetting by email is not set up here')).toBeVisible();
+
+  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
+  const made = await page.evaluate(async () => {
+    const s = JSON.parse(sessionStorage.getItem('cadportal.session') ?? '{}');
+    const r = await fetch('/api/v1/users', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${s.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'forgot-me@example.com',
+        name: 'Forgot Me',
+        password: 'the old passphrase 1',
+        role: 'designer',
+      }),
+    });
+    return r.status;
+  });
+  expect(made).toBe(201);
+
+  await page.getByRole('link', { name: 'Users' }).click();
+  const row = page.getByRole('row', { name: /forgot-me@example.com/ });
+  await row.getByRole('button', { name: 'Reset link' }).click();
+  const link = await page.getByLabel('Reset link', { exact: true }).inputValue();
+  expect(link).toMatch(/\/reset-password\?token=[A-Za-z0-9_-]{40,}$/);
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  // The user opens it in their own browser: no sign-in needed. A weak password keeps the link alive.
+  const ctx = await browser.newContext();
+  const user = await ctx.newPage();
+  await user.goto(link);
+  await user.getByLabel('New password', { exact: true }).fill('too short');
+  await user.getByLabel('Repeat the new password').fill('too short');
+  await expect(user.getByRole('button', { name: 'Save the password' })).toBeDisabled();
+  await user.getByLabel('New password', { exact: true }).fill('the new passphrase 2');
+  await user.getByLabel('Repeat the new password').fill('the new passphrase 2');
+  await user.getByRole('button', { name: 'Save the password' }).click();
+  await expect(user.getByText('Sign in to CadPortal')).toBeVisible();
+
+  await signIn(user, 'forgot-me@example.com', 'the new passphrase 2');
+
+  // The same link cannot be used again, and says why.
+  await user.goto(link);
+  await user.getByLabel('New password', { exact: true }).fill('a third passphrase 3');
+  await user.getByLabel('Repeat the new password').fill('a third passphrase 3');
+  await user.getByRole('button', { name: 'Save the password' }).click();
+  await expect(user.getByText('already been used or has expired')).toBeVisible();
+  await ctx.close();
+});
+
 test('the audit log shows what was done', async ({ page }) => {
   await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
   await page.getByRole('link', { name: 'Audit' }).click();

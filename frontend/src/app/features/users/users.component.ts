@@ -8,6 +8,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { User } from '../../core/models';
+import { ResetLinkDialogComponent } from './reset-link-dialog.component';
 import { ResetPasswordDialogComponent, UserDialogComponent } from './user-dialogs.component';
 
 @Component({
@@ -55,7 +56,8 @@ import { ResetPasswordDialogComponent, UserDialogComponent } from './user-dialog
                 <td>{{ u.last_login_at ? (u.last_login_at | date: 'medium') : 'Never' }}</td>
                 <td class="actions">
                   <button matButton (click)="edit(u)">Edit</button>
-                  <button matButton (click)="resetPassword(u)">Reset password</button>
+                  <button matButton (click)="resetLink(u)" [disabled]="!u.active">Reset link</button>
+                  <button matButton (click)="resetPassword(u)">Set password</button>
                 </td>
               </tr>
             }
@@ -118,6 +120,10 @@ export class UsersComponent {
         this.snack.open(`Saved ${u.email}`, 'OK', { duration: 3000 });
         this.refresh();
       });
+  }
+
+  protected resetLink(user: User): void {
+    this.dialog.open<ResetLinkDialogComponent, User>(ResetLinkDialogComponent, { data: user });
   }
 
   protected resetPassword(user: User): void {

@@ -393,3 +393,15 @@ export interface Backups {
   /** A backup is in progress. */
   running: boolean;
 }
+
+/** What the sign-in screens need to know before anyone is signed in. */
+export interface AuthConfig {
+  /** "Forgot password" can send an email (a mail server is configured). */
+  password_reset_email: boolean;
+}
+
+/** A one-hour reset link an admin hands to a user. `path` is relative to the portal's address. */
+export interface ResetLink {
+  path: string;
+  expires_at: string;
+}

@@ -5,7 +5,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { toApiError } from '../../core/errors';
 import { safeReturnUrl } from '../../core/guards';
@@ -14,6 +14,7 @@ import { safeReturnUrl } from '../../core/guards';
   selector: 'app-login',
   imports: [
     ReactiveFormsModule,
+    RouterLink,
     MatButtonModule,
     MatCardModule,
     MatFormFieldModule,
@@ -61,6 +62,7 @@ import { safeReturnUrl } from '../../core/guards';
             }
           </mat-card-content>
           <mat-card-actions align="end">
+            <a matButton routerLink="/forgot-password">Forgot password?</a>
             <button matButton="filled" type="submit" [disabled]="form.invalid || busy()">
               Sign in
             </button>

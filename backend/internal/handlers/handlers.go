@@ -66,10 +66,14 @@ func (h *H) Register(r *gin.Engine) {
 	v1.POST("/auth/login", h.login)
 	v1.GET("/auth/me", anyRole, h.me)
 	v1.POST("/auth/change-password", anyRole, h.changePassword)
+	v1.GET("/auth/config", h.authConfig)
+	v1.POST("/auth/forgot-password", h.forgotPassword)
+	v1.POST("/auth/reset-password", h.resetWithToken)
 	v1.GET("/users", admin, h.listUsers)
 	v1.POST("/users", admin, h.createUser)
 	v1.PUT("/users/:id", admin, h.updateUser)
 	v1.POST("/users/:id/password", admin, h.resetPassword)
+	v1.POST("/users/:id/reset-link", admin, h.adminResetLink)
 
 	// Master data
 	m := v1.Group("/masters")

@@ -30,6 +30,9 @@ var auditRoutes = map[string]auditRoute{
 	"POST /api/v1/auth/login":           {skip: true}, // recorded by the login handler (it knows the email)
 	"POST /api/v1/auth/change-password": {action: "auth.password_change", entity: "user"},
 
+	"POST /api/v1/auth/forgot-password":   {action: "auth.password_reset_request", entity: "user"},
+	"POST /api/v1/auth/reset-password":    {action: "auth.password_reset", entity: "user"},
+	"POST /api/v1/users/:id/reset-link":   {action: "user.reset_link", entity: "user", idParam: "id"},
 	"POST /api/v1/users":                  {action: "user.create", entity: "user"},
 	"PUT /api/v1/users/:id":               {action: "user.update", entity: "user", idParam: "id"},
 	"POST /api/v1/users/:id/password":     {action: "user.password_reset", entity: "user", idParam: "id"},

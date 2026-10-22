@@ -9,6 +9,24 @@ export const routes: Routes = [
     loadComponent: () => import('./features/login/login.component').then((m) => m.LoginComponent),
   },
   {
+    path: 'forgot-password',
+    title: 'Forgot password',
+    canActivate: [guestGuard],
+    loadComponent: () =>
+      import('./features/password-reset/forgot-password.component').then(
+        (m) => m.ForgotPasswordComponent,
+      ),
+  },
+  {
+    // Open to everyone: the link in the email may be opened in a browser where someone else is signed in.
+    path: 'reset-password',
+    title: 'Choose a new password',
+    loadComponent: () =>
+      import('./features/password-reset/reset-password.component').then(
+        (m) => m.ResetPasswordComponent,
+      ),
+  },
+  {
     path: '',
     canActivate: [authGuard],
     children: [
