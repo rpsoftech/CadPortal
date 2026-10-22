@@ -115,6 +115,58 @@ test('master data is entered in the app and the checklist follows', async ({ pag
   }
 });
 
+test('stone weight is entered in grams and priced per piece or per carat', async ({ page }) => {
+  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
+  await page.goto('/master-data?tab=matrix');
+
+  // One row: 0.0014 g a stone, 100 per piece (the defaults: grams, per piece).
+  await page.getByRole('button', { name: 'Add row' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Size (mm)').fill('1.10');
+  await dialog.getByLabel('Stone code').click();
+  await page.getByRole('option', { name: '2HD' }).click();
+  await dialog.getByLabel('Weight per stone').fill('0.0014');
+  await expect(dialog.getByText('= 0.0070 ct')).toBeVisible();
+  await expect(dialog.getByRole('combobox', { name: 'Weight unit' })).toContainText('grams');
+  await expect(dialog.getByRole('combobox', { name: 'Priced per' })).toContainText('per piece');
+  await dialog.getByRole('textbox', { name: 'Price' }).fill('100');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  const row = page.getByRole('row').filter({ hasText: '1.10' }).filter({ hasText: '2HD' });
+  await expect(row).toContainText('0.00140'); // grams lead
+  await expect(row).toContainText('0.0070');
+  await expect(row).toContainText('100.00 per pc');
+
+  // A weight that would need rounding is refused with the reason, not rounded.
+  await page.getByRole('button', { name: 'Add row' }).click();
+  await dialog.getByLabel('Size (mm)').fill('1.20');
+  await dialog.getByLabel('Stone code').click();
+  await page.getByRole('option', { name: '2HD' }).click();
+  await dialog.getByLabel('Weight per stone').fill('0.00035');
+  await expect(dialog.getByText('0.00175 ct, which has more than 4 decimal places')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Save' })).toBeEnabled(); // the form allows it; save explains
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('more than 4 decimal places');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+
+  // An import in grams, with one row priced per carat and one per piece.
+  await page.getByRole('button', { name: 'Import CSV / paste' }).click();
+  await dialog
+    .getByLabel('Matrix data')
+    .fill(
+      'size_mm,stone_code,grams_per_stone,rate_per_pc,rate_per_ct,rate_basis\n' +
+        '1.20,2HD,0.0019,150,,pc\n' +
+        '2.50,2HD,0.013,,50000,ct',
+    );
+  await dialog.getByRole('button', { name: /^Import 2 rows/ }).click();
+  const perCarat = page.getByRole('row').filter({ hasText: '2.50' }).filter({ hasText: '2HD' });
+  await expect(perCarat).toContainText('0.01300');
+  await expect(perCarat).toContainText('0.0650');
+  await expect(perCarat).toContainText('50000.00 per ct');
+  await expect(
+    page.getByRole('row').filter({ hasText: '1.20' }).filter({ hasText: '2HD' }),
+  ).toContainText('150.00 per pc');
+});
+
 test('importing designs checks first, then numbers them automatically', async ({ page }) => {
   await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
   await page.getByRole('button', { name: 'Import' }).click();

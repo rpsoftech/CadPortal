@@ -94,19 +94,20 @@ func (s *Service) SetupStatus(ctx context.Context) (SetupStatus, error) {
 			"Gross weights in the catalog use the baseline stone code; choose one.")
 	case len(matrix) == 0:
 		add("matrix_empty", "required", "matrix", "The stone matrix is empty",
-			"Add the stone sizes (carats per stone, rate per carat) or import a CSV. Until then gross weights show a dash.")
+			"Add the stone sizes (weight per stone and price) or import a CSV. Until then gross weights show a dash.")
 	}
 
 	if len(matrix) > 0 {
 		noRate := 0
 		for _, r := range matrix {
-			if !r.RatePerCt.Valid {
+			// the price that costing would use for this row: per piece unless the row is priced per carat
+			if (r.RateBasis == "ct" && !r.RatePerCt.Valid) || (r.RateBasis != "ct" && !r.RatePerPc.Valid) {
 				noRate++
 			}
 		}
 		if noRate > 0 {
 			add("matrix_rates", "recommended", "matrix", "Stone rates are missing",
-				"%d of %d matrix rows have no rate per carat. Costing needs a rate for every stone it prices.", noRate, len(matrix))
+				"%d of %d matrix rows have no price (per piece or per carat, as each row is set). Costing needs a price for every stone it prices.", noRate, len(matrix))
 		}
 		gaps, err := s.Q.ListMatrixGaps(ctx)
 		if err != nil {

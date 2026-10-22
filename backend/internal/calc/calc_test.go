@@ -113,7 +113,7 @@ func TestResolveBOMMissingRows(t *testing.T) {
 	if !errors.As(err, &mme) {
 		t.Fatalf("want MissingMatrixError, got %v", err)
 	}
-	if len(mme.Pairs) != 1 || mme.Pairs[0] != (MissingPair{"1.50", "2HD"}) {
+	if len(mme.Pairs) != 1 || mme.Pairs[0] != (MissingPair{SizeMM: "1.50", Code: "2HD"}) {
 		t.Fatalf("pairs: %+v", mme.Pairs)
 	}
 
@@ -124,5 +124,24 @@ func TestResolveBOMMissingRows(t *testing.T) {
 	}
 	if len(mme.Pairs) != 2 || mme.Pairs[0].Code != "1HD" {
 		t.Fatalf("pairs: %+v", mme.Pairs)
+	}
+}
+
+func TestStoneCostPerPieceOrPerCarat(t *testing.T) {
+	dec := decimal.RequireFromString
+	for name, c := range map[string]struct {
+		lines []StoneCostLine
+		want  string
+	}{
+		"per piece":           {[]StoneCostLine{{Pcs: 24, LineCarats: dec("0.1680"), RatePerPc: dec("100"), Basis: "pc"}}, "2400.00"},
+		"per carat":           {[]StoneCostLine{{Pcs: 24, LineCarats: dec("0.1680"), RatePerCt: dec("50000"), Basis: "ct"}}, "8400.00"},
+		"legacy: empty basis": {[]StoneCostLine{{LineCarats: dec("0.3470"), RatePerCt: dec("50000")}}, "17350.00"},
+		"mixed":               {[]StoneCostLine{{Pcs: 24, RatePerPc: dec("100"), Basis: "pc"}, {Pcs: 1, LineCarats: dec("0.0650"), RatePerCt: dec("50000"), Basis: "ct"}}, "5650.00"},
+		"a piece price is not multiplied by carats": {[]StoneCostLine{{Pcs: 3, LineCarats: dec("9.9999"), RatePerPc: dec("0.05"), Basis: "pc"}}, "0.15"},
+	} {
+		got := Compute(CostInput{NetG: dec("1"), StoneLines: c.lines}).StoneCost.StringFixed(2)
+		if got != c.want {
+			t.Errorf("%s: stone cost %s, want %s", name, got, c.want)
+		}
 	}
 }

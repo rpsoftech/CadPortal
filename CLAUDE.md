@@ -42,7 +42,7 @@ scripts/            backup.sh, restore.sh, e2e.sh, ratelimit_test.sh and their t
 ## Formulas (source of truth)
 - Net weight from volume: `net_g = volume_mm3 × SG / 1000`
 - Net weight from a reference weight: `net_target = net_ref × (SG_target / SG_ref)`
-- Stone weight: `stone_g = total_carats × 0.200`
+- Stone weight: `stone_g = total_carats × 0.200` (grams are the unit people enter and read; carats are what is stored)
 - Gross weight: `gross_g = net_g + total_carats × 0.200`
 - Line carats: `stone_count × carats_per_stone`, where `carats_per_stone` comes from `stone_size_matrix(size_mm, stone_code)`
 
@@ -101,7 +101,7 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
 
 **Uploads:** hash the original bytes (not the gzipped bytes). Reject a duplicate with 409 and name the existing variation. Gzip while streaming to storage.
 
-**Costing CSV:** net gold + wastage %, stone weight (carats and grams) and stone cost (carats × rate), and setting labour (pcs × rate). Stone weight in grams is carats × 0.200, shown wherever carats are (BOM lines at 4 dp, totals at 3 dp), including the job-bag PDF.
+**Costing CSV:** net gold + wastage %, stone weight (grams and carats) and stone cost, and setting labour (pcs × rate). Stones are priced per piece by default (count × price per pc) or per carat (carats × price per ct), chosen per matrix row (`rate_basis`). Stone weight in grams is carats × 0.200, shown wherever carats are (BOM lines at 4 dp, totals at 3 dp), including the job-bag PDF.
 
 ## Frontend screens
 1. **Catalog + filter dashboard:** category, target purity, net/gross weight ranges, tags; cards show net/gross for the selected purity.
@@ -144,5 +144,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   19. Stone weight in grams everywhere; master-data export (zip of CSVs); design media (images and video)
   20. Job-bag PDF carries the design photo
   21. Undo: deleted designs and removed or replaced files are recoverable (Removed screen, retention period)
+  22. Stone weight in grams first; stone price per piece (default) or per carat
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.

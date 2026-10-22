@@ -61,7 +61,7 @@ func TestCostingRowsReportsEveryMissingInput(t *testing.T) {
 	if len(mci.Wastage) != 1 || mci.Wastage[0] != "18KR" {
 		t.Errorf("wastage = %v", mci.Wastage)
 	}
-	want := []calc.MissingPair{{SizeMM: "1.10", Code: "2HD"}, {SizeMM: "1.20", Code: "2HD"}, {SizeMM: "2.50", Code: "2HD"}}
+	want := []calc.MissingPair{{SizeMM: "1.10", Code: "2HD", Basis: "pc"}, {SizeMM: "1.20", Code: "2HD", Basis: "pc"}, {SizeMM: "2.50", Code: "2HD", Basis: "pc"}}
 	if len(mci.StoneRates) != 3 {
 		t.Fatalf("rates = %v", mci.StoneRates)
 	}

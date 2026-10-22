@@ -71,17 +71,17 @@
                 </tr>
               }
               <tr class="total">
-                <td>Baseline stone (ct)</td>
-                @for (v of d.variations; track v.id) {
-                  <td class="num">{{ hasGap(v) ? '–' : (v.baseline_stone_carats | fixed: 4) }}</td>
-                }
-              </tr>
-              <tr class="total">
                 <td>Baseline stone (g)</td>
                 @for (v of d.variations; track v.id) {
                   <td class="num">
                     {{ hasGap(v) ? '–' : (v.baseline_stone_carats | stoneGrams: 4) }}
                   </td>
+                }
+              </tr>
+              <tr class="total muted">
+                <td>Baseline stone (ct)</td>
+                @for (v of d.variations; track v.id) {
+                  <td class="num">{{ hasGap(v) ? '–' : (v.baseline_stone_carats | fixed: 4) }}</td>
                 }
               </tr>
             </tbody>
@@ -167,9 +167,10 @@
                       <th>Size (mm)</th>
                       <th class="num">Pcs</th>
                       <th>Code</th>
-                      <th class="num">ct / stone</th>
-                      <th class="num">Line ct</th>
+                      <th class="num">g / stone</th>
                       <th class="num">Line g</th>
+                      <th class="num muted">ct / stone</th>
+                      <th class="num muted">Line ct</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -178,9 +179,10 @@
                         <td>{{ l.size_mm | fixed: 2 }}</td>
                         <td class="num">{{ l.stone_count }}</td>
                         <td class="mono">{{ l.stone_code }}{{ l.locked ? ' 🔒' : '' }}</td>
-                        <td class="num">{{ l.carats_per_stone | fixed: 4 }}</td>
-                        <td class="num">{{ l.line_carats | fixed: 4 }}</td>
+                        <td class="num">{{ l.carats_per_stone | stoneGrams: 5 }}</td>
                         <td class="num">{{ l.line_weight_g | fixed: 4 }}</td>
+                        <td class="num muted">{{ l.carats_per_stone | fixed: 4 }}</td>
+                        <td class="num muted">{{ l.line_carats | fixed: 4 }}</td>
                       </tr>
                     }
                     <tr class="total">
@@ -188,8 +190,9 @@
                       <td class="num">{{ b.total_pcs }}</td>
                       <td></td>
                       <td></td>
-                      <td class="num">{{ b.total_carats | fixed: 4 }}</td>
                       <td class="num">{{ b.total_carats | stoneGrams: 4 }}</td>
+                      <td></td>
+                      <td class="num muted">{{ b.total_carats | fixed: 4 }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -264,7 +267,11 @@
               @if (err.missing.length) {
                 <ul>
                   @for (p of err.missing; track p.SizeMM + p.Code) {
-                    <li>No rate per ct for {{ p.SizeMM }} mm × {{ p.Code }}</li>
+                    <li>
+                      No {{ p.Basis === 'pc' ? 'price per piece' : 'rate per carat' }} for
+                      {{ p.SizeMM }} mm ×
+                      {{ p.Code }}
+                    </li>
                   }
                 </ul>
               }

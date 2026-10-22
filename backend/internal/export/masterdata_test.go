@@ -57,8 +57,8 @@ func TestWriteMasterDataZip(t *testing.T) {
 		StoneCodes: []db.StoneCode{{Code: "1HD", IsDefaultBaseline: true, Active: true}, {Code: "2HD", Active: false}},
 		Matrix: []db.ListStoneMatrixRow{
 			{SizeMm: d("1.1"), StoneCode: "2HD", Sieve: pgtype.Text{String: "+0000", Valid: true}, CaratsPerStone: d("0.007"),
-				RatePerCt: decimal.NullDecimal{Decimal: d("50000"), Valid: true}},
-			{SizeMm: d("1.2"), StoneCode: "2HD", CaratsPerStone: d("0.0095")}, // no sieve, no rate
+				RatePerCt: decimal.NullDecimal{Decimal: d("50000"), Valid: true}, RateBasis: "ct"},
+			{SizeMm: d("1.2"), StoneCode: "2HD", CaratsPerStone: d("0.0095"), RateBasis: "pc", RatePerPc: decimal.NullDecimal{Decimal: d("150"), Valid: true}}, // no sieve
 		},
 		Categories: []db.Category{
 			{Name: "Rings", CodePrefix: pgtype.Text{String: "LR", Valid: true}, NextSeq: 41},
@@ -96,9 +96,9 @@ func TestWriteMasterDataZip(t *testing.T) {
 	eq("stone_codes.csv", [][]string{{"code", "baseline", "active"}, {"1HD", "true", "true"}, {"2HD", "false", "false"}})
 	// The stone matrix file is the import format, fixed decimals included.
 	eq("stone_matrix.csv", [][]string{
-		{"size_mm", "stone_code", "sieve", "carats_per_stone", "rate_per_ct"},
-		{"1.10", "2HD", "+0000", "0.0070", "50000.00"},
-		{"1.20", "2HD", "", "0.0095", ""},
+		{"size_mm", "stone_code", "sieve", "carats_per_stone", "grams_per_stone", "rate_basis", "rate_per_pc", "rate_per_ct"},
+		{"1.10", "2HD", "+0000", "0.0070", "0.00140", "ct", "", "50000.00"},
+		{"1.20", "2HD", "", "0.0095", "0.00190", "pc", "150.00", ""},
 	})
 	eq("categories.csv", [][]string{
 		{"name", "code_prefix", "last_number_used"}, {"Rings", "LR", "41"}, {"'=Evil", "", "0"},

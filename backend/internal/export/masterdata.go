@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/shopspring/decimal"
+
+	"github.com/rpsoftech/cad-portal/backend/internal/calc"
 	"github.com/rpsoftech/cad-portal/backend/internal/service"
 )
 
@@ -52,17 +55,22 @@ func WriteMasterDataZip(w io.Writer, md service.MasterData, at time.Time) error 
 			return nil
 		}},
 		{"stone_matrix.csv", func(cw *csv.Writer) error {
-			// The import format: size_mm, stone_code, sieve, carats_per_stone, rate_per_ct.
-			if err := cw.Write([]string{"size_mm", "stone_code", "sieve", "carats_per_stone", "rate_per_ct"}); err != nil {
+			// The import format. grams_per_stone is carats x 0.200 for reading; the import takes carats
+			// (the stored value) unless that column is empty, then grams.
+			if err := cw.Write([]string{"size_mm", "stone_code", "sieve", "carats_per_stone", "grams_per_stone",
+				"rate_basis", "rate_per_pc", "rate_per_ct"}); err != nil {
 				return err
 			}
-			for _, r := range md.Matrix {
-				rate := ""
-				if r.RatePerCt.Valid {
-					rate = r.RatePerCt.Decimal.StringFixed(2)
+			money := func(n decimal.NullDecimal) string {
+				if !n.Valid {
+					return ""
 				}
+				return n.Decimal.StringFixed(2)
+			}
+			for _, r := range md.Matrix {
 				if err := cw.Write([]string{r.SizeMm.StringFixed(2), safeCell(r.StoneCode), safeSieve(r.Sieve.String),
-					r.CaratsPerStone.StringFixed(4), rate}); err != nil {
+					r.CaratsPerStone.StringFixed(4), calc.StoneWeight(r.CaratsPerStone).StringFixed(5),
+					r.RateBasis, money(r.RatePerPc), money(r.RatePerCt)}); err != nil {
 					return err
 				}
 			}
@@ -119,7 +127,7 @@ func WriteMasterDataZip(w io.Writer, md service.MasterData, at time.Time) error 
 
 alloys.csv        alloys with specific gravity and wastage %% (confidential: costing inputs)
 stone_codes.csv   stone codes and which one is the baseline
-stone_matrix.csv  carats per stone and rate per carat for each (size, stone code); this is the
+stone_matrix.csv  weight per stone (carats and grams) and the price for each (size, stone code), per piece or per carat; this is the
                   stone matrix import format and can be loaded back as it is
 categories.csv    categories and their code prefixes (designs are numbered PREFIX0001, ...)
 tags.csv          the tag pool

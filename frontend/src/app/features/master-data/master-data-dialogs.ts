@@ -1,4 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -9,11 +10,14 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { ApiService } from '../../core/api.service';
 import { PREFIX_PATTERN } from '../../core/code-prefix';
 import { toApiError } from '../../core/errors';
+import { caratsToGrams, fixed } from '../../core/format';
 import { parseMatrixCsv } from '../../core/matrix-csv';
+import { weightToCarats } from '../../core/stone-units';
 import {
   Category,
   Metal,
   MatrixRowInput,
+  RateBasis,
   StoneCode,
   StoneMatrixRow,
   TAG_GROUPS,
@@ -143,6 +147,12 @@ export interface MatrixRowDialogData {
   prefill?: { size_mm: string; stone_code: string };
 }
 
+/**
+ * One row of the stone matrix: the weight of a stone of a size and code, and what it costs. The weight
+ * is entered in grams (carats are the other choice) and the price per piece (per carat is the other
+ * choice). Carats are what is stored, so grams are converted exactly and a weight that cannot be written
+ * in 4 decimal places of carats is refused instead of rounded.
+ */
 @Component({
   selector: 'app-matrix-row-dialog',
   imports: IMPORTS,
@@ -167,16 +177,39 @@ export interface MatrixRowDialogData {
           <mat-label>Sieve</mat-label>
           <input matInput formControlName="sieve" maxlength="20" />
         </mat-form-field>
-        <mat-form-field appearance="outline">
-          <mat-label>Carats per stone</mat-label>
-          <input matInput formControlName="carats" inputmode="decimal" />
-          <mat-hint>Up to 4 decimals, e.g. 0.0070</mat-hint>
-        </mat-form-field>
-        <mat-form-field appearance="outline">
-          <mat-label>Rate per carat</mat-label>
-          <input matInput formControlName="rate" inputmode="decimal" />
-          <mat-hint>Up to 2 decimals. Needed for costing.</mat-hint>
-        </mat-form-field>
+
+        <div class="pair">
+          <mat-form-field appearance="outline" class="grow">
+            <mat-label>Weight per stone</mat-label>
+            <input matInput formControlName="weight" inputmode="decimal" />
+            <mat-hint>{{ weightHint() }}</mat-hint>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="unit">
+            <mat-label>Unit</mat-label>
+            <mat-select formControlName="weightUnit" aria-label="Weight unit">
+              <mat-option value="g">grams</mat-option>
+              <mat-option value="ct">carats</mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        <div class="pair">
+          <mat-form-field appearance="outline" class="grow">
+            <mat-label>Price</mat-label>
+            <input matInput formControlName="price" inputmode="decimal" />
+            <mat-hint>Up to 2 decimals. Needed for costing.</mat-hint>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="unit">
+            <mat-label>Priced</mat-label>
+            <mat-select formControlName="basis" aria-label="Priced per">
+              <mat-option value="pc">per piece</mat-option>
+              <mat-option value="ct">per carat</mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+        @if (otherPriceNote(); as note) {
+          <p class="muted small">{{ note }}</p>
+        }
         @if (error()) {
           <div class="error-box" role="alert">{{ error() }}</div>
         }
@@ -187,7 +220,19 @@ export interface MatrixRowDialogData {
       </mat-dialog-actions>
     </form>
   `,
-  styles: COL,
+  styles: `
+    ${COL}
+    .pair {
+      display: flex;
+      gap: 8px;
+    }
+    .grow {
+      flex: 1;
+    }
+    .unit {
+      width: 130px;
+    }
+  `,
 })
 export class MatrixRowDialogComponent {
   protected readonly data = inject<MatrixRowDialogData>(MAT_DIALOG_DATA);
@@ -196,42 +241,94 @@ export class MatrixRowDialogComponent {
   protected readonly busy = signal(false);
   protected readonly error = signal('');
 
+  private readonly row = this.data.row;
+  private readonly startBasis: RateBasis = this.row?.rate_basis ?? 'pc';
+
   protected readonly form = new FormGroup({
-    size: new FormControl(this.data.row?.size_mm ?? this.data.prefill?.size_mm ?? '', {
+    size: new FormControl(this.row?.size_mm ?? this.data.prefill?.size_mm ?? '', {
       nonNullable: true,
       validators: [Validators.required, positiveDecimal(2)],
     }),
-    code: new FormControl(this.data.row?.stone_code ?? this.data.prefill?.stone_code ?? '', {
+    code: new FormControl(this.row?.stone_code ?? this.data.prefill?.stone_code ?? '', {
       nonNullable: true,
       validators: [Validators.required],
     }),
-    sieve: new FormControl(this.data.row?.sieve ?? '', { nonNullable: true }),
-    carats: new FormControl(this.data.row?.carats_per_stone ?? '', {
+    sieve: new FormControl(this.row?.sieve ?? '', { nonNullable: true }),
+    // An existing row is shown in grams, the unit this screen leads with.
+    weight: new FormControl(this.row ? gramsText(this.row.carats_per_stone) : '', {
       nonNullable: true,
-      validators: [Validators.required, Validators.pattern(/^\d+(\.\d{1,4})?$/)],
+      validators: [Validators.required, Validators.pattern(/^\d+(\.\d+)?$/)],
     }),
-    rate: new FormControl(this.data.row?.rate_per_ct ?? '', {
-      nonNullable: true,
-      validators: [Validators.pattern(/^\d+(\.\d{1,2})?$/)],
-    }),
+    weightUnit: new FormControl<'g' | 'ct'>('g', { nonNullable: true }),
+    price: new FormControl(
+      (this.startBasis === 'ct' ? this.row?.rate_per_ct : this.row?.rate_per_pc) ?? '',
+      { nonNullable: true, validators: [Validators.pattern(/^\d+(\.\d{1,2})?$/)] },
+    ),
+    basis: new FormControl<RateBasis>(this.startBasis, { nonNullable: true }),
+  });
+
+  private readonly values = toSignal(this.form.valueChanges, {
+    initialValue: this.form.getRawValue(),
+  });
+
+  /** What the weight comes to in the other unit, or why it cannot be stored. */
+  protected readonly weightHint = computed(() => {
+    const v = this.form.getRawValue();
+    void this.values();
+    if (v.weight.trim() === '') {
+      return v.weightUnit === 'g' ? 'e.g. 0.0014 g (= 0.0070 ct)' : 'Up to 4 decimals, e.g. 0.0070';
+    }
+    const w = weightToCarats(v.weight, v.weightUnit);
+    if (!w.ok) return w.error;
+    return v.weightUnit === 'g'
+      ? `= ${fixed(w.carats, 4)} ct`
+      : `= ${caratsToGrams(w.carats, 5)} g`;
+  });
+
+  /** When the other basis already has a price, say that it is kept but not used. */
+  protected readonly otherPriceNote = computed(() => {
+    void this.values();
+    const basis = this.form.controls.basis.value;
+    const other = basis === 'pc' ? this.row?.rate_per_ct : this.row?.rate_per_pc;
+    return other
+      ? `This row also holds ${other} ${basis === 'pc' ? 'per carat' : 'per piece'}; it is kept but not used for costing.`
+      : '';
   });
 
   constructor() {
-    if (this.data.row) {
+    if (this.row) {
       this.form.controls.size.disable();
       this.form.controls.code.disable();
     }
+    // Choosing the other unit converts what is typed, so the number keeps its meaning.
+    this.form.controls.weightUnit.valueChanges.subscribe((unit) => {
+      const c = this.form.controls.weight;
+      const was = unit === 'g' ? 'ct' : 'g';
+      const w = weightToCarats(c.value, was);
+      if (w.ok && c.value.trim() !== '') {
+        c.setValue(unit === 'ct' ? w.carats : gramsText(w.carats));
+      }
+    });
   }
 
   protected save(): void {
     if (this.form.invalid) return;
     const v = this.form.getRawValue();
+    const w = weightToCarats(v.weight, v.weightUnit);
+    if (!w.ok) {
+      this.error.set(`Weight per stone: ${w.error}`);
+      return;
+    }
+    const price = v.price.trim() === '' ? null : v.price.trim();
+    // The chosen basis takes the typed price; the other basis keeps what the row already held.
     const row: MatrixRowInput = {
       size_mm: v.size.trim(),
       stone_code: v.code,
       sieve: v.sieve.trim(),
-      carats_per_stone: v.carats.trim(),
-      rate_per_ct: v.rate.trim() === '' ? null : v.rate.trim(),
+      carats_per_stone: w.carats,
+      rate_per_pc: v.basis === 'pc' ? price : (this.row?.rate_per_pc ?? null),
+      rate_per_ct: v.basis === 'ct' ? price : (this.row?.rate_per_ct ?? null),
+      rate_basis: v.basis,
     };
     this.busy.set(true);
     this.error.set('');
@@ -254,10 +351,17 @@ export class MatrixRowDialogComponent {
     <h2 mat-dialog-title>Import stone matrix</h2>
     <mat-dialog-content class="col wide">
       <p class="muted">
-        Paste rows copied from a spreadsheet, or choose a CSV file. Columns, in order:
-        <span class="mono">size_mm, stone_code, sieve, carats_per_stone, rate_per_ct</span>
-        (sieve and rate may be empty). Existing rows with the same size and code are updated;
-        nothing is deleted. Stone codes must already exist.
+        Paste rows copied from a spreadsheet, or choose a CSV file with a header row, for example
+        <span class="mono"
+          >size_mm, stone_code, sieve, grams_per_stone, rate_per_pc, rate_per_ct, rate_basis</span
+        >. Give the weight per stone as <span class="mono">grams_per_stone</span> or
+        <span class="mono">carats_per_stone</span> (grams are converted exactly; a weight that would
+        need rounding is refused). Stones are priced per piece unless
+        <span class="mono">rate_basis</span> is <span class="mono">ct</span> (per carat). Columns
+        may come in any order. Without a header the older five columns (size, code, sieve, carats,
+        rate per carat) and the eight columns of Export CSV are read by position. Sieve and prices
+        may be empty. Existing rows with the same size and code are updated; nothing is deleted.
+        Stone codes must already exist.
       </p>
       <input type="file" accept=".csv,.tsv,.txt,text/csv" (change)="onFile($event)" />
       <textarea
@@ -574,4 +678,10 @@ export class StoneCodeDialogComponent {
       },
     });
   }
+}
+
+/** A weight in carats as grams to type into a box: exact, without trailing zeros (0.2, not 0.20000). */
+function gramsText(carats: string): string {
+  const g = caratsToGrams(carats, 5) ?? '';
+  return g.includes('.') ? g.replace(/0+$/, '').replace(/\.$/, '') : g;
 }

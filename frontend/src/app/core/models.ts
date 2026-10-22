@@ -55,6 +55,8 @@ export interface StoneCode {
   active: boolean;
 }
 
+export type RateBasis = 'pc' | 'ct';
+
 export interface StoneMatrixRow {
   size_mm: Dec;
   stone_code_id: number;
@@ -62,6 +64,9 @@ export interface StoneMatrixRow {
   sieve: string | null;
   carats_per_stone: Dec;
   rate_per_ct: Dec | null;
+  rate_per_pc: Dec | null;
+  /** Which price costing uses for this row: per piece (the default) or per carat. */
+  rate_basis: RateBasis;
 }
 
 /** One row sent to PUT /masters/stone-matrix. */
@@ -70,7 +75,10 @@ export interface MatrixRowInput {
   stone_code: string;
   sieve: string;
   carats_per_stone: string;
+  rate_per_pc: string | null;
   rate_per_ct: string | null;
+  /** Empty lets the server decide: per piece, unless only a per-carat price is given. */
+  rate_basis: RateBasis | '';
 }
 
 export interface MatrixGap {
@@ -262,8 +270,8 @@ export interface CostingItem {
 /** Error body shape returned by the API. Go structs without json tags use PascalCase keys. */
 export interface ApiErrorBody {
   error?: string;
-  missing?: { SizeMM: string; Code: string }[];
-  stone_rates_missing?: { SizeMM: string; Code: string }[];
+  missing?: { SizeMM: string; Code: string; Basis?: string }[];
+  stone_rates_missing?: { SizeMM: string; Code: string; Basis?: string }[];
   metals_missing_wastage?: string[];
 }
 

@@ -28,6 +28,7 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { toApiError } from '../../core/errors';
 import { fixed } from '../../core/format';
+import { gramsToCarats } from '../../core/stone-units';
 import { saveBlob } from '../../shared/download';
 import { DesignFilter, DesignImportResult, DesignListItem, TAG_GROUPS } from '../../core/models';
 import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design-dialog.component';
@@ -105,7 +106,7 @@ export class CatalogComponent {
     maxNetWt: new FormControl('', positiveDecimal(3)),
     minGrossWt: new FormControl('', positiveDecimal(3)),
     maxGrossWt: new FormControl('', positiveDecimal(3)),
-    maxStoneCts: new FormControl('', positiveDecimal(4)),
+    maxStoneCts: new FormControl('', positiveDecimal(5)),
     tagIds: new FormControl<number[]>([], { nonNullable: true }),
   });
 
@@ -180,7 +181,8 @@ export class CatalogComponent {
       maxNetWt: num(c.maxNetWt),
       minGrossWt: num(c.minGrossWt),
       maxGrossWt: num(c.maxGrossWt),
-      maxStoneCts: num(c.maxStoneCts),
+      // typed in grams like every other stone weight; the API filters in carats (1 ct = 0.2 g)
+      maxStoneCts: gramsToCarats(num(c.maxStoneCts)),
     };
   }
 
