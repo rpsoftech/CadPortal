@@ -2,8 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // SetupItem is one thing an admin still has to enter before the portal is fully usable.
@@ -126,5 +130,44 @@ func (s *Service) SetupStatus(ctx context.Context) (SetupStatus, error) {
 				"%d size(s) used by seats are missing for the baseline code %s: %s. Those variations show no gross weight.", len(gaps), baseline, strings.Join(sizes, ", "))
 		}
 	}
+	if s.BackupMaxAge > 0 {
+		item, err := s.backupItem(ctx)
+		if err != nil {
+			return SetupStatus{}, err
+		}
+		if item != nil {
+			items = append(items, *item)
+		}
+	}
 	return SetupStatus{Complete: len(items) == 0, Items: items}, nil
+}
+
+// backupItem warns when backups have stopped: a backup that fails quietly is how data gets lost. It is
+// "required" because the portal holds the only copy of the CAD files and the catalog.
+func (s *Service) backupItem(ctx context.Context) (*SetupItem, error) {
+	item := func(title, detail string) *SetupItem {
+		return &SetupItem{Key: "backup", Severity: "required", Title: title, Detail: detail}
+	}
+	good, err := s.Q.LastGoodBackupRun(ctx)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, mapErr(err)
+	}
+	last, lerr := s.Q.LastBackupRun(ctx)
+	if lerr != nil && !errors.Is(lerr, pgx.ErrNoRows) {
+		return nil, mapErr(lerr)
+	}
+	failure := ""
+	if lerr == nil && last.Ok.Valid && !last.Ok.Bool {
+		failure = " The last run failed: " + last.Error
+	}
+	if err != nil { // no good run at all
+		return item("No backup has ever completed",
+			"Start the backup service (COMPOSE_PROFILES=backup) and check its logs; see Backups in the README."+failure), nil
+	}
+	age := time.Since(good.FinishedAt.Time)
+	if age > s.BackupMaxAge {
+		return item("Backups have stopped", fmt.Sprintf("The last good backup finished %s ago (%s).%s",
+			age.Round(time.Hour), good.FinishedAt.Time.UTC().Format("2006-01-02 15:04 UTC"), failure)), nil
+	}
+	return nil, nil
 }

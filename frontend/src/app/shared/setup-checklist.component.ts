@@ -37,7 +37,7 @@ export function summarize(items: SetupItem[]): { required: number; recommended: 
           <div class="banner" role="status">
             <strong>Setup is not finished.</strong>
             {{ sum(st.items) }}
-            <a [routerLink]="['/master-data']" [queryParams]="{ tab: st.items[0].tab }">
+            <a [routerLink]="['/master-data']" [queryParams]="{ tab: st.items[0].tab || null }">
               Open the checklist
             </a>
           </div>
@@ -55,9 +55,11 @@ export function summarize(items: SetupItem[]): { required: number; recommended: 
                     <span class="tag">{{ it.severity }}</span>
                     <span class="detail">{{ it.detail }}</span>
                   </div>
-                  <a [routerLink]="['/master-data']" [queryParams]="{ tab: it.tab }">
-                    {{ tabLabel(it.tab) }} →
-                  </a>
+                  @if (it.tab) {
+                    <a [routerLink]="['/master-data']" [queryParams]="{ tab: it.tab }">
+                      {{ tabLabel(it.tab) }} →
+                    </a>
+                  }
                 </li>
               }
             </ul>
@@ -146,6 +148,6 @@ export class SetupChecklistComponent {
   }
 
   protected tabLabel(tab: SetupItem['tab']): string {
-    return { alloys: 'Alloys', matrix: 'Stone matrix', categories: 'Categories & tags' }[tab];
+    return { alloys: 'Alloys', matrix: 'Stone matrix', categories: 'Categories & tags', '': '' }[tab];
   }
 }

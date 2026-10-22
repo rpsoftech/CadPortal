@@ -47,6 +47,9 @@ jobs:
             context: ./backend
           - name: web
             context: ./frontend
+          - name: backup
+            context: ./backend
+            target: backup
     steps:
       - uses: actions/checkout@v7
         with:
@@ -72,6 +75,7 @@ jobs:
         uses: docker/build-push-action@v7.4.0
         with:
           context: ${{ matrix.context }}
+          target: ${{ matrix.target }}   # empty for api and web: the Dockerfile's last stage
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
