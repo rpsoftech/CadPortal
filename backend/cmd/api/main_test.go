@@ -84,3 +84,35 @@ func TestAuditRetentionDays(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckR2EnvNamesWhatIsWrong(t *testing.T) {
+	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+	full := map[string]string{
+		"S3_ENDPOINT": "https://abc123.r2.cloudflarestorage.com", "S3_BUCKET": "cad-vault",
+		"S3_ACCESS_KEY_ID": "id", "S3_SECRET_ACCESS_KEY": "secret",
+	}
+	if err := checkR2Env(env(full)); err != nil {
+		t.Errorf("a complete setup: %v", err)
+	}
+	// What a copied .env.example looks like: a bucket and a placeholder endpoint, no keys.
+	copied := map[string]string{"S3_ENDPOINT": "https://<account_id>.r2.cloudflarestorage.com", "S3_BUCKET": "cad-vault"}
+	err := checkR2Env(env(copied))
+	if err == nil || !strings.Contains(err.Error(), "S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY are empty") ||
+		!strings.Contains(err.Error(), "STORAGE=local") {
+		t.Errorf("missing keys: %v", err)
+	}
+	one := map[string]string{"S3_ENDPOINT": "https://x", "S3_BUCKET": "b", "S3_ACCESS_KEY_ID": "i"}
+	if err := checkR2Env(env(one)); err == nil || !strings.Contains(err.Error(), "S3_SECRET_ACCESS_KEY is empty") {
+		t.Errorf("one missing: %v", err)
+	}
+	placeholder := map[string]string{
+		"S3_ENDPOINT": "https://<account_id>.r2.cloudflarestorage.com", "S3_BUCKET": "b",
+		"S3_ACCESS_KEY_ID": "i", "S3_SECRET_ACCESS_KEY": "s",
+	}
+	if err := checkR2Env(env(placeholder)); err == nil || !strings.Contains(err.Error(), "placeholder") {
+		t.Errorf("placeholder endpoint: %v", err)
+	}
+	if err := checkR2Env(env(map[string]string{"S3_ENDPOINT": "  "})); err == nil {
+		t.Error("whitespace counts as empty")
+	}
+}

@@ -57,7 +57,35 @@ frontend/
 docker-compose.yml  local PostgreSQL
 ```
 
-## Getting started
+## Try it locally in one go
+
+The quickest way to see the whole thing running needs only Docker. This is the same stack as
+production, with files kept on local disk:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set `POSTGRES_PASSWORD` (`openssl rand -hex 24`), `JWT_SECRET`
+(`openssl rand -hex 32`) and `STORAGE=local`. Leave every `S3_*` line empty. Then:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build --wait
+```
+
+```bash
+docker compose -f docker-compose.prod.yml exec api /app/adduser -email you@example.com -name "Your Name" -role admin
+```
+
+Open http://localhost:8080 and sign in. The setup banner lists what to enter first (alloys, category
+prefixes, stone matrix). Stop it with `docker compose -f docker-compose.prod.yml down` (add `-v`
+to also delete the data). In Git Bash on Windows, put `MSYS_NO_PATHCONV=1` in front of the `exec`
+line.
+
+If the API keeps restarting, `docker compose -f docker-compose.prod.yml logs api` says why. The
+usual cause is a half-filled `S3_*` block: fill all four in or leave all four empty.
+
+## Getting started (for development)
 
 You need Go (see `backend/go.mod`), Docker, Node 22.22.3+ (or 24.15+) for the frontend, and a shell.
 
