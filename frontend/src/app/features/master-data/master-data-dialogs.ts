@@ -151,7 +151,7 @@ export interface MatrixRowDialogData {
  * One row of the stone matrix: the weight of a stone of a size and code, and what it costs. The weight
  * is entered in grams (carats are the other choice) and the price per piece (per carat is the other
  * choice). Carats are what is stored, so grams are converted exactly and a weight that cannot be written
- * in 4 decimal places of carats is refused instead of rounded.
+ * in 6 decimal places of carats is refused instead of rounded.
  */
 @Component({
   selector: 'app-matrix-row-dialog',
@@ -276,7 +276,7 @@ export class MatrixRowDialogComponent {
     const v = this.form.getRawValue();
     void this.values();
     if (v.weight.trim() === '') {
-      return v.weightUnit === 'g' ? 'e.g. 0.0014 g (= 0.0070 ct)' : 'Up to 4 decimals, e.g. 0.0070';
+      return v.weightUnit === 'g' ? 'e.g. 0.0014 g (= 0.0070 ct)' : 'Up to 6 decimals, e.g. 0.0070';
     }
     const w = weightToCarats(v.weight, v.weightUnit);
     if (!w.ok) return w.error;

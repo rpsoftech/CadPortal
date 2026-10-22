@@ -141,11 +141,13 @@ test('stone weight is entered in grams and priced per piece or per carat', async
   await dialog.getByLabel('Size (mm)').fill('1.20');
   await dialog.getByLabel('Stone code').click();
   await page.getByRole('option', { name: '2HD' }).click();
-  await dialog.getByLabel('Weight per stone').fill('0.00035');
-  await expect(dialog.getByText('0.00175 ct, which has more than 4 decimal places')).toBeVisible();
+  await dialog.getByLabel('Weight per stone').fill('0.0000001');
+  await expect(
+    dialog.getByText('0.0000005 ct, which has more than 6 decimal places'),
+  ).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Save' })).toBeEnabled(); // the form allows it; save explains
   await dialog.getByRole('button', { name: 'Save' }).click();
-  await expect(dialog.getByRole('alert')).toContainText('more than 4 decimal places');
+  await expect(dialog.getByRole('alert')).toContainText('more than 6 decimal places');
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 
   // An import in grams, with one row priced per carat and one per piece.

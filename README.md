@@ -328,8 +328,8 @@ rates, so store it as carefully as a database backup.
 
 **Stone weight is in grams.** A row's weight per stone is typed in grams (the unit has a switch to
 carats) and the screen shows the other unit beside it: 0.0014 g is 0.0070 ct, converted exactly
-(1 ct = 0.200 g). Carats are what is stored, to 4 decimals, so a weight that would need rounding
-(0.00035 g is 0.00175 ct) is refused with that reason instead of being rounded. Grams lead everywhere
+(1 ct = 0.200 g). Carats are what is stored, to 6 decimals (enough for a supplier list in grams per 1000 pieces), so a weight that would need rounding
+(0.0000001 g is 0.0000005 ct) is refused with that reason instead of being rounded. Grams lead everywhere
 stone weight is shown: the matrix, the BOM, the weight matrix, the job bag, the catalog filter.
 
 **Stones are priced per piece by default, or per carat.** Each row has a price and a basis (*per
@@ -345,9 +345,21 @@ in any order; the weight is `grams_per_stone` or `carats_per_stone`, and the pri
 and/or `rate_per_ct` with `rate_basis` (`pc` or `ct`; empty means per piece, or per carat when only a
 per-carat price is given). Without a header the older five columns (size, code, sieve, carats, rate per
 carat) and the eight columns of **Export CSV** are read by position; sieve and prices may be empty and
-tab-separated text pasted from a spreadsheet works. Sizes allow 2 decimals, carats 4, prices 2;
+tab-separated text pasted from a spreadsheet works. Sizes allow 2 decimals, carats 6, prices 2;
 over-precise values are rejected rather than rounded. An import is all-or-nothing, and **Export CSV**
 gives the same eight columns back for editing. Stone codes must exist before rows can use them.
+
+**A ready-made list: CZ stones.** `docs/imports/cz-stone-weights.csv` is the supplier's weight list
+(grams per 1000 pieces for STAR, MHD and HD stones, sizes 1 mm to 2/00) converted to grams per
+stone, 35 rows. To load it: add the stone codes `STAR`, `MHD` and `HD` under **Stone codes** (**Add
+stone code**), then **Import CSV / paste** the file's contents. Notes on how it was made:
+- The supplier's size names (`1/10`, `2/00`) are read as millimetres (1.10, 2.00), the usual jeweller's
+  notation, and kept in the **Sieve** column, so the original name is never lost. Check this reading.
+- A `0` in the list means that stone does not come in that size, so no row is made for it (STAR at
+  1/15, 1/25 and 1/35). A zero is never recorded as a weight, and blank cells are skipped.
+- Prices are left empty for you to fill in (per piece by default).
+- Per 1000 weights with two decimals need five decimals of carats (1.81 g per 1000 is 0.00905 ct),
+  which is why the matrix keeps six.
 
 Changing SG, the baseline stone code or baseline carats rebuilds every variation's weights in
 the background; the screen shows when that finishes. A matrix row cannot be deleted while a seat

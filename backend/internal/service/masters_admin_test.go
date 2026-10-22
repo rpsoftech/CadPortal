@@ -128,7 +128,7 @@ func TestValidateMatrixRows(t *testing.T) {
 		"huge size":       {row("1000", "2HD", "0.007")},
 		"size 3 places":   {row("1.105", "2HD", "0.007")},
 		"negative carats": {row("1.10", "2HD", "-0.001")},
-		"carats 5 places": {row("1.10", "2HD", "0.00701")},
+		"carats 7 places": {row("1.10", "2HD", "0.0070001")},
 		"rate 3 places":   {withRate},
 		"negative rate":   {negRate},
 		"duplicate":       {row("1.10", "2HD", "0.007"), row("1.1", "2hd", "0.008")},
@@ -141,7 +141,7 @@ func TestValidateMatrixRows(t *testing.T) {
 		})
 	}
 	// Row numbers in messages help locate a bad line in a large import.
-	err := ValidateMatrixRows([]MatrixRowInput{row("1.10", "2HD", "0.007"), row("1.20", "2HD", "0.00701")})
+	err := ValidateMatrixRows([]MatrixRowInput{row("1.10", "2HD", "0.007"), row("1.20", "2HD", "0.0070001")})
 	if err == nil || !strings.Contains(err.Error(), "row 2") {
 		t.Errorf("message should name the row: %v", err)
 	}

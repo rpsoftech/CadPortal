@@ -440,7 +440,7 @@ func TestMatrixRowDeleteAndGapsOverHTTP(t *testing.T) {
 		t.Errorf("status: %d %s", w.Code, w.Body)
 	}
 	// Over-precise input is rejected instead of silently rounded.
-	body := jsonBody(map[string]any{"rows": []map[string]string{{"size_mm": "1.10", "stone_code": "2HD", "carats_per_stone": "0.00701"}}})
+	body := jsonBody(map[string]any{"rows": []map[string]string{{"size_mm": "1.10", "stone_code": "2HD", "carats_per_stone": "0.0070001"}}})
 	if w := do(r, "PUT", "/api/v1/masters/stone-matrix", adm, "application/json", body); w.Code != 400 {
 		t.Errorf("over-precise carats: %d %s", w.Code, w.Body)
 	}
