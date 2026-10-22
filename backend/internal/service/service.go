@@ -73,6 +73,9 @@ type Service struct {
 	Q          *db.Queries
 	Store      storage.Store // nil disables CAD upload/download
 	PresignTTL time.Duration
+	// Retention is how long a removed or replaced file is kept before it is deleted for good; 0 or less
+	// deletes it at once. See retire and PurgeTrash.
+	Retention time.Duration
 }
 
 func New(pool *pgxpool.Pool) *Service { return &Service{Pool: pool, Q: db.New(pool)} }

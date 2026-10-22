@@ -203,6 +203,45 @@ test('a CAD file keeps its bytes and its accented name through upload, download 
   page.once('dialog', (d) => void d.accept());
   await page.getByRole('button', { name: 'Remove' }).click();
   await expect(page.getByText('No 3dm file stored yet')).toBeVisible();
+
+  // A removal is not the end: the file is kept and can be put back, byte for byte.
+  await page.getByRole('link', { name: 'Removed' }).click();
+  const row = page.getByRole('row').filter({ hasText: 'LR0001-V1 · bague été.3dm' });
+  await expect(row).toContainText('Removed');
+  await expect(row).toContainText('30 more days');
+  await row.getByRole('button', { name: /^Restore/ }).click();
+  await expect(page.getByText('Restored LR0001-V1 · bague été.3dm')).toBeVisible();
+  await expect(page.getByText('No removed files.')).toBeVisible();
+  await page.goto('/designs/LR0001');
+  const [again] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Download', exact: true }).click(),
+  ]);
+  expect(readFileSync(await again.path()).equals(original)).toBe(true);
+
+  // Now remove it for the tests that follow.
+  await page.getByRole('link', { name: 'Edit seats & files' }).click();
+  page.once('dialog', (d) => void d.accept());
+  await page.getByRole('button', { name: 'Remove' }).click();
+  await expect(page.getByText('No 3dm file stored yet')).toBeVisible();
+});
+
+test('a deleted design can be restored, with its code and variations', async ({ page }) => {
+  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
+  await page.goto('/designs/LR0002');
+  page.once('dialog', (d) => void d.accept());
+  await page.getByRole('button', { name: 'Delete design' }).click();
+  await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'LR0002', exact: true })).toHaveCount(0);
+
+  await page.getByRole('link', { name: 'Removed' }).click();
+  const row = page.getByRole('row').filter({ hasText: 'LR0002' });
+  await expect(row).toContainText('By hand');
+  await row.getByRole('button', { name: 'Restore design LR0002' }).click();
+  await expect(page.getByText('Restored LR0002')).toBeVisible();
+  await expect(page.getByText('No deleted designs.')).toBeVisible();
+  await page.goto('/designs/LR0002');
+  await expect(page.getByRole('heading', { name: 'LR0002' })).toBeVisible();
 });
 
 // A real PNG of any size, made without a library: each row is a filter byte plus RGB pixels.
@@ -354,6 +393,7 @@ test('a production user can read but not edit', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'New design' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Import' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Audit' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Removed' })).toHaveCount(0);
 
   // Production sees the photos but has no way to change them, and the server agrees.
   await expect(page.getByRole('img', { name: 'LR0001 cover photo' })).toBeVisible();

@@ -118,6 +118,11 @@ func (h *H) Register(r *gin.Engine) {
 	v1.POST("/designs/:id/media", editor, h.uploadMedia)
 	v1.DELETE("/media/:id", editor, h.deleteMedia)
 	v1.PUT("/media/:id/cover", editor, h.setCover)
+
+	// Undo: deleted designs and removed or replaced files stay recoverable for a while.
+	v1.GET("/trash", editor, h.listTrash)
+	v1.POST("/trash/files/:id/restore", editor, h.restoreFile)
+	v1.POST("/designs/:id/restore", editor, h.restoreDesign)
 	if h.LocalFiles != nil {
 		// Auth is the signed, expiring link itself (like an R2 presigned URL).
 		v1.GET("/local-files/*key", h.serveLocalFile)

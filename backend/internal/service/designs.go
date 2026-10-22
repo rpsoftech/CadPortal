@@ -70,34 +70,34 @@ func (s *Service) UpdateDesign(ctx context.Context, id int64, in DesignInput) (d
 // database row goes first; objects are deleted afterwards on a best-effort basis (an
 // orphaned object is harmless, a row pointing at a missing object is not).
 func (s *Service) DeleteVariation(ctx context.Context, id int64) error {
-	var keys []string
-	var photos []db.DesignMedium
+	var gone []retired
 	err := s.inTx(ctx, func(q *db.Queries) error {
-		// The variation's photos go with it (the rows cascade); remember them to remove the objects.
-		var err error
-		if photos, err = q.ListMediaByVariation(ctx, pgtype.Int8{Int64: id, Valid: true}); err != nil {
+		// The variation's photos go with it (the rows cascade); remember them to retire the objects.
+		photos, err := q.ListMediaByVariation(ctx, pgtype.Int8{Int64: id, Valid: true})
+		if err != nil {
 			return err
 		}
 		v, err := q.DeleteVariation(ctx, id)
 		if err != nil {
 			return err
 		}
-		for _, k := range []pgtype.Text{v.File3dmKey, v.FileStlKey} {
-			if k.Valid {
-				keys = append(keys, k.String)
+		for _, kind := range []string{"3dm", "stl"} {
+			if r := cadRetired(v, kind, "variation_deleted"); r != nil {
+				r.Restore = nil // the variation is gone, so there is nowhere to put it back
+				gone = append(gone, *r)
 			}
+		}
+		for _, p := range photos {
+			r := mediaRetired(p, v.Code, "variation_deleted")
+			r.Restore = nil
+			gone = append(gone, r)
 		}
 		return nil
 	})
 	if err != nil {
 		return err
 	}
-	s.deleteMediaObjects(ctx, photos...)
-	if s.Store != nil {
-		for _, k := range keys {
-			_ = s.Store.Delete(context.WithoutCancel(ctx), k)
-		}
-	}
+	s.retire(ctx, gone...)
 	return nil
 }
 

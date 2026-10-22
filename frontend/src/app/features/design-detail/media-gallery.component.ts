@@ -379,7 +379,8 @@ export class MediaGalleryComponent {
   }
 
   protected remove(m: MediaItem): void {
-    if (!confirm(`Delete ${m.filename}? It cannot be restored.`)) return;
+    if (!confirm(`Delete ${m.filename}? It is kept for a while and can be restored from Removed.`))
+      return;
     this.api.deleteMedia(m.id).subscribe({
       next: () => {
         this.snack.open(`${m.filename} deleted`, 'OK', { duration: 3000 });

@@ -124,6 +124,19 @@ type Tag struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type TrashedFile struct {
+	ID         int64              `json:"id"`
+	Kind       string             `json:"kind"`
+	ObjectKey  string             `json:"object_key"`
+	ThumbKey   pgtype.Text        `json:"thumb_key"`
+	Label      string             `json:"label"`
+	Restore    []byte             `json:"restore"`
+	Reason     string             `json:"reason"`
+	DeletedAt  pgtype.Timestamptz `json:"deleted_at"`
+	PurgeAfter pgtype.Timestamptz `json:"purge_after"`
+	DeletedBy  pgtype.Int8        `json:"deleted_by"`
+}
+
 type User struct {
 	ID             int64              `json:"id"`
 	Email          string             `json:"email"`

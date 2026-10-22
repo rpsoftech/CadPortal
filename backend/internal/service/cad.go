@@ -111,13 +111,13 @@ func (s *Service) UploadCAD(ctx context.Context, variationID int64, filename str
 		cleanup()
 		return UploadResult{}, dup
 	}
-	var oldKey string
+	var old *retired
 	err = s.inTx(ctx, func(q *db.Queries) error {
 		cur, err := q.GetVariationForUpdate(ctx, variationID)
 		if err != nil {
 			return err
 		}
-		oldKey = map[string]pgtype.Text{"3dm": cur.File3dmKey, "stl": cur.FileStlKey}[kind].String
+		old = cadRetired(cur, kind, "replaced")
 		if kind == "3dm" {
 			return q.SetVariationFile3dm(ctx, db.SetVariationFile3dmParams{
 				ID: variationID, File3dmSha256: pgText(sum), File3dmKey: pgText(key),
@@ -134,8 +134,8 @@ func (s *Service) UploadCAD(ctx context.Context, variationID int64, filename str
 		}
 		return UploadResult{}, err
 	}
-	if oldKey != "" {
-		_ = s.Store.Delete(context.WithoutCancel(ctx), oldKey) // best effort; orphan is harmless
+	if old != nil {
+		s.retire(ctx, *old) // the file it replaced stays recoverable for the retention period
 	}
 	return res, nil
 }
@@ -198,7 +198,7 @@ func (s *Service) RemoveCAD(ctx context.Context, variationID int64, kind string)
 	if kind != "3dm" && kind != "stl" {
 		return invalid("kind must be 3dm or stl")
 	}
-	var oldKey string
+	var old *retired
 	err := s.inTx(ctx, func(q *db.Queries) error {
 		cur, err := q.GetVariationForUpdate(ctx, variationID)
 		if err != nil {
@@ -211,7 +211,7 @@ func (s *Service) RemoveCAD(ctx context.Context, variationID int64, kind string)
 		if !key.Valid {
 			return ErrNotFound
 		}
-		oldKey = key.String
+		old = cadRetired(cur, kind, "removed")
 		if kind == "3dm" {
 			return q.ClearVariationFile3dm(ctx, variationID)
 		}
@@ -220,8 +220,8 @@ func (s *Service) RemoveCAD(ctx context.Context, variationID int64, kind string)
 	if err != nil {
 		return mapErr(err)
 	}
-	if s.Store != nil {
-		_ = s.Store.Delete(context.WithoutCancel(ctx), oldKey) // best effort; an orphan is harmless
+	if old != nil {
+		s.retire(ctx, *old)
 	}
 	return nil
 }
@@ -252,4 +252,20 @@ func cleanFilename(name string) string {
 		name = string(r[:maxFilenameRunes-len([]rune(ext))]) + ext
 	}
 	return name
+}
+
+// cadRetired describes the file of one kind that a variation currently has, as it is about to be
+// replaced or removed; nil when the variation has none.
+func cadRetired(v db.CadVariation, kind, reason string) *retired {
+	key, name, sha, size := v.File3dmKey, v.File3dmName, v.File3dmSha256, v.File3dmSizeBytes
+	if kind == "stl" {
+		key, name, sha, size = v.FileStlKey, v.FileStlName, v.FileStlSha256, v.FileStlSizeBytes
+	}
+	if !key.Valid {
+		return nil
+	}
+	return &retired{
+		Kind: "cad", ObjectKey: key.String, Reason: reason, Label: v.Code + " · " + name.String,
+		Restore: cadRestore{VariationID: v.ID, Kind: kind, SHA256: sha.String, Name: name.String, Size: size.Int64},
+	}
 }

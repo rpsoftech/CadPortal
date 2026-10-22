@@ -15,6 +15,7 @@ import {
   DesignListItem,
   DesignPage,
   MediaItem,
+  Trash,
   DownloadLink,
   MatrixGap,
   MatrixRowInput,
@@ -250,6 +251,17 @@ export class ApiService {
    * Streams a multipart upload of one photo or video. variation_id goes first: the server reads
    * the form as it arrives and needs it before the file.
    */
+  // ----- undo: deleted designs and removed files -----
+  trash(): Observable<Trash> {
+    return this.http.get<Trash>(`${BASE}/trash`);
+  }
+  restoreFile(id: number): Observable<void> {
+    return this.http.post<void>(`${BASE}/trash/files/${id}/restore`, null);
+  }
+  restoreDesign(id: number): Observable<void> {
+    return this.http.post<void>(`${BASE}/designs/${id}/restore`, null);
+  }
+
   uploadMedia(
     designId: number,
     file: File,
