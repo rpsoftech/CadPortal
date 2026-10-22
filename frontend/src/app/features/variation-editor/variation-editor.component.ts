@@ -176,7 +176,9 @@ export class VariationEditorComponent {
     const name = this.stored(kind).name;
     if (!v || !name) return;
     if (
-      !confirm(`Remove ${name} from ${v.code}? The stored copy is deleted and cannot be restored.`)
+      !confirm(
+        `Remove ${name} from ${v.code}? It is kept for a while and can be restored from Removed.`,
+      )
     ) {
       return;
     }

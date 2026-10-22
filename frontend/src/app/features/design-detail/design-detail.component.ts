@@ -277,7 +277,7 @@ export class DesignDetailComponent {
     const n = d.variations.length;
     const warning =
       `Delete ${d.code} and its ${n} variation${n === 1 ? '' : 's'}? ` +
-      'The design disappears from the catalog. Its code stays reserved and cannot be reused.';
+      'The design disappears from the catalog and can be restored from Removed. Its code stays reserved.';
     if (!confirm(warning)) return;
     this.api.deleteDesign(d.id).subscribe({
       next: () => {

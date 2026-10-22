@@ -321,3 +321,31 @@ export interface MediaItem {
   url: string;
   thumb_url?: string;
 }
+
+/** A design that was deleted and can be brought back. */
+export interface DeletedDesign {
+  id: number;
+  code: string;
+  name: string;
+  category_name: string;
+  deleted_at: string;
+  variation_count: number;
+}
+
+/** A removed or replaced CAD file, photo or video, kept until purge_after. */
+export interface TrashedFile {
+  id: number;
+  kind: 'cad' | 'media';
+  label: string;
+  reason: 'removed' | 'replaced' | 'variation_deleted';
+  deleted_at: string;
+  purge_after: string;
+  /** False when its variation was deleted: the stored copy is kept, but the app cannot put it back. */
+  restorable: boolean;
+  has_thumbnail: boolean;
+}
+
+export interface Trash {
+  designs: DeletedDesign[];
+  files: TrashedFile[];
+}

@@ -282,28 +282,6 @@ func (c *countingLimitReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// DeleteMedia removes one photo or video and its stored objects.
-func (s *Service) DeleteMedia(ctx context.Context, id int64) (db.DesignMedium, error) {
-	row, err := s.Q.DeleteMedia(ctx, id)
-	if err != nil {
-		return db.DesignMedium{}, mapErr(err)
-	}
-	s.deleteMediaObjects(ctx, row)
-	return row, nil
-}
-
-func (s *Service) deleteMediaObjects(ctx context.Context, rows ...db.DesignMedium) {
-	if s.Store == nil {
-		return
-	}
-	for _, r := range rows {
-		_ = s.Store.Delete(context.WithoutCancel(ctx), r.ObjectKey) // best effort; an orphan is harmless
-		if r.ThumbKey.Valid {
-			_ = s.Store.Delete(context.WithoutCancel(ctx), r.ThumbKey.String)
-		}
-	}
-}
-
 // SetCover makes a design-level photo the picture on the design's catalog card.
 func (s *Service) SetCover(ctx context.Context, id int64) (db.DesignMedium, error) {
 	var row db.DesignMedium
@@ -359,4 +337,43 @@ func (s *Service) jobBagPhoto(ctx context.Context, designID, variationID int64) 
 		return nil
 	}
 	return b
+}
+
+// mediaRetired describes a photo or video about to be taken out of use; where is how people name its
+// place (a design or variation code).
+func mediaRetired(m db.DesignMedium, where, reason string) retired {
+	r := mediaRestore{
+		DesignID: m.DesignID, Kind: m.Kind, ContentType: m.ContentType, Filename: m.Filename, SizeBytes: m.SizeBytes,
+	}
+	if m.VariationID.Valid {
+		v := m.VariationID.Int64
+		r.VariationID = &v
+	}
+	if m.Width.Valid {
+		w := m.Width.Int32
+		r.Width = &w
+	}
+	if m.Height.Valid {
+		h := m.Height.Int32
+		r.Height = &h
+	}
+	return retired{
+		Kind: "media", ObjectKey: m.ObjectKey, ThumbKey: m.ThumbKey.String, Reason: reason,
+		Label: where + " · " + m.Filename, Restore: r,
+	}
+}
+
+// DeleteMedia removes one photo or video. Its stored copy is kept for the retention period so the
+// deletion can be undone.
+func (s *Service) DeleteMedia(ctx context.Context, id int64) (db.DesignMedium, error) {
+	row, err := s.Q.DeleteMedia(ctx, id)
+	if err != nil {
+		return db.DesignMedium{}, mapErr(err)
+	}
+	where := fmt.Sprintf("design %d", row.DesignID)
+	if d, err := s.Q.GetDesignByID(ctx, row.DesignID); err == nil {
+		where = d.Code
+	}
+	s.retire(ctx, mediaRetired(row, where, "removed"))
+	return row, nil
 }

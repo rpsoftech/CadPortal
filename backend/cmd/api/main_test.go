@@ -6,6 +6,9 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/rpsoftech/cad-portal/backend/internal/service"
 )
 
 func TestStorageMode(t *testing.T) {
@@ -114,5 +117,18 @@ func TestCheckR2EnvNamesWhatIsWrong(t *testing.T) {
 	}
 	if err := checkR2Env(env(map[string]string{"S3_ENDPOINT": "  "})); err == nil {
 		t.Error("whitespace counts as empty")
+	}
+}
+
+func TestFileRetention(t *testing.T) {
+	for in, want := range map[string]time.Duration{"": service.DefaultRetention, "0": 0, "7": 7 * 24 * time.Hour, "3650": 3650 * 24 * time.Hour} {
+		if got, err := fileRetention(in); err != nil || got != want {
+			t.Errorf("fileRetention(%q) = %v, %v; want %v", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"-1", "abc", "1.5", "3651", " "} {
+		if _, err := fileRetention(in); err == nil {
+			t.Errorf("fileRetention(%q) accepted", in)
+		}
 	}
 }

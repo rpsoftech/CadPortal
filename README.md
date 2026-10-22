@@ -367,6 +367,28 @@ each variation. Each group holds up to **5 files, photos and videos together**.
 - Deleting a media file, or a variation, removes its stored objects. Uploads, deletions and cover
   changes are in the audit log (`media.upload`, `media.delete`, `media.cover`).
 
+### Undo: the Removed screen
+
+Admins and designers have a **Removed** link in the top bar for taking back a mistake.
+
+- **Deleted designs** stay there until someone restores them, with their code, variations, seats and
+  files. A restored design is exactly as it was.
+- **Removed and replaced files** (CAD files, photos, videos) are not deleted from storage straight
+  away: they are kept for `DELETED_FILE_RETENTION_DAYS` (default 30) and then deleted for good by a
+  background job that runs hourly. Until then **Restore** puts the file back where it was, if the place
+  is free: a CAD file needs its variation to have no file of that kind and its checksum to be unused
+  (otherwise the screen says which variation has it), and a photo or video needs room (5 per design or
+  variation) and a live design. A file that was **replaced** by a newer upload can be restored only
+  after the newer one is removed.
+- **A deleted variation** cannot be restored from the app (its seats and weights are gone), but its
+  files are kept for the same period; whoever runs the server can recover them from the bucket by the
+  keys in the `trashed_files` table.
+- Set `DELETED_FILE_RETENTION_DAYS=0` to delete files at once, as before. Storage is only freed when the
+  period ends, so a busy catalog uses a little more space for 30 days.
+- Restores are in the audit log (`trash.restore_file`, `design.restore`).
+- This is a safety net, not a backup: after the period the file is gone from R2 unless you turned on
+  R2 object versioning or keep your own copy.
+
 ### Importing designs
 
 To load an existing catalog, use **Import** on the Catalog screen (admin and designer). Paste rows

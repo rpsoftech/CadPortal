@@ -108,6 +108,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	svc.Retention, err = fileRetention(os.Getenv("DELETED_FILE_RETENTION_DAYS"))
+	if err != nil {
+		return err
+	}
+	purgeDone := make(chan struct{})
+	go func() {
+		defer close(purgeDone)
+		service.RunTrashPurge(ctx, svc)
+	}()
 	pruneDone := make(chan struct{})
 	go func() {
 		defer close(pruneDone)
@@ -147,6 +156,7 @@ func run() error {
 	err = srv.Shutdown(shutCtx)
 	<-workerDone
 	<-pruneDone
+	<-purgeDone
 	return err
 }
 
@@ -258,4 +268,18 @@ func checkR2Env(getenv func(string) string) error {
 		return fmt.Errorf("S3_ENDPOINT still holds the placeholder from .env.example (%q): put your Cloudflare account id in it", getenv("S3_ENDPOINT"))
 	}
 	return nil
+}
+
+// fileRetention parses DELETED_FILE_RETENTION_DAYS: how long a removed or replaced CAD file, photo or
+// video is kept (and can be restored) before it is deleted for good. Empty means 30 days, and 0
+// deletes at once.
+func fileRetention(v string) (time.Duration, error) {
+	if v == "" {
+		return service.DefaultRetention, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 || n > 3650 {
+		return 0, fmt.Errorf("DELETED_FILE_RETENTION_DAYS must be a whole number of days (0 deletes at once), got %q", v)
+	}
+	return time.Duration(n) * 24 * time.Hour, nil
 }
