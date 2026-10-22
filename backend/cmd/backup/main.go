@@ -233,14 +233,31 @@ func runDaemon(ctx context.Context) error {
 		time.Sleep(10 * time.Second) // let the database finish starting
 		r.Run(ctx)
 	}
+	// Every half minute look for a "Back up now" from the portal; otherwise wait for the night.
+	poll := time.NewTicker(30 * time.Second)
+	defer poll.Stop()
+	next := backup.NextRun(time.Now(), hour, min, loc)
+	log.Printf("next backup at %s", next.In(loc).Format("2006-01-02 15:04 MST"))
 	for {
-		next := backup.NextRun(time.Now(), hour, min, loc)
-		log.Printf("next backup at %s", next.In(loc).Format("2006-01-02 15:04 MST"))
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(time.Until(next)):
-			r.Run(ctx)
+		case <-poll.C:
+			ran := false
+			if n, err := q.ClaimBackupRequests(ctx); err != nil {
+				log.Printf("checking for a requested backup: %v", err)
+			} else if n > 0 {
+				log.Print("backup requested from the portal: taking one now")
+				r.Run(ctx)
+				ran = true
+			}
+			if !time.Now().Before(next) {
+				if !ran { // a backup requested a moment ago already covers tonight
+					r.Run(ctx)
+				}
+				next = backup.NextRun(time.Now(), hour, min, loc)
+				log.Printf("next backup at %s", next.In(loc).Format("2006-01-02 15:04 MST"))
+			}
 		}
 	}
 }

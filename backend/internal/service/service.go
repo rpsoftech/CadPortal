@@ -79,6 +79,8 @@ type Service struct {
 	// BackupMaxAge, when positive, makes the setup checklist warn if the backup service has not finished a
 	// good run within this time. Zero leaves backups out of the checklist (local development).
 	BackupMaxAge time.Duration
+	// BackupBucket is a read-only view of the backup bucket; nil hides the dump list and downloads.
+	BackupBucket BackupBucket
 }
 
 func New(pool *pgxpool.Pool) *Service { return &Service{Pool: pool, Q: db.New(pool)} }

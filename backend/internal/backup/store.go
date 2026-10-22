@@ -15,6 +15,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+
+	"github.com/rpsoftech/cad-portal/backend/internal/storage"
 )
 
 // Object is one stored object as a listing shows it.
@@ -48,6 +50,7 @@ type S3Config struct {
 type S3 struct {
 	bucket   string
 	client   *s3.Client
+	presign  *s3.PresignClient
 	uploader *manager.Uploader
 }
 
@@ -67,7 +70,7 @@ func NewS3(c S3Config) (*S3, error) {
 		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired,
 		ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired,
 	})
-	return &S3{bucket: c.Bucket, client: client, uploader: manager.NewUploader(client, func(u *manager.Uploader) {
+	return &S3{bucket: c.Bucket, client: client, presign: s3.NewPresignClient(client), uploader: manager.NewUploader(client, func(u *manager.Uploader) {
 		u.PartSize = 16 << 20
 		u.Concurrency = 2 // a copy of a large video must not balloon the service's memory
 	})}, nil
@@ -106,6 +109,17 @@ func (s *S3) Put(ctx context.Context, key string, r io.Reader, m Meta) error {
 	}
 	_, err := s.uploader.Upload(ctx, in)
 	return err
+}
+
+// PresignGet returns a time-limited link that downloads key as an attachment named filename.
+func (s *S3) PresignGet(ctx context.Context, key, filename string, ttl time.Duration) (string, error) {
+	req, err := s.presign.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: &s.bucket, Key: &key, ResponseContentDisposition: aws.String(storage.Disposition(filename)),
+	}, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return "", err
+	}
+	return req.URL, nil
 }
 
 func (s *S3) Delete(ctx context.Context, key string) error {
@@ -162,6 +176,10 @@ func (m *Memory) Put(_ context.Context, key string, r io.Reader, meta Meta) erro
 	}
 	m.Objects[key], m.Metas[key], m.When[key] = b, meta, time.Now()
 	return nil
+}
+
+func (m *Memory) PresignGet(_ context.Context, key, filename string, ttl time.Duration) (string, error) {
+	return fmt.Sprintf("memory://%s?filename=%s&ttl=%s", key, filename, ttl), nil
 }
 
 func (m *Memory) Delete(_ context.Context, key string) error {

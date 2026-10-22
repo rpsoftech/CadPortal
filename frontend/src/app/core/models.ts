@@ -357,3 +357,39 @@ export interface Trash {
   designs: DeletedDesign[];
   files: TrashedFile[];
 }
+
+/** One run of the backup service. */
+export interface BackupRun {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  /** null while it runs (or if it was killed before finishing). */
+  ok: boolean | null;
+  db_bytes: number;
+  files_copied: number;
+  files_bytes: number;
+  files_total: number;
+  files_skipped: boolean;
+  error: string;
+}
+
+/** A database dump stored in the backup bucket. */
+export interface BackupDump {
+  key: string;
+  name: string;
+  taken_at: string;
+  bytes: number;
+  encrypted: boolean;
+}
+
+export interface Backups {
+  runs: BackupRun[];
+  dumps: BackupDump[];
+  /** Why the dump list is empty when the portal cannot see the backup bucket. */
+  dumps_note: string;
+  can_download: boolean;
+  /** A "Back up now" is waiting for the backup service. */
+  pending: boolean;
+  /** A backup is in progress. */
+  running: boolean;
+}

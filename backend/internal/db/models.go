@@ -21,6 +21,13 @@ type AuditLog struct {
 	Detail     string             `json:"detail"`
 }
 
+type BackupRequest struct {
+	ID          int64              `json:"id"`
+	RequestedAt pgtype.Timestamptz `json:"requested_at"`
+	RequestedBy pgtype.Int8        `json:"requested_by"`
+	PickedUpAt  pgtype.Timestamptz `json:"picked_up_at"`
+}
+
 type BackupRun struct {
 	ID           int64              `json:"id"`
 	StartedAt    pgtype.Timestamptz `json:"started_at"`

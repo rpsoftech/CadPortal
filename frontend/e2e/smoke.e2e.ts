@@ -440,6 +440,20 @@ test('photos and video: upload, cover on the catalog card, per-variation, limit 
   await expect(gallery.getByRole('button', { name: 'Add photo or video' })).toBeEnabled();
 });
 
+test('the Backups screen shows the history and queues one backup at a time', async ({ page }) => {
+  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
+  await page.getByRole('link', { name: 'Backups' }).click();
+  await expect(page.getByRole('heading', { name: 'Backups' })).toBeVisible();
+  await expect(page.getByText('No backup has completed yet.')).toBeVisible();
+  await expect(page.getByText('The backup service has not run yet.')).toBeVisible();
+  // The test stack has no view of a backup bucket, and says so instead of showing an empty list.
+  await expect(page.getByText('The portal cannot see the backup bucket')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Back up now' }).click();
+  await expect(page.getByText('starts it within about a minute')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Back up now' })).toBeDisabled();
+});
+
 test('the audit log shows what was done', async ({ page }) => {
   await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
   await page.getByRole('link', { name: 'Audit' }).click();
@@ -491,4 +505,12 @@ test('a production user can read but not edit', async ({ page }) => {
     return r.status;
   });
   expect(status).toBe(403);
+
+  // Backups are for admins only: dumps hold every password hash.
+  const backups = await page.evaluate(async () => {
+    const s = JSON.parse(sessionStorage.getItem('cadportal.session') ?? '{}');
+    const r = await fetch('/api/v1/backups', { headers: { Authorization: `Bearer ${s.token}` } });
+    return r.status;
+  });
+  expect(backups).toBe(403);
 });

@@ -128,6 +128,11 @@ func (h *H) Register(r *gin.Engine) {
 		v1.GET("/local-files/*key", h.serveLocalFile)
 	}
 
+	// Backups: history, a "back up now" request and download links to the (encrypted) dumps. Admin only.
+	v1.GET("/backups", admin, h.listBackups)
+	v1.POST("/backups/run", admin, h.requestBackup)
+	v1.GET("/backups/download", admin, h.downloadBackup)
+
 	// Exports: job bags for every role; costing exposes money, so admin/designer only.
 	v1.POST("/exports/job-bag-pdf", anyRole, h.jobBagPDF)
 	v1.POST("/exports/costing-csv", editor, h.costingCSV)

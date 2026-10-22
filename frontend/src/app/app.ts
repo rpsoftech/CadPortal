@@ -22,6 +22,7 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
           <a matButton routerLink="/master-data">Master data</a>
           <a matButton routerLink="/users">Users</a>
           <a matButton routerLink="/audit">Audit</a>
+          <a matButton routerLink="/backups">Backups</a>
         }
         <span class="spacer"></span>
         <button matButton="outlined" [matMenuTriggerFor]="menu" aria-label="Account menu">

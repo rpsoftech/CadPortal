@@ -43,6 +43,12 @@ services:
       # Admins are warned in the setup checklist when no good backup is newer than this many hours
       # (0 = never warn). Left empty it is 36 with R2 and off otherwise.
       BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-}
+      # The Backups screen lists and offers the stored dumps with a READ-ONLY token for the backup bucket
+      # (not the one the backup service writes with). Leave empty to show run history only.
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_VIEW_ACCESS_KEY_ID: ${BACKUP_VIEW_ACCESS_KEY_ID:-}
+      BACKUP_VIEW_SECRET_ACCESS_KEY: ${BACKUP_VIEW_SECRET_ACCESS_KEY:-}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (32+ characters)}
       # Object storage. Production uses Cloudflare R2; STORAGE=local is development only.
       STORAGE: ${STORAGE:-}

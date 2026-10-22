@@ -4,6 +4,7 @@ import { MonoTypeOperatorFunction, Observable, catchError, map, of, tap, throwEr
 import {
   AuditFilter,
   AuditRecord,
+  Backups,
   BaseInput,
   BomResult,
   Category,
@@ -246,11 +247,17 @@ export class ApiService {
     const params = new HttpParams().set('kind', kind);
     return this.http.delete<void>(`${BASE}/variations/${variationId}/cad`, { params });
   }
-  // ----- photos and video -----
-  /**
-   * Streams a multipart upload of one photo or video. variation_id goes first: the server reads
-   * the form as it arrives and needs it before the file.
-   */
+  // ----- backups (admin) -----
+  backups(): Observable<Backups> {
+    return this.http.get<Backups>(`${BASE}/backups`);
+  }
+  requestBackup(): Observable<void> {
+    return this.http.post<void>(`${BASE}/backups/run`, null);
+  }
+  backupDownloadLink(key: string): Observable<DownloadLink> {
+    return this.http.get<DownloadLink>(`${BASE}/backups/download`, { params: { key } });
+  }
+
   // ----- undo: deleted designs and removed files -----
   trash(): Observable<Trash> {
     return this.http.get<Trash>(`${BASE}/trash`);
@@ -262,6 +269,11 @@ export class ApiService {
     return this.http.post<void>(`${BASE}/designs/${id}/restore`, null);
   }
 
+  // ----- photos and video -----
+  /**
+   * Streams a multipart upload of one photo or video. variation_id goes first: the server reads
+   * the form as it arrives and needs it before the file.
+   */
   uploadMedia(
     designId: number,
     file: File,
