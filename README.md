@@ -318,7 +318,15 @@ that token off the server's other services, and rotate it like any secret.
 
 ### Releases and published images
 
-Images are published to GitHub Container Registry only when you push a version tag:
+Two kinds of images are published to GitHub Container Registry (`cadportal-api`, `cadportal-web`
+and `cadportal-backup`), and they never mix:
+
+| Where | Tag | Built when |
+|---|---|---|
+| **Staging** | `staging` (and `sha-<commit>` to pin or roll back one build) | every commit that lands on `main` after CI passed on it (`staging.yml`) |
+| **Production** | `1.2.3` and `1.2` | only when you push a version tag (`release.yml`) |
+
+There is no `latest`, so nothing can reach production by accident. A release:
 
 ```bash
 git checkout main && git pull
@@ -326,22 +334,57 @@ git tag v1.2.3
 git push origin v1.2.3
 ```
 
-The **Release** workflow refuses a tag whose commit is not on `main`, then builds and pushes
-`ghcr.io/rpsoftech/cadportal-api` and `ghcr.io/rpsoftech/cadportal-web` tagged `1.2.3` and `1.2`
-(plus `latest` for a stable version; a pre-release such as `v1.2.3-rc1` gets only its own tag).
-Each image carries build provenance and an SBOM. The first publish creates the packages as
-private: open each package's settings on GitHub and set the visibility you want, or log in on
-the server with a token that can read packages.
+The **Release** workflow refuses a tag whose commit is not on `main`. A pre-release such as
+`v1.2.3-rc1` gets only its own tag. Each image carries build provenance and an SBOM. The first publish
+creates the packages as private: open each package's settings on GitHub and set the visibility you
+want, or log in on the server with a token that can read packages (`docker login ghcr.io`, a token with
+only `read:packages`).
 
-To run published images on the server instead of building there:
+### Staging and production on servers
+
+`scripts/deploy.sh` pulls published images and restarts **only the application containers**. The
+database container and its volume are never touched: no `down`, no `-v`, no `rm`, and `--no-deps`
+keeps compose from recreating the database. `scripts/deploy_test.sh` checks that in CI (a fake docker
+records every call, so adding a `down` fails the build).
+
+**Staging server** (follows `main`)
+
+1. Clone the repository to `/opt/cadportal` (the scripts and compose files), make `.env` from
+   `.env.example`, and give staging **its own everything**: its own `POSTGRES_PASSWORD` and
+   `JWT_SECRET`, its own R2 buckets (vault and backup) with their own tokens, and
+   `COMPOSE_PROJECT_NAME=cadportal-staging`. Never point staging at the production buckets: a staging
+   bug could then damage real files.
+2. `docker login ghcr.io` once as the deploy user (token with `read:packages`).
+3. Run it once by hand: `scripts/deploy.sh staging`. Then create the first admin as in "Going live".
+4. Let a timer do it from now on (every 5 minutes it pulls, and restarts only when an image changed):
 
 ```bash
-CADPORTAL_VERSION=1.2.3 docker compose -f docker-compose.prod.yml -f docker-compose.images.yml up -d
+sudo cp deploy/systemd/cadportal-staging-update.* /etc/systemd/system/   # edit User= and paths first
+sudo systemctl daemon-reload && sudo systemctl enable --now cadportal-staging-update.timer
+journalctl -u cadportal-staging-update.service -n 30                    # what it did
 ```
 
-Pin an exact version rather than `latest`, so an update is a deliberate change (edit the
-version, run the command again). Back up first with `scripts/backup.sh`; migrations run when
-the new API starts.
+   The server pulls; GitHub never needs SSH access to it, and nothing on the server listens for
+   deployments. Put the TLS proxy (`deploy/Caddyfile.example`) in front with the staging domain.
+
+**Production server** (tagged releases only, a deliberate step)
+
+```bash
+scripts/deploy.sh 1.2.3
+```
+
+It refuses anything that is not a version number, takes a backup first (`backup once`) and stops if
+that fails, pulls, then restarts api, web and backup with `--wait` until they are healthy. Without the
+backup service enabled it refuses unless you pass `--skip-backup`. Production is not on a timer on
+purpose: a migration runs when the new API starts and starting the old image again does not undo it.
+To go back, run the script with the earlier version only if the newer release added no migration;
+otherwise restore the backup it took.
+
+To run published images by hand instead:
+
+```bash
+CADPORTAL_VERSION=1.2.3 docker compose -f docker-compose.prod.yml -f docker-compose.images.yml up -d --no-deps api web
+```
 
 ## API (v1)
 

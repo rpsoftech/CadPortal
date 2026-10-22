@@ -1,0 +1,12 @@
+# Pulls the newest :staging images and restarts the application containers (never the database).
+# Install: see "Staging and production" in the README. Edit User and the paths to match the server.
+[Unit]
+Description=Update the CadPortal staging containers
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/opt/cadportal
+ExecStart=/opt/cadportal/scripts/deploy.sh staging
