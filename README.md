@@ -292,7 +292,7 @@ All paths are under `/api/v1`. Alongside the routes above:
 Admins maintain the reference data under **Master data** (no API calls needed):
 
 - **Alloys:** specific gravity, wastage % (needed for costing), and the default input alloy.
-- **Stone matrix:** carats per stone and rate per carat for each (size, stone code), the baseline
+- **Stone matrix:** weight per stone (entered in grams, or carats) and a price per piece (the default) or per carat for each (size, stone code), the baseline
   stone code, and stone codes themselves. A **Missing for the baseline code** panel lists sizes
   that seats use but the matrix lacks, with an Add shortcut.
 - **Categories and tags:** names, category code prefixes, and deactivating tags. Type a prefix
@@ -312,7 +312,7 @@ and shrinks as you fix them.
   (`LR0001`, `LR0002`, …; past 9999 the number simply grows). A category without a prefix cannot
   take new designs. Changing a prefix later restarts the count for new designs and never
   renames existing ones. Two categories cannot share a prefix.
-- **Stone matrix:** the stone sizes with carats per stone and rate per carat (use **Import CSV
+- **Stone matrix:** the stone sizes with weight per stone (grams or carats) and price (per piece, or per carat) (use **Import CSV
   / paste** for a long list), and a baseline stone code. Sizes your seats use but the matrix
   lacks are listed as gaps.
 
@@ -326,12 +326,28 @@ plus a `README.txt`. `stone_matrix.csv` is exactly the stone matrix import forma
 loaded back as it is; the others are records to keep and read. The zip contains wastage and
 rates, so store it as carefully as a database backup.
 
-To load a large stone matrix, use **Import CSV / paste**. Columns, in order:
-`size_mm, stone_code, sieve, carats_per_stone, rate_per_ct` (sieve and rate may be empty; a header
-row is optional; tab-separated text pasted from a spreadsheet works). Sizes allow 2 decimals,
-carats 4, rates 2; over-precise values are rejected rather than rounded. An import is
-all-or-nothing, and **Export CSV** gives the same format back for editing. Stone codes must exist
-before rows can use them.
+**Stone weight is in grams.** A row's weight per stone is typed in grams (the unit has a switch to
+carats) and the screen shows the other unit beside it: 0.0014 g is 0.0070 ct, converted exactly
+(1 ct = 0.200 g). Carats are what is stored, to 4 decimals, so a weight that would need rounding
+(0.00035 g is 0.00175 ct) is refused with that reason instead of being rounded. Grams lead everywhere
+stone weight is shown: the matrix, the BOM, the weight matrix, the job bag, the catalog filter.
+
+**Stones are priced per piece by default, or per carat.** Each row has a price and a basis (*per
+piece* or *per carat*); costing multiplies the stone count by the price per piece, or the carats by the
+price per carat, line by line (so one design can mix both). A row remembers a price for each basis but
+only the one named by its basis is used, and the screens, the setup checklist and a costing error all say
+which one is missing ("price per piece not set for 1.10 mm × 2HD"). Rows that already had a per-carat
+price keep meaning per carat.
+
+To load a large stone matrix, use **Import CSV / paste** with a header row, for example
+`size_mm, stone_code, sieve, grams_per_stone, rate_per_pc, rate_per_ct, rate_basis`. Columns may come
+in any order; the weight is `grams_per_stone` or `carats_per_stone`, and the price is `rate_per_pc`
+and/or `rate_per_ct` with `rate_basis` (`pc` or `ct`; empty means per piece, or per carat when only a
+per-carat price is given). Without a header the older five columns (size, code, sieve, carats, rate per
+carat) and the eight columns of **Export CSV** are read by position; sieve and prices may be empty and
+tab-separated text pasted from a spreadsheet works. Sizes allow 2 decimals, carats 4, prices 2;
+over-precise values are rejected rather than rounded. An import is all-or-nothing, and **Export CSV**
+gives the same eight columns back for editing. Stone codes must exist before rows can use them.
 
 Changing SG, the baseline stone code or baseline carats rebuilds every variation's weights in
 the background; the screen shows when that finishes. A matrix row cannot be deleted while a seat

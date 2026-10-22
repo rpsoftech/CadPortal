@@ -10,7 +10,8 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/api.service';
 import { toApiError } from '../../core/errors';
-import { FixedPipe, fixed } from '../../core/format';
+import { FixedPipe, StoneGramsPipe, caratsToGrams, fixed } from '../../core/format';
+import { MATRIX_COLUMNS } from '../../core/matrix-csv';
 import { StoneCode, StoneMatrixRow } from '../../core/models';
 import { saveBlob } from '../../shared/download';
 import {
@@ -39,10 +40,12 @@ function cell(v: string | null): string {
     MatSelectModule,
     MatSlideToggleModule,
     FixedPipe,
+    StoneGramsPipe,
   ],
   template: `
     <p class="muted">
-      Carats per stone and the rate per carat for each (size, stone code). Gross weight uses the
+      The weight of a stone (in grams, with its carats) and its price, per piece or per carat, for
+      each (size, stone code). Gross weight uses the
       <strong>baseline</strong> stone code; flexible seats follow whichever code the planner picks.
     </p>
 
@@ -154,8 +157,9 @@ function cell(v: string | null): string {
               <th>Size (mm)</th>
               <th>Code</th>
               <th>Sieve</th>
+              <th class="num">Weight / stone (g)</th>
               <th class="num">Carats / stone</th>
-              <th class="num">Rate / ct</th>
+              <th class="num">Price</th>
               <th></th>
             </tr>
           </thead>
@@ -165,12 +169,18 @@ function cell(v: string | null): string {
                 <td>{{ r.size_mm | fixed: 2 }}</td>
                 <td class="mono">{{ r.stone_code }}</td>
                 <td>{{ r.sieve || '–' }}</td>
-                <td class="num">{{ r.carats_per_stone | fixed: 4 }}</td>
+                <td class="num">{{ r.carats_per_stone | stoneGrams: 5 }}</td>
+                <td class="num muted">{{ r.carats_per_stone | fixed: 4 }}</td>
                 <td class="num">
-                  @if (r.rate_per_ct !== null) {
-                    {{ r.rate_per_ct | fixed: 2 }}
+                  @if (price(r); as p) {
+                    {{ p | fixed: 2 }}
+                    <span class="muted small">{{
+                      r.rate_basis === 'ct' ? 'per ct' : 'per pc'
+                    }}</span>
                   } @else {
-                    <span class="unset">not set</span>
+                    <span class="unset"
+                      >not set ({{ r.rate_basis === 'ct' ? 'per carat' : 'per piece' }})</span
+                    >
                   }
                 </td>
                 <td class="actions">
@@ -180,7 +190,7 @@ function cell(v: string | null): string {
               </tr>
             } @empty {
               <tr>
-                <td colspan="6" class="muted">No rows. Add one or import a CSV.</td>
+                <td colspan="7" class="muted">No rows. Add one or import a CSV.</td>
               </tr>
             }
           </tbody>
@@ -352,8 +362,14 @@ export class MatrixTabComponent {
       .subscribe((n) => n && this.changed(`Imported ${n} rows. Weights are being rebuilt.`, true));
   }
 
+  /** The price costing uses for a row: per piece unless the row is priced per carat. */
+  protected price(r: StoneMatrixRow): string | null {
+    return r.rate_basis === 'ct' ? r.rate_per_ct : r.rate_per_pc;
+  }
+
   protected exportCsv(): void {
-    const lines = ['size_mm,stone_code,sieve,carats_per_stone,rate_per_ct'];
+    // The same eight columns the master-data zip writes, so either file can be imported again.
+    const lines = [MATRIX_COLUMNS.join(',')];
     for (const r of this.matrix.value() ?? []) {
       lines.push(
         [
@@ -361,12 +377,17 @@ export class MatrixTabComponent {
           r.stone_code,
           cell(r.sieve),
           fixed(r.carats_per_stone, 4),
+          caratsToGrams(r.carats_per_stone, 5) ?? '',
+          r.rate_basis,
+          r.rate_per_pc ? fixed(r.rate_per_pc, 2) : '',
           r.rate_per_ct ? fixed(r.rate_per_ct, 2) : '',
         ].join(','),
       );
     }
     saveBlob(
-      new Blob([lines.join('\n') + '\n'], { type: 'text/csv;charset=utf-8' }),
+      new Blob([lines.join(String.fromCharCode(10)) + String.fromCharCode(10)], {
+        type: 'text/csv;charset=utf-8',
+      }),
       'stone-matrix.csv',
     );
   }

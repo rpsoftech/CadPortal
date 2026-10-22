@@ -184,6 +184,17 @@ func ValidateMatrixRows(rows []MatrixRowInput) error {
 		if err := checkDP(fmt.Sprintf("row %d: carats_per_stone", n), r.CaratsPerStone, 4); err != nil {
 			return err
 		}
+		if r.RateBasis != "" && r.RateBasis != "pc" && r.RateBasis != "ct" {
+			return invalid("row %d: rate_basis must be \"pc\" (per piece) or \"ct\" (per carat)", n)
+		}
+		if r.RatePerPc.Valid {
+			if r.RatePerPc.Decimal.IsNegative() {
+				return invalid("row %d: rate_per_pc must not be negative", n)
+			}
+			if err := checkDP(fmt.Sprintf("row %d: rate_per_pc", n), r.RatePerPc.Decimal, 2); err != nil {
+				return err
+			}
+		}
 		if r.RatePerCt.Valid {
 			if r.RatePerCt.Decimal.IsNegative() {
 				return invalid("row %d: rate_per_ct must not be negative", n)

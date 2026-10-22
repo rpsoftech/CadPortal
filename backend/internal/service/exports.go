@@ -27,12 +27,16 @@ func (e *MissingCostInputsError) Error() string {
 	if len(e.Wastage) > 0 {
 		parts = append(parts, "wastage % not set for metals: "+strings.Join(e.Wastage, ", "))
 	}
-	if len(e.StoneRates) > 0 {
-		ps := make([]string, len(e.StoneRates))
-		for i, p := range e.StoneRates {
-			ps[i] = fmt.Sprintf("(%s mm, %s)", p.SizeMM, p.Code)
+	for _, basis := range []struct{ code, what string }{{"pc", "price per piece"}, {"ct", "rate per carat"}} {
+		var ps []string
+		for _, p := range e.StoneRates {
+			if p.Basis == basis.code || (p.Basis == "" && basis.code == "ct") {
+				ps = append(ps, fmt.Sprintf("(%s mm, %s)", p.SizeMM, p.Code))
+			}
 		}
-		parts = append(parts, "rate per ct not set for: "+strings.Join(ps, ", "))
+		if len(ps) > 0 {
+			parts = append(parts, basis.what+" not set for: "+strings.Join(ps, ", "))
+		}
 	}
 	return "cannot cost: " + strings.Join(parts, "; ")
 }
@@ -79,9 +83,17 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 		return nil, err
 	}
 	type rateKey struct{ size, code string }
-	rates := map[rateKey]decimal.NullDecimal{}
+	type stoneRate struct {
+		basis string
+		price decimal.NullDecimal // the one that applies: per piece or per carat
+	}
+	rates := map[rateKey]stoneRate{}
 	for _, m := range matrix {
-		rates[rateKey{m.SizeMm.StringFixed(2), m.StoneCode}] = m.RatePerCt
+		sr := stoneRate{basis: m.RateBasis, price: m.RatePerPc}
+		if m.RateBasis == "ct" {
+			sr.price = m.RatePerCt
+		}
+		rates[rateKey{m.SizeMm.StringFixed(2), m.StoneCode}] = sr
 	}
 
 	missingMetals := map[string]bool{}
@@ -117,11 +129,17 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 		lines := make([]calc.StoneCostLine, 0, len(bom.Lines))
 		for _, l := range bom.Lines {
 			r := rates[rateKey{l.SizeMM.StringFixed(2), l.StoneCode}]
-			if !r.Valid {
-				missingRates[calc.MissingPair{SizeMM: l.SizeMM.StringFixed(2), Code: l.StoneCode}] = true
+			if !r.price.Valid {
+				missingRates[calc.MissingPair{SizeMM: l.SizeMM.StringFixed(2), Code: l.StoneCode, Basis: r.basis}] = true
 				continue
 			}
-			lines = append(lines, calc.StoneCostLine{LineCarats: l.LineCarats, RatePerCt: r.Decimal})
+			line := calc.StoneCostLine{LineCarats: l.LineCarats, Pcs: l.StoneCount, Basis: r.basis}
+			if r.basis == "ct" {
+				line.RatePerCt = r.price.Decimal
+			} else {
+				line.RatePerPc = r.price.Decimal
+			}
+			lines = append(lines, line)
 		}
 		if !metal.WastagePct.Valid {
 			missingMetals[metal.Code] = true

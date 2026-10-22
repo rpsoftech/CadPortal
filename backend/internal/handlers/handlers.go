@@ -294,6 +294,7 @@ func (h *H) listStoneMatrix(c *gin.Context) {
 	if err == nil && auth.RoleFrom(c) == auth.Production {
 		for i := range out { // stone rates are commercially sensitive
 			out[i].RatePerCt = decimal.NullDecimal{}
+			out[i].RatePerPc = decimal.NullDecimal{}
 		}
 	}
 	respond(c, http.StatusOK, out, err)
@@ -308,6 +309,8 @@ func (h *H) updateStoneMatrix(c *gin.Context) {
 			Sieve          string              `json:"sieve"`
 			CaratsPerStone decimal.Decimal     `json:"carats_per_stone"`
 			RatePerCt      decimal.NullDecimal `json:"rate_per_ct"`
+			RatePerPc      decimal.NullDecimal `json:"rate_per_pc"`
+			RateBasis      string              `json:"rate_basis"`
 		} `json:"rows"`
 	}
 	if c.ShouldBindJSON(&in) != nil {
@@ -317,7 +320,8 @@ func (h *H) updateStoneMatrix(c *gin.Context) {
 	rows := make([]service.MatrixRowInput, len(in.Rows))
 	for i, r := range in.Rows {
 		rows[i] = service.MatrixRowInput{SizeMM: r.SizeMM, StoneCode: r.StoneCode,
-			Sieve: r.Sieve, CaratsPerStone: r.CaratsPerStone, RatePerCt: r.RatePerCt}
+			Sieve: r.Sieve, CaratsPerStone: r.CaratsPerStone, RatePerCt: r.RatePerCt,
+			RatePerPc: r.RatePerPc, RateBasis: r.RateBasis}
 	}
 	if err := h.S.UpdateStoneMatrix(c, rows, in.BaselineCode); err != nil {
 		fail(c, err)

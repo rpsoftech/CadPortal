@@ -6,10 +6,15 @@ var hundred = decimal.NewFromInt(100)
 
 func RoundMoney(d decimal.Decimal) decimal.Decimal { return d.Round(2) }
 
-// StoneCostLine is one resolved BOM line with its rate per carat.
+// StoneCostLine is one resolved BOM line with the price that applies to it: per piece (Basis "pc",
+// the default way stones are priced) or per carat (Basis "ct"; an empty Basis also means per carat, as
+// it did before pieces were an option).
 type StoneCostLine struct {
 	LineCarats decimal.Decimal
 	RatePerCt  decimal.Decimal
+	Pcs        int
+	RatePerPc  decimal.Decimal
+	Basis      string
 }
 
 // CostInput holds everything the costing CSV needs for one variation/metal.
@@ -34,14 +39,18 @@ type Cost struct {
 	Total       decimal.Decimal
 }
 
-// Compute: gold = net x (1 + wastage%/100) x rate; stone = sum(line carats x
-// rate per ct); setting = pcs x rate per pc.
+// Compute: gold = net x (1 + wastage%/100) x rate; stone = sum(line pcs x price per pc, or line carats x
+// price per ct, by each line's basis); setting = pcs x rate per pc.
 func Compute(in CostInput) Cost {
 	goldG := in.NetG.Mul(decimal.NewFromInt(1).Add(in.WastagePct.Div(hundred)))
 	carats, stone := decimal.Zero, decimal.Zero
 	for _, l := range in.StoneLines {
 		carats = carats.Add(l.LineCarats)
-		stone = stone.Add(l.LineCarats.Mul(l.RatePerCt))
+		if l.Basis == "pc" {
+			stone = stone.Add(decimal.NewFromInt(int64(l.Pcs)).Mul(l.RatePerPc))
+		} else {
+			stone = stone.Add(l.LineCarats.Mul(l.RatePerCt))
+		}
 	}
 	c := Cost{
 		GoldG:       RoundGrams(goldG),

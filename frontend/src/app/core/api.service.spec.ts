@@ -82,7 +82,9 @@ describe('ApiService', () => {
       stone_code: '2HD',
       sieve: '',
       carats_per_stone: '0.0070',
+      rate_per_pc: '100',
       rate_per_ct: null,
+      rate_basis: 'pc' as const,
     };
     api.saveStoneMatrix([row], '2HD').subscribe();
     const req = http.expectOne('/api/v1/masters/stone-matrix');

@@ -73,6 +73,9 @@ func (m Matrix) Set(size decimal.Decimal, code string, carats decimal.Decimal) {
 type MissingPair struct {
 	SizeMM string
 	Code   string
+	// Basis says which price is missing: "pc" (per piece) or "ct" (per carat). Empty for a missing
+	// matrix row, where no price is involved yet.
+	Basis string `json:"Basis,omitempty"`
 }
 
 // MissingMatrixError lists every (size, code) pair that could not be resolved.
@@ -122,7 +125,7 @@ func ResolveBOM(seats []Seat, chosenCode string, m Matrix) (BOM, error) {
 		if !ok {
 			if !seen[key] {
 				seen[key] = true
-				missing = append(missing, MissingPair{key.Size, code})
+				missing = append(missing, MissingPair{SizeMM: key.Size, Code: code})
 			}
 			continue
 		}

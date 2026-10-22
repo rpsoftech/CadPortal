@@ -5,7 +5,7 @@ export interface ApiError {
   status: number;
   message: string;
   /** (size, code) pairs the API says are missing, from 422 responses. */
-  missing: { SizeMM: string; Code: string }[];
+  missing: { SizeMM: string; Code: string; Basis?: string }[];
   metalsMissingWastage: string[];
 }
 
