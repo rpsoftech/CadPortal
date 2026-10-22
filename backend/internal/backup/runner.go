@@ -46,6 +46,9 @@ type Runner struct {
 	TmpDir    string
 	Workers   int
 	Logf      func(format string, a ...any)
+	// AfterRun, when set, is called with the outcome of every run once it is recorded (the service uses it
+	// to ping a heartbeat URL after a good one).
+	AfterRun func(ctx context.Context, res Result)
 }
 
 func (r *Runner) logf(format string, a ...any) {
@@ -100,6 +103,9 @@ func (r *Runner) Run(ctx context.Context) Result {
 		if err := r.Rec.Finish(fctx, id, res); err != nil {
 			r.logf("could not record the end of the run: %v", err)
 		}
+	}
+	if r.AfterRun != nil {
+		r.AfterRun(ctx, res)
 	}
 	return res
 }

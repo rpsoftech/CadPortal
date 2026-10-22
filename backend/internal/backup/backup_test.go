@@ -383,3 +383,16 @@ func keysOf(m *Memory) []string {
 	sort.Strings(out)
 	return out
 }
+
+func TestAfterRunSeesTheOutcomeOfEveryRun(t *testing.T) {
+	dest := NewMemory()
+	r, _ := newRunner(nil, dest, "x")
+	var seen []bool
+	r.AfterRun = func(_ context.Context, res Result) { seen = append(seen, res.OK) }
+	r.Run(context.Background())
+	r.Dump = func(context.Context, io.Writer) error { return errors.New("down") }
+	r.Run(context.Background())
+	if len(seen) != 2 || !seen[0] || seen[1] {
+		t.Errorf("AfterRun outcomes = %v, want [true false]", seen)
+	}
+}

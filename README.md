@@ -316,6 +316,32 @@ no point-in-time recovery). Files are copied as they appear in the vault, so a f
 same day before the night run is not in the backup. The backup bucket is only as safe as its token: keep
 that token off the server's other services, and rotate it like any secret.
 
+### Logs and uptime monitoring
+
+**Logs.** The API writes one JSON object per line (`LOG_FORMAT=text` for a terminal, `LOG_LEVEL` to change
+the detail), and so does the web container. Every request gets an id, sent back as the `X-Request-Id`
+header and shown in the log line (`request_id`, method, route, status, milliseconds, bytes, user id and
+role). A server error answers with that id too, so a person can quote it and you can find the exact request:
+
+```bash
+docker compose -f docker-compose.prod.yml logs api | grep 7f3a9c0b12d4e5f6
+```
+
+Query strings (which carry the token of a signed download link) and request bodies are never logged.
+Failed requests are `warn`, server errors are `error` (with the internal error text), and health probes are
+`debug` only. Docker keeps the last 5 files of 10 MB per container, so logs cannot fill the disk.
+
+**Uptime.** The server only makes outgoing requests, so nothing has to be reachable from outside. Create a
+check at a monitoring service (Healthchecks.io, Uptime Kuma's push monitor, Better Stack...) that expects a
+ping every 5 minutes with a few minutes of grace, and put its URL in `HEARTBEAT_URL`. The API pings it while
+it can reach its database and stays silent when it cannot, so the monitor alerts you if the server, the API
+or the database goes down.
+
+Do the same for backups with a second check that expects a ping every 26 hours, and put its URL in
+`BACKUP_HEARTBEAT_URL`. The backup service pings only after a *good* backup, so a backup that stops or fails
+alerts you even if the whole server is gone. These URLs are secret-like and are never written to the logs
+(only the host is).
+
 ### Releases and published images
 
 Images are published to GitHub Container Registry only when you push a version tag:

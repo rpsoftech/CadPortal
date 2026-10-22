@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -186,5 +187,30 @@ func TestBackupBucketView(t *testing.T) {
 	}
 	if _, err := backupBucket(env(same)); err == nil || !strings.Contains(err.Error(), "read-only") {
 		t.Errorf("write token as view token: %v", err)
+	}
+}
+
+func TestStartHeartbeatChecksItsSettings(t *testing.T) {
+	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Off by default: the returned channel is already closed.
+	done, err := startHeartbeat(ctx, nil, env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	default:
+		t.Error("with no HEARTBEAT_URL there is nothing to wait for")
+	}
+	if _, err := startHeartbeat(ctx, nil, env(map[string]string{"HEARTBEAT_URL": "hc-ping.com/abc"})); err == nil || !strings.Contains(err.Error(), "HEARTBEAT_URL") {
+		t.Errorf("a URL without a scheme: %v", err)
+	}
+	for _, bad := range []string{"0", "-5", "x", "2000"} {
+		_, err := startHeartbeat(ctx, nil, env(map[string]string{"HEARTBEAT_URL": "https://hc-ping.com/abc", "HEARTBEAT_INTERVAL_MINUTES": bad}))
+		if err == nil || !strings.Contains(err.Error(), "HEARTBEAT_INTERVAL_MINUTES") {
+			t.Errorf("interval %q accepted: %v", bad, err)
+		}
 	}
 }

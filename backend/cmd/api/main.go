@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -19,6 +20,8 @@ import (
 
 	"github.com/rpsoftech/cad-portal/backend/internal/backup"
 	"github.com/rpsoftech/cad-portal/backend/internal/handlers"
+	"github.com/rpsoftech/cad-portal/backend/internal/heartbeat"
+	"github.com/rpsoftech/cad-portal/backend/internal/logx"
 	"github.com/rpsoftech/cad-portal/backend/internal/migrate"
 	"github.com/rpsoftech/cad-portal/backend/internal/service"
 	"github.com/rpsoftech/cad-portal/backend/internal/storage"
@@ -37,7 +40,8 @@ func main() {
 		return
 	}
 	if err := run(); err != nil {
-		log.Fatal(err)
+		slog.Error("api stopped", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -66,6 +70,12 @@ func healthcheck(addr string) error {
 }
 
 func run() error {
+	logger, err := logx.New(os.Stderr, os.Getenv("LOG_FORMAT"), os.Getenv("LOG_LEVEL"))
+	if err != nil {
+		return err
+	}
+	logx.Setup(logger)
+
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		return errors.New("DATABASE_URL is required")
@@ -124,6 +134,10 @@ func run() error {
 	if bucket != nil {
 		svc.BackupBucket = bucket
 	}
+	heartbeatDone, err := startHeartbeat(ctx, pool, os.Getenv)
+	if err != nil {
+		return err
+	}
 	purgeDone := make(chan struct{})
 	go func() {
 		defer close(purgeDone)
@@ -141,7 +155,7 @@ func run() error {
 	if err := r.SetTrustedProxies(nil); err != nil {
 		return err
 	}
-	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/healthz"}}), gin.Recovery())
+	r.Use(logx.Middleware(logger), logx.Recovery(logger))
 	(&handlers.H{
 		S: svc, JWTSecret: []byte(jwtSecret), Validate: svc.ValidateToken, LocalFiles: localStore,
 	}).Register(r)
@@ -167,6 +181,7 @@ func run() error {
 	defer cancel()
 	err = srv.Shutdown(shutCtx)
 	<-workerDone
+	<-heartbeatDone
 	<-pruneDone
 	<-purgeDone
 	return err
@@ -280,6 +295,36 @@ func checkR2Env(getenv func(string) string) error {
 		return fmt.Errorf("S3_ENDPOINT still holds the placeholder from .env.example (%q): put your Cloudflare account id in it", getenv("S3_ENDPOINT"))
 	}
 	return nil
+}
+
+// startHeartbeat pings HEARTBEAT_URL every HEARTBEAT_INTERVAL_MINUTES (default 5) while the API can reach
+// its database, so an outside monitor notices when the portal goes quiet. Not set means no heartbeat. The
+// returned channel closes when it has stopped.
+func startHeartbeat(ctx context.Context, pool *pgxpool.Pool, getenv func(string) string) (<-chan struct{}, error) {
+	done := make(chan struct{})
+	url := strings.TrimSpace(getenv("HEARTBEAT_URL"))
+	if url == "" {
+		close(done)
+		return done, nil
+	}
+	if err := heartbeat.Validate(url); err != nil {
+		return nil, fmt.Errorf("HEARTBEAT_URL: %w", err)
+	}
+	mins := 5
+	if v := strings.TrimSpace(getenv("HEARTBEAT_INTERVAL_MINUTES")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 1440 {
+			return nil, fmt.Errorf("HEARTBEAT_INTERVAL_MINUTES must be 1 to 1440, got %q", v)
+		}
+		mins = n
+	}
+	slog.Info("heartbeat on", "host", heartbeat.Host(url), "every_minutes", mins)
+	go func() {
+		defer close(done)
+		heartbeat.Run(ctx, url, time.Duration(mins)*time.Minute, pool.Ping,
+			func(format string, a ...any) { slog.Warn(fmt.Sprintf(format, a...)) })
+	}()
+	return done, nil
 }
 
 // backupBucket gives the portal a read-only view of the backup bucket, so the Backups screen can list

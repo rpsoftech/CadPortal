@@ -9,8 +9,14 @@ resolver 127.0.0.11 valid=10s ipv6=off;
 # leaves plenty of room for people sharing an office address.
 limit_req_zone $binary_remote_addr zone=login:2m rate=10r/m;
 
+# One JSON line per request, with the id that is also passed to the API (X-Request-Id), so a request can be
+# followed from here into the API log. $uri has no query string: signed links carry their token there.
+log_format json_rid escape=json
+    '{"time":"$time_iso8601","request_id":"$request_id","ip":"$remote_addr","method":"$request_method","uri":"$uri","status":$status,"bytes":$body_bytes_sent,"seconds":"$request_time"}';
+
 server {
     listen 8080;
+    access_log /dev/stdout json_rid;
     server_name _;
     server_tokens off;
 
