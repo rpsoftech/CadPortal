@@ -141,13 +141,13 @@ test('stone weight is entered in grams and priced per piece or per carat', async
   await dialog.getByLabel('Size (mm)').fill('1.20');
   await dialog.getByLabel('Stone code').click();
   await page.getByRole('option', { name: '2HD' }).click();
-  await dialog.getByLabel('Weight per stone').fill('0.0000001');
+  await dialog.getByLabel('Weight per stone').fill('0.000000001');
   await expect(
-    dialog.getByText('0.0000005 ct, which has more than 6 decimal places'),
+    dialog.getByText('0.000000005 ct, which has more than 8 decimal places'),
   ).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Save' })).toBeEnabled(); // the form allows it; save explains
   await dialog.getByRole('button', { name: 'Save' }).click();
-  await expect(dialog.getByRole('alert')).toContainText('more than 6 decimal places');
+  await expect(dialog.getByRole('alert')).toContainText('more than 8 decimal places');
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 
   // An import in grams, with one row priced per carat and one per piece.
@@ -167,6 +167,14 @@ test('stone weight is entered in grams and priced per piece or per carat', async
   await expect(
     page.getByRole('row').filter({ hasText: '1.20' }).filter({ hasText: '2HD' }),
   ).toContainText('150.00 per pc');
+
+  // Carat weights go to eight decimals and their grams are shown in full, never cut short.
+  await page.getByRole('button', { name: 'Import CSV / paste' }).click();
+  await dialog.getByLabel('Matrix data').fill('3.00,2HD,,0.12345678,');
+  await dialog.getByRole('button', { name: /^Import 1 row/ }).click();
+  const fine = page.getByRole('row').filter({ hasText: '3.00' }).filter({ hasText: '2HD' });
+  await expect(fine).toContainText('0.12345678');
+  await expect(fine).toContainText('0.024691356');
 });
 
 test('importing designs checks first, then numbers them automatically', async ({ page }) => {

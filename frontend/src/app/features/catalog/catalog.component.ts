@@ -106,7 +106,7 @@ export class CatalogComponent {
     maxNetWt: new FormControl('', positiveDecimal(3)),
     minGrossWt: new FormControl('', positiveDecimal(3)),
     maxGrossWt: new FormControl('', positiveDecimal(3)),
-    maxStoneCts: new FormControl('', positiveDecimal(5)),
+    maxStoneCts: new FormControl('', positiveDecimal(8)),
     tagIds: new FormControl<number[]>([], { nonNullable: true }),
   });
 

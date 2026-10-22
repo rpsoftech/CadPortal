@@ -141,13 +141,13 @@ func TestSetupStatusLooksAtTheActivePrice(t *testing.T) {
 	}
 }
 
-func TestWeightPerStoneKeepsSixDecimalsOfCarats(t *testing.T) {
+func TestWeightPerStoneKeepsEightDecimalsOfCarats(t *testing.T) {
 	s := newTestService(t)
 	ctx := context.Background()
 	// 1.81 g per 1000 stones is 0.00181 g a stone, which is 0.00905 ct: five decimals of carats.
 	if err := s.UpdateStoneMatrix(ctx, []MatrixRowInput{
 		{SizeMM: d("1.00"), StoneCode: "2HD", CaratsPerStone: d("0.00905")},
-		{SizeMM: d("1.10"), StoneCode: "2HD", CaratsPerStone: d("0.000005")}, // six decimals, the limit
+		{SizeMM: d("1.10"), StoneCode: "2HD", CaratsPerStone: d("0.00000005")}, // eight decimals, the limit
 	}, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -156,13 +156,13 @@ func TestWeightPerStoneKeepsSixDecimalsOfCarats(t *testing.T) {
 	for _, r := range m {
 		got[r.SizeMm.StringFixed(2)] = r.CaratsPerStone.String()
 	}
-	if got["1.00"] != "0.00905" || got["1.10"] != "0.000005" {
+	if got["1.00"] != "0.00905" || got["1.10"] != "0.00000005" {
 		t.Errorf("stored weights = %v (nothing may be rounded)", got)
 	}
-	// One decimal more is refused, never rounded.
-	err := s.UpdateStoneMatrix(ctx, []MatrixRowInput{{SizeMM: d("1.20"), StoneCode: "2HD", CaratsPerStone: d("0.0000005")}}, "")
-	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "at most 6 decimal places") {
-		t.Errorf("seven decimals: %v", err)
+	// One decimal more (nine) is refused, never rounded.
+	err := s.UpdateStoneMatrix(ctx, []MatrixRowInput{{SizeMM: d("1.20"), StoneCode: "2HD", CaratsPerStone: d("0.000000005")}}, "")
+	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "at most 8 decimal places") {
+		t.Errorf("nine decimals: %v", err)
 	}
 
 	// The line total is still rounded to 4 decimals of carats: 1000 x 0.00905 = 9.05 ct = 1.810 g.
@@ -178,5 +178,31 @@ func TestWeightPerStoneKeepsSixDecimalsOfCarats(t *testing.T) {
 	}
 	if bom.TotalCarats.StringFixed(4) != "9.0500" || bom.StoneWeightG.StringFixed(3) != "1.810" {
 		t.Errorf("1000 stones: %s ct, %s g", bom.TotalCarats, bom.StoneWeightG)
+	}
+}
+
+func TestSevenDecimalCaratWeightsFlowIntoTotalsRoundedToFour(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	if err := s.UpdateStoneMatrix(ctx, []MatrixRowInput{
+		{SizeMM: d("1.00"), StoneCode: "2HD", CaratsPerStone: d("0.0123457")}, // seven decimals
+	}, ""); err != nil {
+		t.Fatal(err)
+	}
+	des := newDesign(t, s, "LR0801")
+	v, _ := s.CreateVariation(ctx, des.ID, BaseInput{VolumeMM3: dp("200")})
+	if _, err := s.SetSeats(ctx, v.ID, []SeatInput{{SizeMM: d("1.00"), StoneCount: 100}}); err != nil {
+		t.Fatal(err)
+	}
+	bom, err := s.SimulateBOM(ctx, v.ID, "2HD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 100 x 0.0123457 = 1.23457 ct, shown to four decimals (1.2346) and 0.2469 g (1.2346 x 0.2, 3 dp: 0.247).
+	if bom.TotalCarats.StringFixed(4) != "1.2346" || bom.StoneWeightG.StringFixed(3) != "0.247" {
+		t.Errorf("total = %s ct, %s g", bom.TotalCarats, bom.StoneWeightG)
+	}
+	if bom.Lines[0].CaratsPerStone.String() != "0.0123457" {
+		t.Errorf("per stone = %s (it must not be rounded on the way out)", bom.Lines[0].CaratsPerStone)
 	}
 }

@@ -10,7 +10,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { ApiService } from '../../core/api.service';
 import { PREFIX_PATTERN } from '../../core/code-prefix';
 import { toApiError } from '../../core/errors';
-import { caratsToGrams, fixed } from '../../core/format';
+import { exactGrams, fixed } from '../../core/format';
 import { parseMatrixCsv } from '../../core/matrix-csv';
 import { weightToCarats } from '../../core/stone-units';
 import {
@@ -151,7 +151,7 @@ export interface MatrixRowDialogData {
  * One row of the stone matrix: the weight of a stone of a size and code, and what it costs. The weight
  * is entered in grams (carats are the other choice) and the price per piece (per carat is the other
  * choice). Carats are what is stored, so grams are converted exactly and a weight that cannot be written
- * in 6 decimal places of carats is refused instead of rounded.
+ * in 8 decimal places of carats is refused instead of rounded.
  */
 @Component({
   selector: 'app-matrix-row-dialog',
@@ -276,13 +276,11 @@ export class MatrixRowDialogComponent {
     const v = this.form.getRawValue();
     void this.values();
     if (v.weight.trim() === '') {
-      return v.weightUnit === 'g' ? 'e.g. 0.0014 g (= 0.0070 ct)' : 'Up to 6 decimals, e.g. 0.0070';
+      return v.weightUnit === 'g' ? 'e.g. 0.0014 g (= 0.0070 ct)' : 'Up to 8 decimals, e.g. 0.0070';
     }
     const w = weightToCarats(v.weight, v.weightUnit);
     if (!w.ok) return w.error;
-    return v.weightUnit === 'g'
-      ? `= ${fixed(w.carats, 4)} ct`
-      : `= ${caratsToGrams(w.carats, 5)} g`;
+    return v.weightUnit === 'g' ? `= ${fixed(w.carats, 4)} ct` : `= ${exactGrams(w.carats, 5)} g`;
   });
 
   /** When the other basis already has a price, say that it is kept but not used. */
@@ -682,6 +680,5 @@ export class StoneCodeDialogComponent {
 
 /** A weight in carats as grams to type into a box: exact, without trailing zeros (0.2, not 0.20000). */
 function gramsText(carats: string): string {
-  const g = caratsToGrams(carats, 5) ?? '';
-  return g.includes('.') ? g.replace(/0+$/, '').replace(/\.$/, '') : g;
+  return exactGrams(carats, 0) ?? '';
 }

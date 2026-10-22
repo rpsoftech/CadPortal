@@ -20,15 +20,15 @@ export function decimalPlaces(value: string): number {
   return (value.split('.')[1] ?? '').length;
 }
 
-/** A weight per stone is stored with 6 decimal places of carats (a supplier list in grams per 1000 pieces needs 5). */
-export const CARAT_DP = 6;
+/** A weight per stone is stored with 8 decimal places of carats (a supplier list in grams per 1000 pieces needs 5; the trade quotes 7 or 8). */
+export const CARAT_DP = 8;
 
 export type WeightCheck = { ok: true; carats: string } | { ok: false; error: string };
 
 /**
  * Turns a weight per stone typed in grams or carats into the carats that are stored. A weight that
  * does not fit in 4 decimal places of carats is refused, never rounded: grams allow 5 decimals when
- * the last one is 0 or 5 (0.0000001 g is 0.0000005 ct, which is too fine; 0.0003 g is 0.0015 ct).
+ * the last one is 0 or 5 (0.000000001 g is 0.000000005 ct, which is too fine; 0.0003 g is 0.0015 ct).
  */
 export function weightToCarats(value: string, unit: 'g' | 'ct'): WeightCheck {
   const v = value.trim();

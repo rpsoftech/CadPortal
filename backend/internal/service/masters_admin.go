@@ -181,7 +181,7 @@ func ValidateMatrixRows(rows []MatrixRowInput) error {
 		if r.CaratsPerStone.IsNegative() || r.CaratsPerStone.GreaterThanOrEqual(decimal.NewFromInt(10000)) {
 			return invalid("row %d: carats_per_stone must be zero or more and under 10000", n)
 		}
-		if err := checkDP(fmt.Sprintf("row %d: carats_per_stone", n), r.CaratsPerStone, 6); err != nil {
+		if err := checkDP(fmt.Sprintf("row %d: carats_per_stone", n), r.CaratsPerStone, 8); err != nil {
 			return err
 		}
 		if r.RateBasis != "" && r.RateBasis != "pc" && r.RateBasis != "ct" {
