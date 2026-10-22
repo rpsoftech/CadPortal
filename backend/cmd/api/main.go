@@ -112,6 +112,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	svc.BackupMaxAge, err = backupMaxAge(os.Getenv("BACKUP_MAX_AGE_HOURS"), os.Getenv("STORAGE"), os.Getenv("S3_BUCKET"))
+	if err != nil {
+		return err
+	}
 	purgeDone := make(chan struct{})
 	go func() {
 		defer close(purgeDone)
@@ -268,6 +272,23 @@ func checkR2Env(getenv func(string) string) error {
 		return fmt.Errorf("S3_ENDPOINT still holds the placeholder from .env.example (%q): put your Cloudflare account id in it", getenv("S3_ENDPOINT"))
 	}
 	return nil
+}
+
+// backupMaxAge parses BACKUP_MAX_AGE_HOURS: how old the last good backup may be before the setup
+// checklist warns. Empty means 36 hours when files live in R2 (a real installation) and no check
+// otherwise (local development has no backup service); 0 turns the check off.
+func backupMaxAge(v, storageEnv, bucket string) (time.Duration, error) {
+	if v == "" {
+		if mode, err := storageMode(storageEnv, bucket); err == nil && mode == "r2" {
+			return 36 * time.Hour, nil
+		}
+		return 0, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 || n > 8760 {
+		return 0, fmt.Errorf("BACKUP_MAX_AGE_HOURS must be a whole number of hours (0 turns the warning off), got %q", v)
+	}
+	return time.Duration(n) * time.Hour, nil
 }
 
 // fileRetention parses DELETED_FILE_RETENTION_DAYS: how long a removed or replaced CAD file, photo or

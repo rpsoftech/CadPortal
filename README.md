@@ -191,8 +191,9 @@ KEEP=30 BACKUP_DIR=/srv/cad-backups scripts/backup.sh
   Each dump is checked for readability before it is kept, and only the newest `KEEP` (default
   14) are retained (`KEEP=0` keeps all). Run it from cron or a systemd timer, and copy the
   dumps off the machine. They contain every password hash and the full audit log, so treat
-  them like `.env`. Dumps cover the database only: with R2, file versions and backups are
-  managed on the Cloudflare side.
+  them like `.env`. This script is the manual option and covers the database only; the
+  automatic nightly backup of the database **and the files** is the backup service, see
+  Backups below.
 
 - **Restoring** replaces the database contents:
 
@@ -229,8 +230,9 @@ publish anything on a pull request or a merge.
 6. **First admin:** `docker compose -f docker-compose.prod.yml exec api /app/adduser -email you@example.com -name "Your Name" -role admin`
    (prefix with `MSYS_NO_PATHCONV=1` in Git Bash). Then sign in and follow the setup banner:
    alloys, category prefixes and the stone matrix (see First-time setup above).
-7. **Backups:** schedule `scripts/backup.sh` (cron or a systemd timer), copy the dumps off the
-   machine, and try `scripts/restore.sh` once on a spare copy so you know it works for you.
+7. **Backups:** create a second R2 bucket, make the encryption key and switch the backup service
+   on (see Backups below). Then try a restore once on a spare copy so you know it works for you.
+   Until a good backup exists, admins see a warning in the setup checklist.
 8. **After the first start**, check by hand: sign in, create a design, upload a small `.3dm`,
    download it again and compare it with the original, remove it. CI uses local disk, so it
    cannot cover your real bucket and credentials. To check a bucket before going live, run
@@ -241,6 +243,65 @@ Checked against a real R2 bucket: uploads (including multipart), browser downloa
 the original bytes under the original (even accented) name, expiring and tampered links, and
 deletion. Not yet verified against a real service: the published-image workflow (it first runs
 when you push a version tag).
+
+### Backups
+
+The `backup` service (a separate small image, because the API image has no shell or `pg_dump`) does
+two things every night at `BACKUP_AT` (default 02:00 `BACKUP_TZ`, UTC), into a **second bucket**:
+
+| What | How it is stored | Kept |
+|---|---|---|
+| **Database** | `pg_dump -Fc` (already compressed), checked with `pg_restore --list` before it is kept, then **encrypted** to your public key (age) as `db/cad_portal-<time>.dump.age` | 7 daily, 4 weekly, 12 monthly, and **one per year for good** (`BACKUP_KEEP_*` change the first three) |
+| **CAD files, photos, video** | every object the vault has and the backup lacks, copied byte for byte (same type and `Content-Encoding`) to `files/<same key>`. Objects have random names and are never rewritten, so this is incremental: night two copies only what is new | nothing is ever deleted from the backup, so a file removed in the portal stays recoverable there |
+
+Both halves are independent (a failed file copy never stops the database dump), every run is recorded,
+and the setup checklist warns admins if no good backup is newer than 36 hours (`BACKUP_MAX_AGE_HOURS`).
+If the service was down, it takes a backup at start-up instead of waiting for the next night.
+
+**What is compressed:** CAD files are gzipped by the portal before they reach R2 (flagged
+`Content-Encoding: gzip`, so browsers still receive the original file), and the database dump is
+compressed by `pg_dump`. Photos and video are stored as they are on purpose: JPEG and MP4 are already
+compressed (gzip saves about 0%), and a gzipped video cannot be played or seeked in the browser. The
+backup copies every object exactly as stored.
+
+**Set it up (once)**
+
+1. In Cloudflare create a second bucket, for example `cad-vault-backup`, and an API token limited to
+   it with object read and write. Do not reuse the vault's token: a token that can write backups should
+   not be able to delete the vault, and the other way round. Optionally add a lifecycle rule or bucket
+   lock there so nothing in it can be deleted for N days.
+2. Make the key pair and keep the secret half **offline** (password manager plus a printed copy).
+   Without it no dump can be opened, and nobody, including the server, can recover it:
+
+```bash
+docker compose -f docker-compose.prod.yml --profile backup run --rm backup keygen
+```
+
+3. In `.env` set `COMPOSE_PROFILES=backup`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`,
+   `BACKUP_S3_SECRET_ACCESS_KEY` and `BACKUP_AGE_RECIPIENT` (the public key; `BACKUP_S3_ENDPOINT` defaults
+   to `S3_ENDPOINT`). The service refuses to start without a recipient unless you set
+   `BACKUP_UNENCRYPTED=true`, and refuses to use the vault bucket as its own backup.
+4. `docker compose -f docker-compose.prod.yml up -d`, then `docker compose -f docker-compose.prod.yml logs backup`.
+   To take one right now: `docker compose -f docker-compose.prod.yml run --rm backup once`.
+
+**Restoring** (keep the secret key in a file, here `secret.key`):
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm backup list                 # what dumps exist
+docker compose -f docker-compose.prod.yml run --rm -T -e BACKUP_AGE_IDENTITY="$(cat secret.key)" \
+  backup fetch db/cad_portal-20261022-020000.dump.age - > restore.dump         # download and decrypt
+scripts/restore.sh restore.dump                                                # replaces the database
+docker compose -f docker-compose.prod.yml run --rm backup restore-files        # puts back files the vault lacks
+```
+
+`restore-files` only adds: it never overwrites or deletes anything in the vault. `scripts/backup_service_test.sh`
+runs this whole cycle in CI against a real database and an S3-compatible server, including a dump restored
+into a fresh database and a deleted CAD file coming back with its encoding.
+
+**Limits, honestly:** this is a nightly full dump, so a disaster can lose up to a day of changes (there is
+no point-in-time recovery). Files are copied as they appear in the vault, so a file uploaded and lost the
+same day before the night run is not in the backup. The backup bucket is only as safe as its token: keep
+that token off the server's other services, and rotate it like any secret.
 
 ### Releases and published images
 

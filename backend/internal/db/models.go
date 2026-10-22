@@ -21,6 +21,20 @@ type AuditLog struct {
 	Detail     string             `json:"detail"`
 }
 
+type BackupRun struct {
+	ID           int64              `json:"id"`
+	StartedAt    pgtype.Timestamptz `json:"started_at"`
+	FinishedAt   pgtype.Timestamptz `json:"finished_at"`
+	Ok           pgtype.Bool        `json:"ok"`
+	DbKey        string             `json:"db_key"`
+	DbBytes      int64              `json:"db_bytes"`
+	FilesCopied  int32              `json:"files_copied"`
+	FilesBytes   int64              `json:"files_bytes"`
+	FilesTotal   int32              `json:"files_total"`
+	FilesSkipped bool               `json:"files_skipped"`
+	Error        string             `json:"error"`
+}
+
 type CadVariation struct {
 	ID                   int64               `json:"id"`
 	DesignID             int64               `json:"design_id"`

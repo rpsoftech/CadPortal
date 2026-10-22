@@ -13,9 +13,24 @@ COPY . .
 ENV CGO_ENABLED=0
 RUN go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api \
  && go build -trimpath -ldflags="-s -w" -o /out/adduser ./cmd/adduser \
+ && go build -trimpath -ldflags="-s -w" -o /out/backup ./cmd/backup \
  && mkdir -p /out/data/uploads
 
+# ---- backup ----
+# The backup service needs pg_dump, which the distroless API image deliberately lacks, so it is a separate
+# image (build it with --target backup). The postgres image brings pg_dump and pg_restore at the same major
+# version as the database; it runs as the unprivileged postgres user.
+FROM postgres:18-alpine AS backup
+COPY --from=build /out/backup /app/backup
+# Room for a dump while it is checked and uploaded; mount a volume here so it is not kept in memory.
+RUN mkdir /scratch && chown postgres:postgres /scratch
+USER postgres
+ENV BACKUP_TMP_DIR=/scratch
+ENTRYPOINT ["/app/backup"]
+CMD ["run"]
+
 # ---- run ----
+# (Keep this stage last: a plain docker build, and the compose api service, build it.)
 # Distroless: no shell, no package manager, CA certificates included (needed for R2 over TLS).
 FROM gcr.io/distroless/static-debian12:nonroot
 

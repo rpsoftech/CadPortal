@@ -76,6 +76,9 @@ type Service struct {
 	// Retention is how long a removed or replaced file is kept before it is deleted for good; 0 or less
 	// deletes it at once. See retire and PurgeTrash.
 	Retention time.Duration
+	// BackupMaxAge, when positive, makes the setup checklist warn if the backup service has not finished a
+	// good run within this time. Zero leaves backups out of the checklist (local development).
+	BackupMaxAge time.Duration
 }
 
 func New(pool *pgxpool.Pool) *Service { return &Service{Pool: pool, Q: db.New(pool)} }
