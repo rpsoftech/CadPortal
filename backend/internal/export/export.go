@@ -3,6 +3,7 @@ package export
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/csv"
 	"fmt"
 	"image/jpeg"
@@ -72,6 +73,7 @@ func RenderJobBagPDF(jb service.JobBag) ([]byte, error) {
 		pdf.SetRightMargin(15 + photoBoxW + 5)
 	}
 
+	placeJobBagBrand(pdf)
 	pdf.SetFont("Helvetica", "B", 20)
 	pdf.CellFormat(0, 10, "JOB BAG", "", 1, "L", false, 0, "")
 	pdf.SetFont("Helvetica", "B", 16)
@@ -227,4 +229,31 @@ func placeJobBagPhoto(pdf *fpdf.Fpdf, jpg []byte) bool {
 	x := 210 - 15 - w // right-aligned to the margin
 	pdf.ImageOptions("jobbag-photo", x, 15, w, h, false, opts, 0, "")
 	return !pdf.Err()
+}
+
+// CompanyName is printed on every job bag next to the logo.
+const CompanyName = "GOLDEN OAK JEWELS LLP"
+
+//go:embed assets/logo.png
+var brandLogoPNG []byte
+
+// placeJobBagBrand draws the logo and company name at the top left and moves the cursor below them.
+// The logo is decoration: if fpdf cannot use it the name is still printed.
+func placeJobBagBrand(pdf *fpdf.Fpdf) {
+	const logoH = 14.0
+	x, y := pdf.GetX(), pdf.GetY()
+	opts := fpdf.ImageOptions{ImageType: "PNG"}
+	pdf.RegisterImageOptionsReader("brand-logo", opts, bytes.NewReader(brandLogoPNG))
+	textX := x
+	if pdf.Err() {
+		pdf.ClearError()
+	} else if info := pdf.GetImageInfo("brand-logo"); info != nil {
+		w := logoH * info.Width() / info.Height()
+		pdf.ImageOptions("brand-logo", x, y, w, logoH, false, opts, 0, "")
+		textX = x + w + 3
+	}
+	pdf.SetXY(textX, y+logoH/2-3)
+	pdf.SetFont("Helvetica", "B", 11)
+	pdf.CellFormat(0, 6, CompanyName, "", 1, "L", false, 0, "")
+	pdf.SetXY(x, y+logoH+4)
 }
