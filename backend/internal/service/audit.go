@@ -133,6 +133,28 @@ func (s *Service) ListAudit(ctx context.Context, f AuditFilter) ([]AuditRecord, 
 }
 
 // PruneAudit deletes entries older than the cutoff (the retention job).
+//
+// Several API instances may run the job at once; only one does the work (a try-lock held for the
+// transaction), the others return 0 at once.
 func (s *Service) PruneAudit(ctx context.Context, olderThan time.Time) (int64, error) {
-	return s.Q.PruneAudit(ctx, pgtype.Timestamptz{Time: olderThan, Valid: true})
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var got bool
+	if err := tx.QueryRow(ctx, "SELECT pg_try_advisory_xact_lock($1)", pruneAuditLockKey).Scan(&got); err != nil {
+		return 0, err
+	}
+	if !got {
+		return 0, nil
+	}
+	n, err := db.New(tx).PruneAudit(ctx, pgtype.Timestamptz{Time: olderThan, Valid: true})
+	if err != nil {
+		return 0, err
+	}
+	return n, tx.Commit(ctx)
 }
+
+// pruneAuditLockKey is the advisory lock that lets one instance at a time prune the audit log.
+const pruneAuditLockKey int64 = 0x43414441 // "CADA"

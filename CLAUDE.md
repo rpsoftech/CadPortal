@@ -21,7 +21,7 @@ docker-compose.yml  Postgres 18 for local dev
 docker-compose.prod.yml  production-style stack: db + api + web (nginx); images from backend/Dockerfile and frontend/Dockerfile
 docker-compose.images.yml  overlay for prod: run the published ghcr.io images instead of building (see README, Releases)
 deploy/             Caddyfile.example: TLS reverse proxy for going live
-scripts/            backup.sh, restore.sh, deploy.sh, e2e.sh, ratelimit_test.sh, backup_service_test.sh, deploy_test.sh and their tests (run in CI)
+scripts/            backup.sh, restore.sh, deploy.sh, e2e.sh, ratelimit_test.sh, multi_instance_test.sh, backup_service_test.sh, deploy_test.sh and their tests (run in CI)
 backend/cmd/backup  the backup service (own image, target `backup`): nightly encrypted database dump + incremental copy of files to a second bucket
 ```
 
@@ -85,7 +85,7 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   2. stone matrix carats for the baseline code
   3. which code is the baseline
   4. a variation's base input or seats (do this one synchronously, in the same transaction)
-- **Recalc jobs:** 1–3 enqueue a row in `weight_recalc_jobs`. A worker claims it with `FOR UPDATE SKIP LOCKED` and holds `pg_advisory_xact_lock` while running, so two recalcs never interleave.
+- **Recalc jobs:** 1–3 enqueue a row in `weight_recalc_jobs`. A worker claims it with `FOR UPDATE SKIP LOCKED` and holds `pg_advisory_xact_lock` while running, so two recalcs never interleave. The full rebuild is set-based (two reads, three bulk writes, one transaction; the same Go math as the single-variation path, tested equal). Several API instances may run: see README, "Running more than one API instance".
 
 ## API (v1)
 | Group | Endpoints |
@@ -154,6 +154,7 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   27. Staging and production images: every green main commit is published as :staging (and :sha-<commit>); production runs only tagged versions (no :latest); scripts/deploy.sh pulls and restarts only the app containers, never the database
   28. Structured JSON logs with request ids (API and web), Docker log rotation, heartbeat pings for uptime (`HEARTBEAT_URL`) and for good backups (`BACKUP_HEARTBEAT_URL`)
   29. Forgotten passwords: one-hour single-use reset links (admin-made on the Users screen, or emailed when SMTP is configured), rate limited, audited
+  31. Scale: the full weight rebuild is set-based (about 3 s at 15,000 variations instead of about 100 s; `TestScaleRecalc` with `SCALE_TEST=1`, equivalence test against the per-variation math); more than one API instance is safe (migration advisory lock, one heartbeat pinger via `maintenance_claims`, audit-retention try-lock, `SKIP LOCKED` everywhere else) and proven by `scripts/multi_instance_test.sh`
   33. Stone price per gram: a third `rate_basis` `g` with `rate_per_g` (migration 000014), line cost = line grams × price per gram from unrounded carats; `stone_pricing` column in the costing CSV; matrix CSV gains `rate_per_g`
   34. Duplicate a design (next automatic code, chosen variations with base input and seats, optional tags, never files) and restore deleted variations (soft delete, Removed screen, purge after the retention period)
   36. Job bag QR code (a link to the design page from `APP_BASE_URL` with `?v=<variation>`, else the plain variation code) and many job bags in one PDF (`POST /exports/job-bags-pdf`, "Print all job bags" / "Print selected" on the design page)
