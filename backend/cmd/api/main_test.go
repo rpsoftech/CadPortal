@@ -190,6 +190,35 @@ func TestBackupBucketView(t *testing.T) {
 	}
 }
 
+func TestMailConfig(t *testing.T) {
+	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+	if s, base, err := mailConfig(env(nil)); s != nil || base != "" || err != nil {
+		t.Errorf("nothing set means no email: %v %q %v", s, base, err)
+	}
+	ok := map[string]string{"SMTP_HOST": "smtp.example.com", "SMTP_FROM": "CadPortal <portal@example.com>", "APP_BASE_URL": "https://cad.example.com/"}
+	s, base, err := mailConfig(env(ok))
+	if s == nil || err != nil || base != "https://cad.example.com" {
+		t.Errorf("complete setup: %v %q %v", s, base, err)
+	}
+	cases := map[string]map[string]string{
+		"APP_BASE_URL": {"SMTP_HOST": "h", "SMTP_FROM": "p@example.com"},
+		"SMTP_FROM":    {"SMTP_HOST": "h", "APP_BASE_URL": "https://x.example.com"},
+		"SMTP_PORT":    {"SMTP_HOST": "h", "SMTP_FROM": "p@example.com", "APP_BASE_URL": "https://x.example.com", "SMTP_PORT": "abc"},
+		"SMTP_TLS":     {"SMTP_HOST": "h", "SMTP_FROM": "p@example.com", "APP_BASE_URL": "https://x.example.com", "SMTP_TLS": "ssl"},
+		"together":     {"SMTP_HOST": "h", "SMTP_FROM": "p@example.com", "APP_BASE_URL": "https://x.example.com", "SMTP_USERNAME": "u"},
+	}
+	for want, m := range cases {
+		if _, _, err := mailConfig(env(m)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: got %v", want, err)
+		}
+	}
+	// A path in the base address would produce broken links.
+	bad := map[string]string{"SMTP_HOST": "h", "SMTP_FROM": "p@example.com", "APP_BASE_URL": "https://x.example.com/portal"}
+	if _, _, err := mailConfig(env(bad)); err == nil {
+		t.Error("APP_BASE_URL with a path accepted")
+	}
+}
+
 func TestStartHeartbeatChecksItsSettings(t *testing.T) {
 	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 	ctx, cancel := context.WithCancel(context.Background())

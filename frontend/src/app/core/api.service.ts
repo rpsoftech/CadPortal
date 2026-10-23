@@ -4,6 +4,8 @@ import { MonoTypeOperatorFunction, Observable, catchError, map, of, tap, throwEr
 import {
   AuditFilter,
   AuditRecord,
+  AuthConfig,
+  ResetLink,
   Backups,
   BaseInput,
   BomResult,
@@ -86,6 +88,22 @@ export class ApiService {
   }
   resetUserPassword(id: number, newPassword: string) {
     return this.http.post<void>(`${BASE}/users/${id}/password`, { new_password: newPassword });
+  }
+
+  /** An admin makes a one-hour link; the user chooses their own password with it. */
+  userResetLink(id: number): Observable<ResetLink> {
+    return this.http.post<ResetLink>(`${BASE}/users/${id}/reset-link`, null);
+  }
+
+  // ----- password reset (public: no sign-in needed) -----
+  authConfig(): Observable<AuthConfig> {
+    return this.http.get<AuthConfig>(`${BASE}/auth/config`);
+  }
+  forgotPassword(email: string): Observable<void> {
+    return this.http.post<void>(`${BASE}/auth/forgot-password`, { email });
+  }
+  resetPasswordWithToken(token: string, password: string): Observable<void> {
+    return this.http.post<void>(`${BASE}/auth/reset-password`, { token, password });
   }
 
   // ----- masters -----

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -22,6 +23,7 @@ import (
 	"github.com/rpsoftech/cad-portal/backend/internal/handlers"
 	"github.com/rpsoftech/cad-portal/backend/internal/heartbeat"
 	"github.com/rpsoftech/cad-portal/backend/internal/logx"
+	"github.com/rpsoftech/cad-portal/backend/internal/mailer"
 	"github.com/rpsoftech/cad-portal/backend/internal/migrate"
 	"github.com/rpsoftech/cad-portal/backend/internal/service"
 	"github.com/rpsoftech/cad-portal/backend/internal/storage"
@@ -127,6 +129,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	sender, baseURL, err := mailConfig(os.Getenv)
+	if err != nil {
+		return err
+	}
+	if sender != nil {
+		svc.Mail, svc.AppBaseURL = sender, baseURL
+		log.Printf("password reset by email is on (SMTP host %s)", os.Getenv("SMTP_HOST"))
+	}
 	bucket, err := backupBucket(os.Getenv)
 	if err != nil {
 		return err
@@ -180,6 +190,7 @@ func run() error {
 	shutCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
 	err = srv.Shutdown(shutCtx)
+	svc.WaitMail()
 	<-workerDone
 	<-heartbeatDone
 	<-pruneDone
@@ -295,6 +306,43 @@ func checkR2Env(getenv func(string) string) error {
 		return fmt.Errorf("S3_ENDPOINT still holds the placeholder from .env.example (%q): put your Cloudflare account id in it", getenv("S3_ENDPOINT"))
 	}
 	return nil
+}
+
+// mailConfig reads the SMTP settings that make "forgot password" send emails. With SMTP_HOST empty
+// nothing is configured and people are told to ask an admin for a reset link. APP_BASE_URL is the public
+// address the emailed link points to, so it is required whenever mail is on.
+func mailConfig(getenv func(string) string) (mailer.Sender, string, error) {
+	val := func(n string) string { return strings.TrimSpace(getenv(n)) }
+	if val("SMTP_HOST") == "" {
+		return nil, "", nil
+	}
+	base := strings.TrimRight(val("APP_BASE_URL"), "/")
+	if u, err := url.Parse(base); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.Path != "" {
+		return nil, "", errors.New("APP_BASE_URL must be the public address of the portal, like https://cad.example.com, when SMTP_HOST is set")
+	}
+	port := 587
+	if v := val("SMTP_PORT"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, "", fmt.Errorf("SMTP_PORT must be a number, got %q", v)
+		}
+		port = n
+	}
+	mode := mailer.TLSMode(strings.ToLower(val("SMTP_TLS")))
+	if mode == "" {
+		mode = mailer.STARTTLS
+		if port == 465 {
+			mode = mailer.Implicit
+		}
+	}
+	m, err := mailer.New(mailer.Config{
+		Host: val("SMTP_HOST"), Port: port, Username: val("SMTP_USERNAME"), Password: getenv("SMTP_PASSWORD"),
+		From: val("SMTP_FROM"), TLS: mode,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	return m, base, nil
 }
 
 // startHeartbeat pings HEARTBEAT_URL every HEARTBEAT_INTERVAL_MINUTES (default 5) while the API can reach

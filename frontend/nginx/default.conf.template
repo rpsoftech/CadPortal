@@ -8,6 +8,13 @@ resolver 127.0.0.11 valid=10s ipv6=off;
 # also stops one client from guessing across many accounts. 10 a minute with a burst of 20
 # leaves plenty of room for people sharing an office address.
 limit_req_zone $binary_remote_addr zone=login:2m rate=10r/m;
+# Password reset requests and reset attempts: 5 a minute per client address, with a burst of 10.
+limit_req_zone $binary_remote_addr zone=reset:2m rate=5r/m;
+
+# One JSON line per request, with the id that is also passed to the API (X-Request-Id), so a request can be
+# followed from here into the API log. $uri has no query string: signed links carry their token there.
+log_format json_rid escape=json
+    '{"time":"$time_iso8601","request_id":"$request_id","ip":"$remote_addr","method":"$request_method","uri":"$uri","status":$status,"bytes":$body_bytes_sent,"seconds":"$request_time"}';
 
 # One JSON line per request, with the id that is also passed to the API (X-Request-Id), so a request can be
 # followed from here into the API log. $uri has no query string: signed links carry their token there.
@@ -57,6 +64,19 @@ server {
     # Sign-in is rate limited (429 when exceeded); everything else under /api/ is not.
     location = /api/v1/auth/login {
         limit_req zone=login burst=20 nodelay;
+        limit_req_status 429;
+        include /etc/nginx/api-proxy.conf;
+    }
+
+    # "Forgot password" and the reset form are public, so they are limited per client address too: they
+    # would otherwise be a way to flood someone's inbox or to guess reset tokens.
+    location = /api/v1/auth/forgot-password {
+        limit_req zone=reset burst=10 nodelay;
+        limit_req_status 429;
+        include /etc/nginx/api-proxy.conf;
+    }
+    location = /api/v1/auth/reset-password {
+        limit_req zone=reset burst=10 nodelay;
         limit_req_status 429;
         include /etc/nginx/api-proxy.conf;
     }

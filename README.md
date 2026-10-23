@@ -342,6 +342,28 @@ Do the same for backups with a second check that expects a ping every 26 hours, 
 alerts you even if the whole server is gone. These URLs are secret-like and are never written to the logs
 (only the host is).
 
+### Forgotten passwords
+
+Two ways, and neither lets anyone see or choose someone else's password:
+
+- **An admin makes a reset link** (Users screen, **Reset link**). It is a one-hour, single-use link; the
+  admin passes it on (chat, phone, in person) and the user chooses their own password with it. It needs no
+  mail server. Making a new link cancels the old one, and a disabled account cannot get one. (**Set
+  password** is still there for when an admin has to type one.)
+- **The user asks for it on the sign-in page** (**Forgot password?**), if you set up email. In `.env` put the
+  public address of the portal in `APP_BASE_URL` (no path) and the mail server in `SMTP_HOST`, `SMTP_PORT`
+  (587), `SMTP_USERNAME`, `SMTP_PASSWORD` and `SMTP_FROM`. The connection must use STARTTLS (port 587) or
+  implicit TLS (`SMTP_TLS=implicit`, port 465); the service refuses to send in the clear unless you set
+  `SMTP_TLS=none` for a local mail catcher. Without `SMTP_HOST` the page says to ask an admin.
+
+How it is protected: the page answers the same whether or not the address has an account; a link works once
+and for one hour; only a hash of it is stored, so a copy of the database cannot reset anyone; at most 3
+emails an hour per account, and 5 requests a minute per client address (the web container's limit); a
+disabled account gets nothing; a weak new password is refused without using up the link; and using a link
+ends every session of that user and unlocks the account. Requests, links and resets are in the audit log
+(never the token). Checked end to end against a real SMTP server (Mailpit) with the link from the delivered
+email, in the browser tests, and in CI.
+
 ### Releases and published images
 
 Two kinds of images are published to GitHub Container Registry (`cadportal-api`, `cadportal-web`

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -14,6 +15,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/rpsoftech/cad-portal/backend/internal/db"
+	"github.com/rpsoftech/cad-portal/backend/internal/mailer"
 	"github.com/rpsoftech/cad-portal/backend/internal/storage"
 )
 
@@ -81,6 +83,12 @@ type Service struct {
 	BackupMaxAge time.Duration
 	// BackupBucket is a read-only view of the backup bucket; nil hides the dump list and downloads.
 	BackupBucket BackupBucket
+	// Mail sends password reset emails; nil (with AppBaseURL empty) turns self-service reset off.
+	Mail mailer.Sender
+	// AppBaseURL is the public address of the portal (https://cad.example.com), used in emailed links.
+	AppBaseURL string
+
+	mailWG sync.WaitGroup
 }
 
 func New(pool *pgxpool.Pool) *Service { return &Service{Pool: pool, Q: db.New(pool)} }

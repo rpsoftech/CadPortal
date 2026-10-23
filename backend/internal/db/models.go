@@ -117,6 +117,17 @@ type Metal struct {
 	UpdatedAt       pgtype.Timestamptz  `json:"updated_at"`
 }
 
+type PasswordReset struct {
+	ID        int64              `json:"id"`
+	UserID    int64              `json:"user_id"`
+	TokenHash string             `json:"token_hash"`
+	Delivery  string             `json:"delivery"`
+	CreatedBy pgtype.Int8        `json:"created_by"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	UsedAt    pgtype.Timestamptz `json:"used_at"`
+}
+
 type StoneCode struct {
 	ID                int64              `json:"id"`
 	Code              string             `json:"code"`
