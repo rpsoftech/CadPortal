@@ -28,11 +28,11 @@
         class="filters-toggle"
         aria-controls="filter-panel"
         [attr.aria-expanded]="filtersOpen()"
+        [attr.aria-label]="activeFilters() > 0 ? 'Filters, ' + activeFilters() + ' active' : null"
         (click)="filtersOpen.set(!filtersOpen())"
       >
         Filters@if (activeFilters() > 0) {
           <span class="count" aria-hidden="true">{{ activeFilters() }}</span>
-          <span class="sr-only">, {{ activeFilters() }} active</span>
         }
       </button>
     </div>

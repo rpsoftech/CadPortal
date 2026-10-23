@@ -114,6 +114,16 @@ export function summarize(items: SetupItem[]): { required: number; recommended: 
     li a {
       white-space: nowrap;
     }
+    @media (max-width: 720px) {
+      li {
+        flex-wrap: wrap;
+        gap: 4px 16px;
+      }
+      .what {
+        flex: 1 1 100%;
+        min-width: 0;
+      }
+    }
     li.required {
       border-left-color: var(--mat-sys-error);
     }

@@ -27,12 +27,12 @@ Target: WCAG 2.2 level AA, for the Angular app in `frontend/`.
 
 ## How to check again
 
-The checks are Playwright tests in `frontend/e2e/smoke.a11y.e2e.ts` (they run after `smoke.e2e.ts` and
+The checks are Playwright tests in `frontend/e2e/smoke.zz-a11y.e2e.ts` (they run after `smoke.e2e.ts` and
 `smoke.mobile.e2e.ts` because they need the designs those create). They run with the other browser tests:
 
 ```bash
 WEB_PORT=18080 scripts/e2e.sh                 # whole suite, as CI does
-WEB_PORT=18080 scripts/e2e.sh smoke.a11y      # only these
+WEB_PORT=18080 scripts/e2e.sh smoke.zz-a11y      # only these
 ```
 
 - `axe: every screen, <light|dark>, <desktop|phone>`: signs in and runs axe-core (tags wcag2a, wcag2aa,
@@ -44,7 +44,7 @@ WEB_PORT=18080 scripts/e2e.sh smoke.a11y      # only these
   written to `frontend/test-results/a11y-<scheme>-<size>.json`.
 - `keyboard: ...` checks the skip link, focus after navigation, dialog focus handling, the focus ring, the
   media gallery, the file drop zones and the seat grid with the keyboard only.
-- `reduced motion, 200% text and 320 px reflow ...` checks reflow and reduced motion.
+- `reduced motion and 200% text ...` checks reflow and reduced motion.
 - `smoke.mobile.e2e.ts` covers the phone layout at 320, 375, 768 and 812x375 (landscape).
 
 ## Known limits

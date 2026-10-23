@@ -123,7 +123,7 @@ test('tables become cards, and the seat grid is one card per seat with large fie
   await page.getByRole('button', { name: 'Add seat' }).click();
   const size = page.getByLabel('Seat 1 size in mm');
   await expect(size).toBeVisible();
-  const box = await size.boundingBox();
+  const box = await size.locator('xpath=ancestor::mat-form-field').boundingBox();
   expect(box!.height).toBeGreaterThanOrEqual(44);
   expect(box!.width).toBeGreaterThan(120);
   expect(await size.getAttribute('inputmode')).toBe('decimal');

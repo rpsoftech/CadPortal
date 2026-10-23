@@ -693,6 +693,9 @@ docker compose -f docker-compose.prod.yml down -v     # the next run needs a fre
 (for example `--grep "weight matrix"` or `--headed`). On a CI failure the report and traces are
 attached to the run as the `playwright-report` artifact.
 
+The same run includes an accessibility pass (axe over every screen and dialog, light and dark, desktop
+and 375 px) and the phone-layout checks; see [docs/accessibility.md](docs/accessibility.md).
+
 ## Regenerating sqlc code
 
 sqlc is run through its official Docker image:

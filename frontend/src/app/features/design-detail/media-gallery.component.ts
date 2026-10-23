@@ -142,7 +142,7 @@ const IDLE: UploadState = { busy: false, progress: null, current: '', errors: []
                       [class.cover]="m.is_cover"
                     >
                       @if (m.kind === 'image') {
-                        <img [src]="m.thumb_url" alt="" loading="lazy" />
+                        <img [src]="m.thumb_url" [alt]="m.filename" loading="lazy" />
                       } @else {
                         <!-- the first frame stands in for a thumbnail; only metadata is fetched -->
                         <video
@@ -162,7 +162,7 @@ const IDLE: UploadState = { busy: false, progress: null, current: '', errors: []
                     @if (canEdit()) {
                       <div class="actions">
                         @if (m.kind === 'image' && m.variation_id === null && !m.is_cover) {
-                          <button matButton (click)="makeCover(m)" [attr.aria-label]="'Make ' + m.filename + ' the cover'">
+                          <button matButton (click)="makeCover(m)" [attr.aria-label]="'Make cover: ' + m.filename">
                             Make cover
                           </button>
                         }

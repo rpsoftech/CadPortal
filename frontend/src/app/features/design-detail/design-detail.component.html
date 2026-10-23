@@ -304,7 +304,7 @@
                       <div class="mono muted small">
                         sha256 {{ v.file_3dm_sha256.slice(0, 16) }}…
                       </div>
-                      <button matButton (click)="download(v, '3dm')" [attr.aria-label]="'Download ' + v.code + ' 3dm file'">
+                      <button matButton (click)="download(v, '3dm')">
                         Download
                       </button>
                     } @else {
@@ -317,7 +317,7 @@
                       <div class="mono muted small">
                         sha256 {{ v.file_stl_sha256.slice(0, 16) }}…
                       </div>
-                      <button matButton (click)="download(v, 'stl')" [attr.aria-label]="'Download ' + v.code + ' stl file'">
+                      <button matButton (click)="download(v, 'stl')">
                         Download
                       </button>
                     } @else {

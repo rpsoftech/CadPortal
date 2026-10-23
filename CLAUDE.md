@@ -154,5 +154,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   27. Staging and production images: every green main commit is published as :staging (and :sha-<commit>); production runs only tagged versions (no :latest); scripts/deploy.sh pulls and restarts only the app containers, never the database
   28. Structured JSON logs with request ids (API and web), Docker log rotation, heartbeat pings for uptime (`HEARTBEAT_URL`) and for good backups (`BACKUP_HEARTBEAT_URL`)
   29. Forgotten passwords: one-hour single-use reset links (admin-made on the Users screen, or emailed when SMTP is configured), rate limited, audited
+  32. Accessibility (WCAG 2.2 AA) and phone layout: axe Playwright test over every screen and dialog (light/dark, desktop/375 px; docs/accessibility.md), skip link, landmarks, focus after navigation; phone filters panel, tables as cards (`table.plain.stack` + `data-label`), seat cards, 44 px targets
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.
