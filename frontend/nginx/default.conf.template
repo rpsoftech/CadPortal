@@ -16,6 +16,11 @@ limit_req_zone $binary_remote_addr zone=reset:2m rate=5r/m;
 log_format json_rid escape=json
     '{"time":"$time_iso8601","request_id":"$request_id","ip":"$remote_addr","method":"$request_method","uri":"$uri","status":$status,"bytes":$body_bytes_sent,"seconds":"$request_time"}';
 
+# One JSON line per request, with the id that is also passed to the API (X-Request-Id), so a request can be
+# followed from here into the API log. $uri has no query string: signed links carry their token there.
+log_format json_rid escape=json
+    '{"time":"$time_iso8601","request_id":"$request_id","ip":"$remote_addr","method":"$request_method","uri":"$uri","status":$status,"bytes":$body_bytes_sent,"seconds":"$request_time"}';
+
 server {
     listen 8080;
     access_log /dev/stdout json_rid;
