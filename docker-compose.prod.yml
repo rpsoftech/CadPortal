@@ -8,10 +8,19 @@
 # Compose reads .env automatically. Required values fail fast with a clear message.
 name: cadportal-prod
 
+# Docker keeps container logs forever by default, which eventually fills the disk. Keep 5 files of 10 MB
+# per container (about 50 MB), and read them with docker compose logs.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
     image: postgres:18-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-cad}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -30,12 +39,21 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    logging: *logging
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-cad}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-cad_portal}?sslmode=disable
       AUTO_MIGRATE: "true"
+      # One JSON line per request (with a request id that is also in the web log), for log tools. Use text
+      # for a terminal. LOG_LEVEL is debug, info, warn or error.
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # An outside monitor (Healthchecks.io, Uptime Kuma, ...) is pinged every few minutes while the API can
+      # reach its database; when the pings stop, the monitor alerts you. Empty means off.
+      HEARTBEAT_URL: ${HEARTBEAT_URL:-}
+      HEARTBEAT_INTERVAL_MINUTES: ${HEARTBEAT_INTERVAL_MINUTES:-5}
       AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-0}
       # Removed or replaced CAD files, photos and videos are kept this many days and can be restored;
       # 0 deletes them at once.
@@ -81,6 +99,7 @@ services:
       context: ./backend
       target: backup
     restart: unless-stopped
+    logging: *logging
     depends_on:
       db:
         condition: service_healthy
@@ -100,6 +119,9 @@ services:
       BACKUP_S3_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
       BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:-}
       BACKUP_UNENCRYPTED: ${BACKUP_UNENCRYPTED:-}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      # Pinged after every GOOD backup (set the monitor to expect a ping about every 26 hours). Empty means off.
+      BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
       BACKUP_AT: ${BACKUP_AT:-02:00}
       BACKUP_TZ: ${BACKUP_TZ:-UTC}
       BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-7}
@@ -119,6 +141,7 @@ services:
     build:
       context: ./frontend
     restart: unless-stopped
+    logging: *logging
     depends_on:
       api:
         condition: service_healthy

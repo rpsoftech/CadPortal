@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strconv"
@@ -29,10 +30,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rpsoftech/cad-portal/backend/internal/backup"
 	"github.com/rpsoftech/cad-portal/backend/internal/db"
+	"github.com/rpsoftech/cad-portal/backend/internal/heartbeat"
+	"github.com/rpsoftech/cad-portal/backend/internal/logx"
 )
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.LUTC)
+	logger, err := logx.New(os.Stderr, os.Getenv("LOG_FORMAT"), os.Getenv("LOG_LEVEL"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "backup:", err)
+		os.Exit(1)
+	}
+	logx.Setup(logger)
 	cmd := "run"
 	if len(os.Args) > 1 {
 		cmd = os.Args[1]
@@ -40,7 +48,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	var err error
 	switch cmd {
 	case "run":
 		err = runDaemon(ctx)
@@ -58,7 +65,8 @@ func main() {
 		err = fmt.Errorf("unknown command %q (run, once, list, fetch, restore-files, keygen)", cmd)
 	}
 	if err != nil {
-		log.Fatalf("backup: %v", err)
+		slog.Error("backup stopped", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -183,9 +191,28 @@ func newRunner(ctx context.Context) (*backup.Runner, *pgxpool.Pool, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	beat := strings.TrimSpace(os.Getenv("BACKUP_HEARTBEAT_URL"))
+	if beat != "" {
+		if err := heartbeat.Validate(beat); err != nil {
+			pool.Close()
+			return nil, nil, fmt.Errorf("BACKUP_HEARTBEAT_URL: %w", err)
+		}
+	}
 	r := &backup.Runner{
 		Rec: dbRecorder{db.New(pool)}, Dest: dest, Dump: backup.PgDump(dbURL), Verify: backup.PgVerify,
 		Recipient: rcpt, Policy: pol, TmpDir: env("BACKUP_TMP_DIR", os.TempDir()), Logf: log.Printf,
+	}
+	if beat != "" {
+		// The classic dead man's switch: told only after a GOOD backup, so the monitor raises the alarm when
+		// backups stop or fail, even if this whole server is gone.
+		r.AfterRun = func(ctx context.Context, res backup.Result) {
+			if !res.OK {
+				return
+			}
+			if err := heartbeat.Ping(ctx, beat); err != nil {
+				log.Printf("%v", err)
+			}
+		}
 	}
 	src, err := sourceStore()
 	if err != nil {
