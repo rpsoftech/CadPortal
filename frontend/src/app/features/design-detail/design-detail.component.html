@@ -226,6 +226,42 @@
             </button>
           </div>
 
+          @if (d.variations.length > 1) {
+            <h3>Several job bags in one PDF</h3>
+            <div class="row" role="group" aria-label="Variations to print">
+              @for (v of d.variations; track v.id) {
+                <mat-checkbox
+                  class="mono"
+                  [checked]="printIds().has(v.id)"
+                  (change)="togglePrint(v.id, $event.checked)"
+                  >{{ v.code }}</mat-checkbox
+                >
+              }
+            </div>
+            <div class="row">
+              <button
+                matButton="filled"
+                (click)="printAll()"
+                [disabled]="!canExport() || exportBusy()"
+              >
+                Print all job bags
+              </button>
+              <button
+                matButton="outlined"
+                (click)="printSelected()"
+                [disabled]="!canExport() || exportBusy() || printCount() === 0"
+              >
+                Print selected ({{ printCount() }})
+              </button>
+              <mat-checkbox
+                [checked]="skipIncomplete()"
+                (change)="skipIncomplete.set($event.checked)"
+              >
+                Skip variations with missing stone data
+              </mat-checkbox>
+            </div>
+          }
+
           @if (auth.canEdit()) {
             <h3>Costing CSV</h3>
             <form [formGroup]="costing" class="row" (ngSubmit)="costingCsv()">

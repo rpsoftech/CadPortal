@@ -267,6 +267,15 @@ export interface CostingItem {
   stone_code: string;
 }
 
+/** Body of POST /exports/job-bags-pdf. A per-item metal or stone code overrides the shared one. */
+export interface JobBagsRequest {
+  items?: { variation_id: number; metal_code?: string; stone_code?: string }[];
+  design_ids?: number[];
+  metal_code?: string;
+  stone_code?: string;
+  skip_incomplete?: boolean;
+}
+
 /** Error body shape returned by the API. Go structs without json tags use PascalCase keys. */
 export interface ApiErrorBody {
   error?: string;

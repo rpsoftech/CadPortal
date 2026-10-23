@@ -140,6 +140,7 @@ func (h *H) Register(r *gin.Engine) {
 
 	// Exports: job bags for every role; costing exposes money, so admin/designer only.
 	v1.POST("/exports/job-bag-pdf", anyRole, h.jobBagPDF)
+	v1.POST("/exports/job-bags-pdf", anyRole, h.jobBagsPDF)
 	v1.POST("/exports/costing-csv", editor, h.costingCSV)
 	v1.GET("/exports/designs-csv", anyRole, h.designsCSV)
 }
@@ -148,6 +149,11 @@ func fail(c *gin.Context, err error) {
 	var mme *calc.MissingMatrixError
 	if errors.As(err, &mme) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": mme.Error(), "missing": mme.Pairs})
+		return
+	}
+	var jbe *service.JobBagsError
+	if errors.As(err, &jbe) {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": jbe.Error(), "failures": jbe.Failures})
 		return
 	}
 	var mci *service.MissingCostInputsError
@@ -805,4 +811,57 @@ func (h *H) serveLocalFile(c *gin.Context) {
 	}
 	hd.Set("X-Content-Type-Options", "nosniff")
 	http.ServeContent(c.Writer, c.Request, "", st.ModTime(), f)
+}
+
+// jobBagsPDF prints many job bags into one PDF. Every bag is checked before anything is drawn, so a
+// missing stone-weight row anywhere is reported for all affected variations at once.
+func (h *H) jobBagsPDF(c *gin.Context) {
+	var in struct {
+		Items []struct {
+			VariationID int64  `json:"variation_id"`
+			MetalCode   string `json:"metal_code"`
+			StoneCode   string `json:"stone_code"`
+		} `json:"items"`
+		DesignIDs      []int64 `json:"design_ids"`
+		MetalCode      string  `json:"metal_code"`
+		StoneCode      string  `json:"stone_code"`
+		SkipIncomplete bool    `json:"skip_incomplete"`
+	}
+	if c.ShouldBindJSON(&in) != nil {
+		badRequest(c, "invalid JSON body")
+		return
+	}
+	req := service.JobBagsRequest{DesignIDs: in.DesignIDs, MetalCode: in.MetalCode, StoneCode: in.StoneCode, SkipIncomplete: in.SkipIncomplete}
+	for _, it := range in.Items {
+		req.Items = append(req.Items, service.JobBagItem(it))
+	}
+	bags, skipped, err := h.S.PlanJobBags(c, req)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	b := export.NewJobBagsPDF(fmt.Sprintf("%d job bags", len(bags)))
+	for _, jb := range bags {
+		jb.Photo = h.S.JobBagPhoto(c, jb) // one photo at a time; the PDF keeps each distinct photo once
+		if err := b.AddBag(jb); err != nil {
+			fail(c, err)
+			return
+		}
+	}
+	b.AddSkippedPage(skipped)
+	pdf, err := b.Bytes()
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	auditNote(c, "variation", "", strconv.Itoa(len(bags)))
+	if len(skipped) > 0 {
+		codes := make([]string, len(skipped))
+		for i, f := range skipped {
+			codes[i] = f.VariationCode
+		}
+		c.Header("X-Skipped", strings.Join(codes, ","))
+	}
+	c.Header("Content-Disposition", `attachment; filename="jobbags.pdf"`)
+	c.Data(http.StatusOK, "application/pdf", pdf)
 }

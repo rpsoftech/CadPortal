@@ -179,6 +179,11 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 
 // JobBag is the data printed on a job-bag PDF.
 type JobBag struct {
+	DesignID    int64
+	VariationID int64
+	// QR is the text the job-bag QR code holds: a link to the design page when the portal has a public
+	// address, otherwise the plain variation code. Never names, never prices.
+	QR            string
 	DesignCode    string
 	DesignName    string
 	Category      string
@@ -202,6 +207,16 @@ type JobBag struct {
 // JobBag assembles the spec sheet for one variation in one metal, with the
 // planner-chosen stone code resolved through the BOM rules.
 func (s *Service) JobBag(ctx context.Context, variationID int64, metalCode, stoneCode string) (JobBag, error) {
+	jb, err := s.JobBagData(ctx, variationID, metalCode, stoneCode)
+	if err != nil {
+		return JobBag{}, err
+	}
+	jb.Photo = s.jobBagPhoto(ctx, jb.DesignID, variationID)
+	return jb, nil
+}
+
+// JobBagData is JobBag without the photo, so many bags can be checked before any photo is read.
+func (s *Service) JobBagData(ctx context.Context, variationID int64, metalCode, stoneCode string) (JobBag, error) {
 	if metalCode == "" {
 		return JobBag{}, invalid("metal_code is required")
 	}
@@ -262,6 +277,7 @@ func (s *Service) JobBag(ctx context.Context, variationID int64, metalCode, ston
 	}
 	jb.File3dmName, jb.File3dmSHA256 = v.File3dmName.String, v.File3dmSha256.String
 	jb.FileStlName, jb.FileStlSHA256 = v.FileStlName.String, v.FileStlSha256.String
-	jb.Photo = s.jobBagPhoto(ctx, d.ID, variationID)
+	jb.DesignID, jb.VariationID = d.ID, variationID
+	jb.QR = s.jobBagQR(d.Code, bom.VariationCode)
 	return jb, nil
 }
