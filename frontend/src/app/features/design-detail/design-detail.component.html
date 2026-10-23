@@ -17,6 +17,7 @@
       <span class="spacer"></span>
       @if (auth.canEdit()) {
         <button matButton (click)="editDesign()">Edit design</button>
+        <button matButton (click)="duplicateDesign()">Duplicate</button>
         <button matButton (click)="deleteDesign()">Delete design</button>
         <button matButton="filled" (click)="addVariation()">Add variation</button>
       }

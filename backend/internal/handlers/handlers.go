@@ -105,6 +105,7 @@ func (h *H) Register(r *gin.Engine) {
 	v1.GET("/designs/:code", anyRole, h.getDesign)
 	v1.PUT("/designs/:id", editor, h.updateDesign)
 	v1.DELETE("/designs/:id", editor, h.deleteDesign)
+	v1.POST("/designs/:id/duplicate", editor, h.duplicateDesign)
 	v1.POST("/designs/:id/variations", editor, h.createVariation)
 	v1.PUT("/variations/:id/base-input", editor, h.updateVariationBase)
 	v1.DELETE("/variations/:id", editor, h.deleteVariation)
@@ -128,6 +129,7 @@ func (h *H) Register(r *gin.Engine) {
 	v1.GET("/trash", editor, h.listTrash)
 	v1.POST("/trash/files/:id/restore", editor, h.restoreFile)
 	v1.POST("/designs/:id/restore", editor, h.restoreDesign)
+	v1.POST("/variations/:id/restore", editor, h.restoreVariation)
 	if h.LocalFiles != nil {
 		// Auth is the signed, expiring link itself (like an R2 presigned URL).
 		v1.GET("/local-files/*key", h.serveLocalFile)
@@ -488,6 +490,36 @@ func (h *H) listDesigns(c *gin.Context) {
 		c.Header("X-Total-Count", strconv.FormatInt(total, 10))
 	}
 	respond(c, http.StatusOK, out, err)
+}
+
+// duplicateDesign copies a design's category, tags, variations (base input and stone seats) into a
+// new design with the next automatic code. CAD files and photos are never copied.
+func (h *H) duplicateDesign(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	var in struct {
+		Name         string  `json:"name"`
+		VariationIDs []int64 `json:"variation_ids"`
+		CopyTags     *bool   `json:"copy_tags"`
+	}
+	if c.Request.ContentLength != 0 && c.ShouldBindJSON(&in) != nil {
+		badRequest(c, "invalid JSON body")
+		return
+	}
+	src, err := h.S.Q.GetDesignByID(c, id)
+	if err != nil {
+		fail(c, service.ErrNotFound)
+		return
+	}
+	out, err := h.S.DuplicateDesign(c, id, service.DuplicateInput{
+		Name: in.Name, VariationIDs: in.VariationIDs, CopyTags: in.CopyTags == nil || *in.CopyTags,
+	})
+	if err == nil {
+		auditNote(c, "design", idStr(out.ID), "from "+src.Code)
+	}
+	respond(c, http.StatusCreated, out, err)
 }
 
 func (h *H) deleteVariation(c *gin.Context) {
