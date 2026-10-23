@@ -82,6 +82,12 @@ jobs:
           target: ${{ matrix.target }}   # empty for api and web: the Dockerfile's last stage
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          # Without this label GHCR does not link the package to the repository, so it is missing from the
+          # repository's Packages list (release.yml gets it from docker/metadata-action).
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.commit.outputs.sha }}
+            org.opencontainers.image.title=cadportal-${{ matrix.name }}
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=${{ matrix.name }}
