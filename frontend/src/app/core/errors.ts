@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ApiErrorBody } from './models';
+import { ApiErrorBody, CostDesignProblem } from './models';
 
 export interface ApiError {
   status: number;
@@ -7,6 +7,8 @@ export interface ApiError {
   /** (size, code) pairs the API says are missing, from 422 responses. */
   missing: { SizeMM: string; Code: string; Basis?: string }[];
   metalsMissingWastage: string[];
+  /** Costing several designs: the designs and variations with missing data. */
+  problems: CostDesignProblem[];
 }
 
 /**
@@ -15,7 +17,7 @@ export interface ApiError {
  */
 export async function toApiError(err: unknown): Promise<ApiError> {
   if (!(err instanceof HttpErrorResponse)) {
-    return { status: 0, message: 'Unexpected error', missing: [], metalsMissingWastage: [] };
+    return { status: 0, message: 'Unexpected error', missing: [], metalsMissingWastage: [], problems: [] };
   }
   let body: ApiErrorBody | string | null = err.error;
   if (body instanceof Blob) {
@@ -46,5 +48,6 @@ export async function toApiError(err: unknown): Promise<ApiError> {
     message,
     missing: obj?.missing ?? obj?.stone_rates_missing ?? [],
     metalsMissingWastage: obj?.metals_missing_wastage ?? [],
+    problems: obj?.problems ?? [],
   };
 }

@@ -64,6 +64,54 @@ type CostRow struct {
 	calc.Cost
 }
 
+type rateKey struct{ size, code string }
+
+// stoneRate is the price that applies to a matrix row: per piece or per carat, by its rate basis.
+type stoneRate struct {
+	basis     string
+	price     decimal.NullDecimal
+	carats    decimal.Decimal // carats per stone, for the snapshot of a saved sheet
+	sizeMM    decimal.Decimal
+	stoneCode string
+}
+
+func (s *Service) stoneRates(ctx context.Context) (map[rateKey]stoneRate, error) {
+	matrix, err := s.Q.ListStoneMatrix(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rates := map[rateKey]stoneRate{}
+	for _, m := range matrix {
+		sr := stoneRate{basis: m.RateBasis, price: m.RatePerPc, carats: m.CaratsPerStone, sizeMM: m.SizeMm, stoneCode: m.StoneCode}
+		if m.RateBasis == "ct" {
+			sr.price = m.RatePerCt
+		}
+		rates[rateKey{m.SizeMm.StringFixed(2), m.StoneCode}] = sr
+	}
+	return rates, nil
+}
+
+// stoneCostLines prices each BOM line. A line whose matrix row has no price is returned in missing and
+// left out of the lines: it is never costed as zero.
+func stoneCostLines(bom BOMResult, rates map[rateKey]stoneRate) (lines []calc.StoneCostLine, missing []calc.MissingPair) {
+	lines = make([]calc.StoneCostLine, 0, len(bom.Lines))
+	for _, l := range bom.Lines {
+		r := rates[rateKey{l.SizeMM.StringFixed(2), l.StoneCode}]
+		if !r.price.Valid {
+			missing = append(missing, calc.MissingPair{SizeMM: l.SizeMM.StringFixed(2), Code: l.StoneCode, Basis: r.basis})
+			continue
+		}
+		line := calc.StoneCostLine{LineCarats: l.LineCarats, Pcs: l.StoneCount, Basis: r.basis}
+		if r.basis == "ct" {
+			line.RatePerCt = r.price.Decimal
+		} else {
+			line.RatePerPc = r.price.Decimal
+		}
+		lines = append(lines, line)
+	}
+	return lines, missing
+}
+
 // CostingRows prices each requested (variation, metal, stone code). Gold rate
 // and setting rate come from the request (no live pricing); wastage % comes
 // from the metal master and stone rates from stone_size_matrix.
@@ -78,22 +126,9 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 		return nil, invalid("setting_rate_per_pc must not be negative")
 	}
 
-	matrix, err := s.Q.ListStoneMatrix(ctx)
+	rates, err := s.stoneRates(ctx)
 	if err != nil {
 		return nil, err
-	}
-	type rateKey struct{ size, code string }
-	type stoneRate struct {
-		basis string
-		price decimal.NullDecimal // the one that applies: per piece or per carat
-	}
-	rates := map[rateKey]stoneRate{}
-	for _, m := range matrix {
-		sr := stoneRate{basis: m.RateBasis, price: m.RatePerPc}
-		if m.RateBasis == "ct" {
-			sr.price = m.RatePerCt
-		}
-		rates[rateKey{m.SizeMm.StringFixed(2), m.StoneCode}] = sr
 	}
 
 	missingMetals := map[string]bool{}
@@ -126,20 +161,9 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 			return nil, invalid("item %d: metal %q is not active", i+1, it.MetalCode)
 		}
 
-		lines := make([]calc.StoneCostLine, 0, len(bom.Lines))
-		for _, l := range bom.Lines {
-			r := rates[rateKey{l.SizeMM.StringFixed(2), l.StoneCode}]
-			if !r.price.Valid {
-				missingRates[calc.MissingPair{SizeMM: l.SizeMM.StringFixed(2), Code: l.StoneCode, Basis: r.basis}] = true
-				continue
-			}
-			line := calc.StoneCostLine{LineCarats: l.LineCarats, Pcs: l.StoneCount, Basis: r.basis}
-			if r.basis == "ct" {
-				line.RatePerCt = r.price.Decimal
-			} else {
-				line.RatePerPc = r.price.Decimal
-			}
-			lines = append(lines, line)
+		lines, missing := stoneCostLines(bom, rates)
+		for _, p := range missing {
+			missingRates[p] = true
 		}
 		if !metal.WastagePct.Valid {
 			missingMetals[metal.Code] = true

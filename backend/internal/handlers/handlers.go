@@ -141,6 +141,13 @@ func (h *H) Register(r *gin.Engine) {
 	// Exports: job bags for every role; costing exposes money, so admin/designer only.
 	v1.POST("/exports/job-bag-pdf", anyRole, h.jobBagPDF)
 	v1.POST("/exports/costing-csv", editor, h.costingCSV)
+	v1.POST("/exports/costing-preview", editor, h.costingPreview)
+	v1.POST("/costing-sheets", editor, h.createCostingSheet)
+	v1.GET("/costing-sheets", editor, h.listCostingSheets)
+	v1.GET("/costing-sheets/:id", editor, h.getCostingSheet)
+	v1.GET("/costing-sheets/:id/csv", editor, h.costingSheetCSV)
+	v1.DELETE("/costing-sheets/:id", editor, h.deleteCostingSheet)
+	v1.POST("/costing-sheets/:id/recost", editor, h.recostCostingSheet)
 	v1.GET("/exports/designs-csv", anyRole, h.designsCSV)
 }
 
@@ -154,6 +161,12 @@ func fail(c *gin.Context, err error) {
 	if errors.As(err, &mci) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": mci.Error(),
 			"metals_missing_wastage": mci.Wastage, "stone_rates_missing": mci.StoneRates})
+		return
+	}
+	var ice *service.IncompleteCostingError
+	if errors.As(err, &ice) {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": ice.Error(), "problems": ice.Problems,
+			"metals_missing_wastage": ice.Wastage, "stone_rates_missing": ice.StoneRates, "missing": ice.Matrix})
 		return
 	}
 	status := http.StatusInternalServerError
@@ -717,16 +730,26 @@ func (h *H) jobBagPDF(c *gin.Context) {
 
 func (h *H) costingCSV(c *gin.Context) {
 	var in struct {
+		service.SheetRequest
 		Items []struct {
 			VariationID int64  `json:"variation_id"`
 			MetalCode   string `json:"metal_code"`
 			StoneCode   string `json:"stone_code"`
 		} `json:"items"`
-		GoldRatePerG     decimal.Decimal `json:"gold_rate_per_g"`
-		SettingRatePerPc decimal.Decimal `json:"setting_rate_per_pc"`
 	}
 	if c.ShouldBindJSON(&in) != nil {
 		badRequest(c, "invalid JSON body")
+		return
+	}
+	if len(in.VariationIDs) > 0 || len(in.DesignIDs) > 0 {
+		// Several designs / variations: one row per variation, a total row, incomplete ones per skip_incomplete.
+		res, csv, ok := h.costRun(c, in.SheetRequest)
+		if !ok {
+			return
+		}
+		auditNote(c, "design", "", fmt.Sprintf("%d variations in %d designs, %d not costed",
+			len(res.Rows), res.Totals.Designs, res.IncompleteVariations()))
+		sendCostingCSV(c, res, csv, "costing.csv")
 		return
 	}
 	req := service.CostingRequest{GoldRatePerG: in.GoldRatePerG, SettingRatePerPc: in.SettingRatePerPc}
