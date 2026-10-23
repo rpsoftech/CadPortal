@@ -68,3 +68,66 @@ func TestCompute(t *testing.T) {
 		})
 	}
 }
+
+// Stone cost on all three bases, with the fixture seats (24 x 1.10, 12 x 1.20, 1 x 2.50 locked, all 2HD):
+// 0.1680, 0.1140 and 0.0650 ct, which are 0.0336, 0.0228 and 0.0130 g (carats x 0.200).
+func TestComputeStoneBases(t *testing.T) {
+	fixture := func(basis string, rate string) []StoneCostLine {
+		mk := func(ct string, pcs int) StoneCostLine {
+			l := StoneCostLine{LineCarats: d(ct), ExactCarats: d(ct), Pcs: pcs, Basis: basis}
+			switch basis {
+			case "pc":
+				l.RatePerPc = d(rate)
+			case "ct":
+				l.RatePerCt = d(rate)
+			case "g":
+				l.RatePerG = d(rate)
+			}
+			return l
+		}
+		return []StoneCostLine{mk("0.1680", 24), mk("0.1140", 12), mk("0.0650", 1)}
+	}
+	tests := []struct {
+		name      string
+		lines     []StoneCostLine
+		wantStone string
+		wantQty   []string
+		wantUnit  string
+	}{
+		{"per piece", fixture("pc", "100"), "3700.00", []string{"24", "12", "1"}, "pcs"},                          // 37 x 100
+		{"per carat", fixture("ct", "50000"), "17350.00", []string{"0.1680", "0.1140", "0.0650"}, "ct"},           // 0.3470 x 50000
+		{"per gram", fixture("g", "5000"), "347.00", []string{"0.03360", "0.02280", "0.01300"}, "g"},              // 0.0694 g x 5000
+		{"per gram, odd price", fixture("g", "1234.56"), "85.68", []string{"0.03360", "0.02280", "0.01300"}, "g"}, // 0.0694 x 1234.56 = 85.678464, rounded once
+		{"no stones", nil, "0.00", nil, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Compute(CostInput{NetG: d("3.050"), WastagePct: d("10"), GoldRatePerG: d("6000"), StoneLines: tc.lines})
+			if got.StoneCost.StringFixed(2) != tc.wantStone {
+				t.Errorf("StoneCost = %s, want %s", got.StoneCost.StringFixed(2), tc.wantStone)
+			}
+			if len(got.StonePriced) != len(tc.wantQty) {
+				t.Fatalf("priced lines = %+v", got.StonePriced)
+			}
+			for i, q := range tc.wantQty {
+				if !got.StonePriced[i].Qty.Equal(d(q)) || got.StonePriced[i].Unit() != tc.wantUnit {
+					t.Errorf("line %d priced %s %s, want %s %s", i, got.StonePriced[i].Qty, got.StonePriced[i].Unit(), q, tc.wantUnit)
+				}
+			}
+		})
+	}
+}
+
+// A per-gram line is priced from the unrounded carats, not from the 4 dp figure shown on the BOM.
+func TestPerGramUsesUnroundedCarats(t *testing.T) {
+	// 3 stones x 0.01234567 ct = 0.03703701 ct = 0.007407402 g; shown as 0.0370 ct (0.0074 g).
+	l := StoneCostLine{LineCarats: d("0.0370"), ExactCarats: d("0.03703701"), Pcs: 3, Basis: "g", RatePerG: d("1000")}
+	if got := Compute(CostInput{StoneLines: []StoneCostLine{l}}).StoneCost.StringFixed(2); got != "7.41" {
+		t.Errorf("stone cost = %s, want 7.41 (from unrounded carats)", got)
+	}
+	// Without the exact figure it falls back to the line carats.
+	l.ExactCarats = d("0")
+	if got := Compute(CostInput{StoneLines: []StoneCostLine{l}}).StoneCost.StringFixed(2); got != "7.40" {
+		t.Errorf("fallback = %s, want 7.40", got)
+	}
+}

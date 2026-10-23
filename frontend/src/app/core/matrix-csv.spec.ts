@@ -37,6 +37,7 @@ describe('parseMatrixCsv, the older five columns', () => {
         carats_per_stone: '0.0070',
         rate_per_pc: null,
         rate_per_ct: '50000',
+        rate_per_g: null,
         rate_basis: '', // the server reads "only a per-carat price" as per carat
       },
       {
@@ -46,6 +47,7 @@ describe('parseMatrixCsv, the older five columns', () => {
         carats_per_stone: '0.0095',
         rate_per_pc: null,
         rate_per_ct: null,
+        rate_per_g: null,
         rate_basis: '',
       },
     ]);
@@ -125,6 +127,7 @@ describe('parseMatrixCsv with a header: grams and prices per piece or per carat'
       carats_per_stone: '0.007', // 0.0014 g is exactly 0.007 ct
       rate_per_pc: '100',
       rate_per_ct: null,
+      rate_per_g: null,
       rate_basis: 'pc',
     });
     expect(r.rows[1].carats_per_stone).toBe('0.0095');
@@ -159,6 +162,49 @@ describe('parseMatrixCsv with a header: grams and prices per piece or per carat'
     expect(noHeader.rows[0].rate_basis).toBe('ct');
   });
 
+  it('reads per-gram prices from the nine-column export, and the older eight without one', () => {
+    const r = parseMatrixCsv(
+      'size_mm,stone_code,sieve,carats_per_stone,grams_per_stone,rate_basis,rate_per_pc,rate_per_ct,rate_per_g\n' +
+        '1.10,2HD,,0.0070,0.00140,g,,,5000.50\n' +
+        '1.20,2HD,,0.0095,0.00190,pc,150.00,,\n',
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.rows[0]).toMatchObject({ rate_basis: 'g', rate_per_g: '5000.50', rate_per_pc: null });
+    expect(r.rows[1]).toMatchObject({ rate_basis: 'pc', rate_per_pc: '150.00', rate_per_g: null });
+    // Without a header: nine columns by position, and the eight written before per-gram prices.
+    const nine = parseMatrixCsv('1.10,2HD,,0.0070,0.00140,g,,,5000.50');
+    expect(nine.errors).toEqual([]);
+    expect(nine.rows[0]).toMatchObject({ rate_basis: 'g', rate_per_g: '5000.50' });
+    const eight = parseMatrixCsv('1.10,2HD,+0000,0.0070,0.00140,ct,,50000.00');
+    expect(eight.rows[0]).toMatchObject({
+      rate_basis: 'ct',
+      rate_per_ct: '50000.00',
+      rate_per_g: null,
+    });
+    // Old header files have no per-gram column at all.
+    const old = parseMatrixCsv(
+      'size_mm,stone_code,grams_per_stone,rate_per_pc,rate_per_ct,rate_basis\n1.10,2HD,0.0014,,50000,ct\n',
+    );
+    expect(old.errors).toEqual([]);
+    expect(old.rows[0].rate_per_g).toBeNull();
+  });
+
+  it('checks the per-gram price like the others, and a g basis needs it', () => {
+    const head = 'size_mm,stone_code,grams_per_stone,rate_per_g,rate_basis\n';
+    expect(parseMatrixCsv(head + '1.10,2HD,0.0014,12.345,g').errors[0]).toContain(
+      'rate_per_g "12.345" has more than 2 decimal places',
+    );
+    expect(parseMatrixCsv(head + '1.10,2HD,0.0014,-5,g').errors[0]).toContain('rate_per_g');
+    expect(parseMatrixCsv(head + '1.10,2HD,0.0014,,g').errors[0]).toContain(
+      'rate_basis g needs a rate_per_g',
+    );
+    expect(parseMatrixCsv(head + '1.10,2HD,0.0014,5000,gram').errors[0]).toContain('rate_basis');
+    // Friendly header names.
+    const r = parseMatrixCsv('size,code,grams,price_per_gram,basis\n1.10,2hd,0.0014,5000,G\n');
+    expect(r.errors).toEqual([]);
+    expect(r.rows[0]).toMatchObject({ stone_code: '2HD', rate_per_g: '5000', rate_basis: 'g' });
+  });
+
   it('refuses a weight that would have to be rounded, and says what it came to', () => {
     const r = parseMatrixCsv('size_mm,stone_code,grams_per_stone\n1.10,2HD,0.000000001');
     expect(r.rows).toEqual([]);
@@ -176,7 +222,10 @@ describe('parseMatrixCsv with a header: grams and prices per piece or per carat'
   });
 
   it.each([
-    ['1.10,2HD,,0.007,,gram,,', 'rate_basis "gram" must be pc (per piece) or ct (per carat)'],
+    [
+      '1.10,2HD,,0.007,,gram,,',
+      'rate_basis "gram" must be pc (per piece), ct (per carat) or g (per gram)',
+    ],
     ['1.10,2HD,,0.007,,pc,1.005,', 'rate_per_pc "1.005" has more than 2 decimal places'],
     ['1.10,2HD,,0.007,,pc,-1,', 'rate_per_pc'],
   ])('rejects %j', (line, fragment) => {

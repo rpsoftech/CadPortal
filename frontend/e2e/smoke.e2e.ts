@@ -168,6 +168,16 @@ test('stone weight is entered in grams and priced per piece or per carat', async
     page.getByRole('row').filter({ hasText: '1.20' }).filter({ hasText: '2HD' }),
   ).toContainText('150.00 per pc');
 
+  // A row priced per gram, imported with the rate_per_g column.
+  await page.getByRole('button', { name: 'Import CSV / paste' }).click();
+  await dialog
+    .getByLabel('Matrix data')
+    .fill('size_mm,stone_code,grams_per_stone,rate_per_g,rate_basis\n' + '4.00,2HD,0.0014,2500,g');
+  await dialog.getByRole('button', { name: /^Import 1 row/ }).click();
+  await expect(
+    page.getByRole('row').filter({ hasText: '4.00' }).filter({ hasText: '2HD' }),
+  ).toContainText('2500.00 per g');
+
   // Carat weights go to eight decimals and their grams are shown in full, never cut short.
   await page.getByRole('button', { name: 'Import CSV / paste' }).click();
   await dialog.getByLabel('Matrix data').fill('3.00,2HD,,0.12345678,');
@@ -569,4 +579,57 @@ test('a production user can read but not edit', async ({ page }) => {
     return r.status;
   });
   expect(backups).toBe(403);
+});
+
+test('a stone priced per gram is costed from its weight in grams', async ({ page }) => {
+  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
+
+  // 24 stones of 1.10 mm at 0.0070 ct are 0.1680 ct, which is 0.0336 g.
+  const variationId = await page.evaluate(async () => {
+    const s = JSON.parse(sessionStorage.getItem('cadportal.session') ?? '{}');
+    const auth = { Authorization: `Bearer ${s.token}`, 'Content-Type': 'application/json' };
+    const design = await (await fetch('/api/v1/designs/LR0001', { headers: auth })).json();
+    const id = design.variations[0].id;
+    const r = await fetch(`/api/v1/variations/${id}/seats`, {
+      method: 'PUT',
+      headers: auth,
+      body: JSON.stringify({
+        seats: [{ size_mm: '1.10', stone_count: 24, locked_stone_code: null }],
+      }),
+    });
+    if (!r.ok) throw new Error(`seats: ${r.status}`);
+    return id as number;
+  });
+  expect(variationId).toBeGreaterThan(0);
+
+  // The 1.10 mm row was priced per piece; switch it to 5000 per gram. The old price is kept, unused.
+  await page.goto('/master-data?tab=matrix');
+  const row = page.getByRole('row').filter({ hasText: '1.10' }).filter({ hasText: '2HD' });
+  await row.getByRole('button', { name: 'Edit' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('combobox', { name: 'Priced per' }).click();
+  await page.getByRole('option', { name: 'per gram' }).click();
+  await expect(dialog.getByText('also holds 100.00 per piece')).toBeVisible();
+  await dialog.getByRole('textbox', { name: 'Price' }).fill('5000');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(row).toContainText('5000.00 per g');
+
+  // The costing CSV prices the line from grams: 0.0336 g x 5000 = 168.00.
+  await page.goto('/designs/LR0001');
+  await page.getByLabel('Stone code').click();
+  await page.getByRole('option', { name: '2HD' }).click();
+  await page.getByLabel('Gold rate / g').fill('6000');
+  await page.getByLabel('Setting rate / pc').fill('25');
+  const [csv] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Download CSV' }).click(),
+  ]);
+  const lines = readFileSync(await csv.path(), 'utf8')
+    .trim()
+    .split(/\r?\n/);
+  const head = lines[0].split(',');
+  const cells = lines[1].split(',');
+  expect(cells[head.indexOf('stone_cost')]).toBe('168.00');
+  expect(cells[head.indexOf('stone_g')]).toBe('0.0336');
+  expect(lines[1]).toContain('0.0336 g x 5000.00/g');
 });

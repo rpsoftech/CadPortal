@@ -103,7 +103,7 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
 
 **Uploads:** hash the original bytes (not the gzipped bytes). Reject a duplicate with 409 and name the existing variation. Gzip while streaming to storage.
 
-**Costing CSV:** net gold + wastage %, stone weight (grams and carats) and stone cost, and setting labour (pcs × rate). Stones are priced per piece by default (count × price per pc) or per carat (carats × price per ct), chosen per matrix row (`rate_basis`). Stone weight in grams is carats × 0.200, shown wherever carats are (BOM lines at 4 dp, totals at 3 dp), including the job-bag PDF.
+**Costing CSV:** net gold + wastage %, stone weight (grams and carats) and stone cost, and setting labour (pcs × rate). Stones are priced per piece by default (count × price per pc) per carat (carats × price per ct) or per gram (line grams × price per g, where line grams = unrounded line carats × 0.200), chosen per matrix row (`rate_basis` `pc`/`ct`/`g`; a `g` row must have `rate_per_g`). The CSV's last column `stone_pricing` says how each stone line was priced and the quantity priced. Stone weight in grams is carats × 0.200, shown wherever carats are (BOM lines at 4 dp, totals at 3 dp), including the job-bag PDF.
 
 ## Frontend screens
 1. **Catalog + filter dashboard:** category, target purity, net/gross weight ranges, tags; cards show net/gross for the selected purity.
@@ -154,5 +154,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   27. Staging and production images: every green main commit is published as :staging (and :sha-<commit>); production runs only tagged versions (no :latest); scripts/deploy.sh pulls and restarts only the app containers, never the database
   28. Structured JSON logs with request ids (API and web), Docker log rotation, heartbeat pings for uptime (`HEARTBEAT_URL`) and for good backups (`BACKUP_HEARTBEAT_URL`)
   29. Forgotten passwords: one-hour single-use reset links (admin-made on the Users screen, or emailed when SMTP is configured), rate limited, audited
+  33. Stone price per gram: a third `rate_basis` `g` with `rate_per_g` (migration 000014), line cost = line grams × price per gram from unrounded carats; `stone_pricing` column in the costing CSV; matrix CSV gains `rate_per_g`
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.

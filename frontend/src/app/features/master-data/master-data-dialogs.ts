@@ -12,6 +12,7 @@ import { PREFIX_PATTERN } from '../../core/code-prefix';
 import { toApiError } from '../../core/errors';
 import { exactGrams, fixed } from '../../core/format';
 import { parseMatrixCsv } from '../../core/matrix-csv';
+import { BASIS_LABELS, otherPrices, priceFor, pricesForSave } from '../../core/matrix-price';
 import { weightToCarats } from '../../core/stone-units';
 import {
   Category,
@@ -204,6 +205,7 @@ export interface MatrixRowDialogData {
             <mat-select formControlName="basis" aria-label="Priced per">
               <mat-option value="pc">per piece</mat-option>
               <mat-option value="ct">per carat</mat-option>
+              <mat-option value="g">per gram</mat-option>
             </mat-select>
           </mat-form-field>
         </div>
@@ -260,10 +262,10 @@ export class MatrixRowDialogComponent {
       validators: [Validators.required, Validators.pattern(/^\d+(\.\d+)?$/)],
     }),
     weightUnit: new FormControl<'g' | 'ct'>('g', { nonNullable: true }),
-    price: new FormControl(
-      (this.startBasis === 'ct' ? this.row?.rate_per_ct : this.row?.rate_per_pc) ?? '',
-      { nonNullable: true, validators: [Validators.pattern(/^\d+(\.\d{1,2})?$/)] },
-    ),
+    price: new FormControl(priceFor(this.row, this.startBasis) ?? '', {
+      nonNullable: true,
+      validators: [Validators.pattern(/^\d+(\.\d{1,2})?$/)],
+    }),
     basis: new FormControl<RateBasis>(this.startBasis, { nonNullable: true }),
   });
 
@@ -286,10 +288,9 @@ export class MatrixRowDialogComponent {
   /** When the other basis already has a price, say that it is kept but not used. */
   protected readonly otherPriceNote = computed(() => {
     void this.values();
-    const basis = this.form.controls.basis.value;
-    const other = basis === 'pc' ? this.row?.rate_per_ct : this.row?.rate_per_pc;
-    return other
-      ? `This row also holds ${other} ${basis === 'pc' ? 'per carat' : 'per piece'}; it is kept but not used for costing.`
+    const others = otherPrices(this.row, this.form.controls.basis.value);
+    return others.length
+      ? `This row also holds ${others.map((o) => `${fixed(o.price, 2)} ${BASIS_LABELS[o.basis].long}`).join(' and ')}; kept but not used for costing.`
       : '';
   });
 
@@ -324,8 +325,7 @@ export class MatrixRowDialogComponent {
       stone_code: v.code,
       sieve: v.sieve.trim(),
       carats_per_stone: w.carats,
-      rate_per_pc: v.basis === 'pc' ? price : (this.row?.rate_per_pc ?? null),
-      rate_per_ct: v.basis === 'ct' ? price : (this.row?.rate_per_ct ?? null),
+      ...pricesForSave(this.row, v.basis, price),
       rate_basis: v.basis,
     };
     this.busy.set(true);
@@ -351,15 +351,17 @@ export class MatrixRowDialogComponent {
       <p class="muted">
         Paste rows copied from a spreadsheet, or choose a CSV file with a header row, for example
         <span class="mono"
-          >size_mm, stone_code, sieve, grams_per_stone, rate_per_pc, rate_per_ct, rate_basis</span
+          >size_mm, stone_code, sieve, grams_per_stone, rate_per_pc, rate_per_ct, rate_per_g,
+          rate_basis</span
         >. Give the weight per stone as <span class="mono">grams_per_stone</span> or
         <span class="mono">carats_per_stone</span> (grams are converted exactly; a weight that would
         need rounding is refused). Stones are priced per piece unless
-        <span class="mono">rate_basis</span> is <span class="mono">ct</span> (per carat). Columns
-        may come in any order. Without a header the older five columns (size, code, sieve, carats,
-        rate per carat) and the eight columns of Export CSV are read by position. Sieve and prices
-        may be empty. Existing rows with the same size and code are updated; nothing is deleted.
-        Stone codes must already exist.
+        <span class="mono">rate_basis</span> is <span class="mono">ct</span> (per carat) or
+        <span class="mono">g</span> (per gram of stone weight,
+        <span class="mono">rate_per_g</span>). Columns may come in any order. Without a header the
+        older five columns (size, code, sieve, carats, rate per carat) and the eight or nine columns
+        of Export CSV are read by position. Sieve and prices may be empty. Existing rows with the
+        same size and code are updated; nothing is deleted. Stone codes must already exist.
       </p>
       <input type="file" accept=".csv,.tsv,.txt,text/csv" (change)="onFile($event)" />
       <textarea

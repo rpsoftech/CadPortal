@@ -184,8 +184,8 @@ func ValidateMatrixRows(rows []MatrixRowInput) error {
 		if err := checkDP(fmt.Sprintf("row %d: carats_per_stone", n), r.CaratsPerStone, 8); err != nil {
 			return err
 		}
-		if r.RateBasis != "" && r.RateBasis != "pc" && r.RateBasis != "ct" {
-			return invalid("row %d: rate_basis must be \"pc\" (per piece) or \"ct\" (per carat)", n)
+		if r.RateBasis != "" && r.RateBasis != "pc" && r.RateBasis != "ct" && r.RateBasis != "g" {
+			return invalid("row %d: rate_basis must be \"pc\" (per piece), \"ct\" (per carat) or \"g\" (per gram)", n)
 		}
 		if r.RatePerPc.Valid {
 			if r.RatePerPc.Decimal.IsNegative() {
@@ -202,6 +202,17 @@ func ValidateMatrixRows(rows []MatrixRowInput) error {
 			if err := checkDP(fmt.Sprintf("row %d: rate_per_ct", n), r.RatePerCt.Decimal, 2); err != nil {
 				return err
 			}
+		}
+		if r.RatePerG.Valid {
+			if r.RatePerG.Decimal.IsNegative() {
+				return invalid("row %d: rate_per_g must not be negative", n)
+			}
+			if err := checkDP(fmt.Sprintf("row %d: rate_per_g", n), r.RatePerG.Decimal, 2); err != nil {
+				return err
+			}
+		}
+		if r.RateBasis == "g" && !r.RatePerG.Valid {
+			return invalid("row %d: rate_basis \"g\" needs rate_per_g (price per gram)", n)
 		}
 		key := r.SizeMM.StringFixed(2) + "|" + strings.ToUpper(strings.TrimSpace(r.StoneCode))
 		if seen[key] {

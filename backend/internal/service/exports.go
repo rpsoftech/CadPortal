@@ -15,7 +15,7 @@ import (
 const maxCostingItems = 200
 
 // MissingCostInputsError lists everything that blocks a costing export: metals
-// with no wastage % set and (size, code) pairs with no rate per carat. Missing
+// with no wastage % set and (size, code) pairs with no price (per piece, per carat or per gram, as each is set). Missing
 // values are never treated as zero.
 type MissingCostInputsError struct {
 	Wastage    []string           `json:"metals_missing_wastage"`
@@ -27,7 +27,7 @@ func (e *MissingCostInputsError) Error() string {
 	if len(e.Wastage) > 0 {
 		parts = append(parts, "wastage % not set for metals: "+strings.Join(e.Wastage, ", "))
 	}
-	for _, basis := range []struct{ code, what string }{{"pc", "price per piece"}, {"ct", "rate per carat"}} {
+	for _, basis := range []struct{ code, what string }{{"pc", "price per piece"}, {"ct", "rate per carat"}, {"g", "price per gram"}} {
 		var ps []string
 		for _, p := range e.StoneRates {
 			if p.Basis == basis.code || (p.Basis == "" && basis.code == "ct") {
@@ -85,13 +85,16 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 	type rateKey struct{ size, code string }
 	type stoneRate struct {
 		basis string
-		price decimal.NullDecimal // the one that applies: per piece or per carat
+		price decimal.NullDecimal // the one that applies: per piece, per carat or per gram
 	}
 	rates := map[rateKey]stoneRate{}
 	for _, m := range matrix {
 		sr := stoneRate{basis: m.RateBasis, price: m.RatePerPc}
-		if m.RateBasis == "ct" {
+		switch m.RateBasis {
+		case "ct":
 			sr.price = m.RatePerCt
+		case "g":
+			sr.price = m.RatePerG
 		}
 		rates[rateKey{m.SizeMm.StringFixed(2), m.StoneCode}] = sr
 	}
@@ -133,10 +136,13 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 				missingRates[calc.MissingPair{SizeMM: l.SizeMM.StringFixed(2), Code: l.StoneCode, Basis: r.basis}] = true
 				continue
 			}
-			line := calc.StoneCostLine{LineCarats: l.LineCarats, Pcs: l.StoneCount, Basis: r.basis}
-			if r.basis == "ct" {
+			line := calc.StoneCostLine{LineCarats: l.LineCarats, ExactCarats: l.ExactCarats, Pcs: l.StoneCount, Basis: r.basis}
+			switch r.basis {
+			case "ct":
 				line.RatePerCt = r.price.Decimal
-			} else {
+			case "g":
+				line.RatePerG = r.price.Decimal
+			default:
 				line.RatePerPc = r.price.Decimal
 			}
 			lines = append(lines, line)
