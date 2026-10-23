@@ -201,7 +201,8 @@ type MatrixRowInput struct {
 	CaratsPerStone decimal.Decimal
 	RatePerCt      decimal.NullDecimal
 	RatePerPc      decimal.NullDecimal
-	// RateBasis is "pc" (price per piece, the default) or "ct" (per carat): which price costing uses.
+	RatePerG       decimal.NullDecimal // price per gram of stone weight (carats x 0.200)
+	// RateBasis is "pc" (price per piece, the default), "ct" (per carat) or "g" (per gram): which price costing uses.
 	// Empty means "pc", except that a row giving only a per-carat price keeps meaning per carat, so
 	// older clients and files behave as they always did.
 	RateBasis string
@@ -253,7 +254,7 @@ func (s *Service) UpdateStoneMatrix(ctx context.Context, rows []MatrixRowInput, 
 			if _, err := q.UpsertStoneMatrixRow(ctx, db.UpsertStoneMatrixRowParams{
 				SizeMm: r.SizeMM, StoneCodeID: c.ID, Sieve: pgText(r.Sieve),
 				CaratsPerStone: r.CaratsPerStone, RatePerCt: r.RatePerCt,
-				RatePerPc: r.RatePerPc, RateBasis: EffectiveBasis(r),
+				RatePerPc: r.RatePerPc, RatePerG: r.RatePerG, RateBasis: EffectiveBasis(r),
 			}); err != nil {
 				return err
 			}
@@ -273,7 +274,7 @@ func pgInt8(v int64) pgtype.Int8 { return pgtype.Int8{Int64: v, Valid: true} }
 // EffectiveBasis is the pricing basis a matrix row ends up with (see MatrixRowInput.RateBasis).
 func EffectiveBasis(r MatrixRowInput) string {
 	switch r.RateBasis {
-	case "pc", "ct":
+	case "pc", "ct", "g":
 		return r.RateBasis
 	}
 	if r.RatePerCt.Valid && !r.RatePerPc.Valid {

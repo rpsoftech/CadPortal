@@ -154,6 +154,7 @@ type StoneSizeMatrix struct {
 	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
 	RatePerPc      decimal.NullDecimal `json:"rate_per_pc"`
 	RateBasis      string              `json:"rate_basis"`
+	RatePerG       decimal.NullDecimal `json:"rate_per_g"`
 }
 
 type Tag struct {

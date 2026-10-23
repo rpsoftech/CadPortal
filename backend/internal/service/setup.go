@@ -104,14 +104,25 @@ func (s *Service) SetupStatus(ctx context.Context) (SetupStatus, error) {
 	if len(matrix) > 0 {
 		noRate := 0
 		for _, r := range matrix {
-			// the price that costing would use for this row: per piece unless the row is priced per carat
-			if (r.RateBasis == "ct" && !r.RatePerCt.Valid) || (r.RateBasis != "ct" && !r.RatePerPc.Valid) {
-				noRate++
+			// the price that costing would use for this row: per piece unless the row is priced per carat or per gram
+			switch r.RateBasis {
+			case "ct":
+				if !r.RatePerCt.Valid {
+					noRate++
+				}
+			case "g":
+				if !r.RatePerG.Valid {
+					noRate++
+				}
+			default:
+				if !r.RatePerPc.Valid {
+					noRate++
+				}
 			}
 		}
 		if noRate > 0 {
 			add("matrix_rates", "recommended", "matrix", "Stone rates are missing",
-				"%d of %d matrix rows have no price (per piece or per carat, as each row is set). Costing needs a price for every stone it prices.", noRate, len(matrix))
+				"%d of %d matrix rows have no price (per piece, per carat or per gram, as each row is set). Costing needs a price for every stone it prices.", noRate, len(matrix))
 		}
 		gaps, err := s.Q.ListMatrixGaps(ctx)
 		if err != nil {
