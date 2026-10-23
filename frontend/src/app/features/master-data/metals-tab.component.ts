@@ -24,7 +24,7 @@ import { RecalcWatcher } from './recalc-watcher';
     </div>
 
     @if (metals.isLoading()) {
-      <mat-progress-bar mode="indeterminate" />
+      <mat-progress-bar aria-label="Loading" mode="indeterminate" />
     }
     @if (metals.error()) {
       <div class="error-box" role="alert">Could not load alloys.</div>
@@ -34,32 +34,34 @@ import { RecalcWatcher } from './recalc-watcher';
     }
 
     <div class="scroll">
-      <table class="plain">
+      <table class="plain stack" aria-label="Alloys">
         <thead>
           <tr>
-            <th>Code</th>
-            <th class="num">SG</th>
-            <th class="num">Wastage %</th>
-            <th>Default input</th>
-            <th>Status</th>
-            <th></th>
+            <th scope="col">Code</th>
+            <th scope="col" class="num">SG</th>
+            <th scope="col" class="num">Wastage %</th>
+            <th scope="col">Default input</th>
+            <th scope="col">Status</th>
+            <th scope="col"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           @for (m of metals.value() ?? []; track m.id) {
             <tr [class.off]="!m.active">
-              <td class="mono">{{ m.code }}</td>
-              <td class="num">{{ m.specific_gravity | fixed: 4 }}</td>
-              <td class="num">
+              <td data-label="Code" class="mono">{{ m.code }}</td>
+              <td data-label="SG" class="num">{{ m.specific_gravity | fixed: 4 }}</td>
+              <td data-label="Wastage %" class="num">
                 @if (m.wastage_pct !== null) {
                   {{ m.wastage_pct }}
                 } @else {
                   <span class="unset">not set</span>
                 }
               </td>
-              <td>{{ m.is_default_input ? 'Yes' : '' }}</td>
-              <td>{{ m.active ? 'Active' : 'Inactive' }}</td>
-              <td><button matButton (click)="edit(m)">Edit</button></td>
+              <td data-label="Default input">{{ m.is_default_input ? 'Yes' : '' }}</td>
+              <td data-label="Status">{{ m.active ? 'Active' : 'Inactive' }}</td>
+              <td class="row-actions">
+                <button matButton (click)="edit(m)" [attr.aria-label]="'Edit ' + m.code">Edit</button>
+              </td>
             </tr>
           }
         </tbody>

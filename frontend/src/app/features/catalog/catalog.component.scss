@@ -7,12 +7,42 @@
 .spacer {
   flex: 1;
 }
+// Wide screens: search, filters and tag groups flow as one wrapping block, the same as before the
+// phone layout existed. The wrappers only matter on a phone.
 .filters {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
   margin-bottom: 16px;
 }
+.search-row,
+.panel,
+.panel > .row {
+  display: contents;
+}
+.filters-toggle,
+.show-results {
+  display: none;
+}
+.tag-groups,
+.panel-actions {
+  flex-basis: 100%;
+}
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--mat-sys-primary);
+  color: var(--mat-sys-on-primary);
+  font-size: 0.8rem;
+}
+
 .num {
   width: 150px;
 }
@@ -75,4 +105,92 @@ a {
   justify-content: center;
   height: 100%;
   font-size: 0.85rem;
+}
+
+@media (max-width: 720px) {
+  .head > * {
+    flex: 1 1 auto;
+  }
+  .head h1 {
+    flex-basis: 100%;
+  }
+  .head .spacer {
+    display: none;
+  }
+  .filters {
+    display: block;
+    margin-bottom: 8px;
+  }
+  .search-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    padding: 8px 0;
+    background: var(--mat-sys-surface);
+  }
+  .search {
+    flex: 1;
+    min-width: 0;
+  }
+  .filters-toggle {
+    display: inline-flex;
+    flex: none;
+  }
+  .panel {
+    display: none;
+  }
+  .panel.open {
+    display: block;
+    margin-bottom: 8px;
+    padding: 12px 12px 0;
+    border: 1px solid var(--mat-sys-outline-variant);
+    border-radius: 12px;
+    background: var(--mat-sys-surface-container-low);
+  }
+  .panel > .row {
+    display: flex;
+  }
+  .panel mat-form-field {
+    width: 100%;
+  }
+  .panel .num {
+    width: calc(50% - 6px);
+  }
+  .tag-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .group-name {
+    width: auto;
+  }
+  .panel-actions {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    margin: 8px -12px 0;
+    padding: 8px 12px;
+    border-top: 1px solid var(--mat-sys-outline-variant);
+    border-radius: 0 0 12px 12px;
+    background: var(--mat-sys-surface-container-low);
+  }
+  .show-results {
+    display: inline-flex;
+    flex: 1;
+  }
+  .search ::ng-deep .mat-mdc-form-field-subscript-wrapper {
+    display: none;
+  }
+}
+// Landscape phones are short: a sticky search row would eat a fifth of the screen.
+@media (max-width: 900px) and (max-height: 500px) {
+  .search-row,
+  .panel-actions {
+    position: static;
+  }
 }

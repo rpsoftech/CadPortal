@@ -15,79 +15,118 @@
     <app-setup-checklist [compact]="true" />
   }
 
-  <form [formGroup]="form" class="filters" aria-label="Catalog filters">
-    <div class="row">
+  <form [formGroup]="form" class="filters" aria-label="Catalog filters" (ngSubmit)="filtersOpen.set(false)">
+    <!-- On a phone this row stays at the top while scrolling, and the rest hides behind "Filters". -->
+    <div class="search-row">
       <mat-form-field appearance="outline" class="search">
         <mat-label>Search code or name</mat-label>
-        <input matInput type="search" formControlName="q" autocomplete="off" />
+        <input matInput type="search" formControlName="q" autocomplete="off" enterkeyhint="search" />
       </mat-form-field>
-
-      <mat-form-field appearance="outline">
-        <mat-label>Category</mat-label>
-        <mat-select formControlName="categoryId">
-          <mat-option [value]="null">All categories</mat-option>
-          @for (c of categories(); track c.id) {
-            <mat-option [value]="c.id">{{ c.name }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
-
-      <mat-form-field appearance="outline" subscriptSizing="dynamic">
-        <mat-label>Target purity</mat-label>
-        <mat-select formControlName="metalCode">
-          <mat-option [value]="null">None (hide weights)</mat-option>
-          @for (m of metals(); track m.id) {
-            <mat-option [value]="m.code">{{ m.code }}</mat-option>
-          }
-        </mat-select>
-        <mat-hint>Weights and weight filters apply to this metal</mat-hint>
-      </mat-form-field>
-
-      <mat-form-field appearance="outline" class="num">
-        <mat-label>Net min (g)</mat-label>
-        <input matInput formControlName="minNetWt" inputmode="decimal" />
-      </mat-form-field>
-      <mat-form-field appearance="outline" class="num">
-        <mat-label>Net max (g)</mat-label>
-        <input matInput formControlName="maxNetWt" inputmode="decimal" />
-      </mat-form-field>
-      <mat-form-field appearance="outline" class="num">
-        <mat-label>Gross min (g)</mat-label>
-        <input matInput formControlName="minGrossWt" inputmode="decimal" />
-      </mat-form-field>
-      <mat-form-field appearance="outline" class="num">
-        <mat-label>Gross max (g)</mat-label>
-        <input matInput formControlName="maxGrossWt" inputmode="decimal" />
-      </mat-form-field>
-      <mat-form-field appearance="outline" class="num">
-        <mat-label>Stone max (g)</mat-label>
-        <input matInput formControlName="maxStoneCts" inputmode="decimal" />
-      </mat-form-field>
+      <button
+        matButton="outlined"
+        type="button"
+        class="filters-toggle"
+        aria-controls="filter-panel"
+        [attr.aria-expanded]="filtersOpen()"
+        (click)="filtersOpen.set(!filtersOpen())"
+      >
+        Filters@if (activeFilters() > 0) {
+          <span class="count" aria-hidden="true">{{ activeFilters() }}</span>
+          <span class="sr-only">, {{ activeFilters() }} active</span>
+        }
+      </button>
     </div>
 
-    @if (tagGroups().length) {
-      <div class="tag-groups">
-        @for (g of tagGroups(); track g.name) {
-          <div class="tag-group">
-            <span class="muted group-name">{{ g.name }}</span>
-            <mat-chip-listbox
-              formControlName="tagIds"
-              multiple
-              [attr.aria-label]="g.name + ' tags'"
-            >
-              @for (t of g.tags; track t.id) {
-                <mat-chip-option [value]="t.id">{{ t.name }}</mat-chip-option>
-              }
-            </mat-chip-listbox>
-          </div>
-        }
+    <div id="filter-panel" class="panel" [class.open]="filtersOpen()">
+      <div class="row">
+        <mat-form-field appearance="outline">
+          <mat-label>Category</mat-label>
+          <mat-select formControlName="categoryId">
+            <mat-option [value]="null">All categories</mat-option>
+            @for (c of categories(); track c.id) {
+              <mat-option [value]="c.id">{{ c.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Target purity</mat-label>
+          <mat-select formControlName="metalCode">
+            <mat-option [value]="null">None (hide weights)</mat-option>
+            @for (m of metals(); track m.id) {
+              <mat-option [value]="m.code">{{ m.code }}</mat-option>
+            }
+          </mat-select>
+          <mat-hint>Weights and weight filters apply to this metal</mat-hint>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="num">
+          <mat-label>Net min (g)</mat-label>
+          <input matInput formControlName="minNetWt" inputmode="decimal" />
+          @if (form.controls.minNetWt.invalid) {
+            <mat-error>A positive number, 3 decimals at most</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="num">
+          <mat-label>Net max (g)</mat-label>
+          <input matInput formControlName="maxNetWt" inputmode="decimal" />
+          @if (form.controls.maxNetWt.invalid) {
+            <mat-error>A positive number, 3 decimals at most</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="num">
+          <mat-label>Gross min (g)</mat-label>
+          <input matInput formControlName="minGrossWt" inputmode="decimal" />
+          @if (form.controls.minGrossWt.invalid) {
+            <mat-error>A positive number, 3 decimals at most</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="num">
+          <mat-label>Gross max (g)</mat-label>
+          <input matInput formControlName="maxGrossWt" inputmode="decimal" />
+          @if (form.controls.maxGrossWt.invalid) {
+            <mat-error>A positive number, 3 decimals at most</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="num">
+          <mat-label>Stone max (g)</mat-label>
+          <input matInput formControlName="maxStoneCts" inputmode="decimal" />
+          @if (form.controls.maxStoneCts.invalid) {
+            <mat-error>A positive number, 8 decimals at most</mat-error>
+          }
+        </mat-form-field>
       </div>
-    }
-    <button mat-button type="button" (click)="reset()">Clear filters</button>
+
+      @if (tagGroups().length) {
+        <div class="tag-groups">
+          @for (g of tagGroups(); track g.name) {
+            <div class="tag-group" role="group" [attr.aria-label]="g.name + ' tags'">
+              <span class="muted group-name" aria-hidden="true">{{ g.name }}</span>
+              <mat-chip-listbox
+                formControlName="tagIds"
+                multiple
+                [attr.aria-label]="g.name + ' tags'"
+              >
+                @for (t of g.tags; track t.id) {
+                  <mat-chip-option [value]="t.id">{{ t.name }}</mat-chip-option>
+                }
+              </mat-chip-listbox>
+            </div>
+          }
+        </div>
+      }
+
+      <div class="panel-actions">
+        <button mat-button type="button" (click)="reset()">Clear filters</button>
+        <button matButton="filled" type="submit" class="show-results">
+          Show {{ state().total }} design{{ state().total === 1 ? '' : 's' }}
+        </button>
+      </div>
+    </div>
   </form>
 
   @if (state().loading) {
-    <mat-progress-bar mode="indeterminate" />
+    <mat-progress-bar aria-label="Loading" mode="indeterminate" />
   }
   @if (state().error) {
     <div class="error-box">{{ state().error }}</div>
@@ -113,9 +152,9 @@
           }
         </a>
         <mat-card-header>
-          <mat-card-title>
+          <h2 mat-card-title>
             <a [routerLink]="['/designs', d.code]" class="mono">{{ d.code }}</a>
-          </mat-card-title>
+          </h2>
           <mat-card-subtitle>{{ d.name || 'Unnamed' }} · {{ d.category_name }}</mat-card-subtitle>
         </mat-card-header>
         <mat-card-content>

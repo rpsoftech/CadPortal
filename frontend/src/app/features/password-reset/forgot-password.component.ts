@@ -31,10 +31,10 @@ import { toApiError } from '../../core/errors';
     <div class="wrap">
       <mat-card appearance="outlined">
         <mat-card-header>
-          <mat-card-title>Forgot your password?</mat-card-title>
+          <h1 mat-card-title>Forgot your password?</h1>
         </mat-card-header>
         @if (config.isLoading()) {
-          <mat-progress-bar mode="indeterminate" />
+          <mat-progress-bar aria-label="Loading" mode="indeterminate" />
         } @else if (!emailEnabled()) {
           <mat-card-content>
             <p>
@@ -74,7 +74,7 @@ import { toApiError } from '../../core/errors';
                 <div class="error-box" role="alert">{{ error() }}</div>
               }
               @if (busy()) {
-                <mat-progress-bar mode="indeterminate" />
+                <mat-progress-bar aria-label="Loading" mode="indeterminate" />
               }
             </mat-card-content>
             <mat-card-actions align="end">

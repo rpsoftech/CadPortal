@@ -51,7 +51,7 @@ function cell(v: string | null): string {
 
     <!-- Stone codes and the baseline -->
     <section>
-      <h3>Stone codes</h3>
+      <h2>Stone codes</h2>
       <div class="row">
         <mat-form-field appearance="outline" subscriptSizing="dynamic">
           <mat-label>Baseline code</mat-label>
@@ -88,7 +88,7 @@ function cell(v: string | null): string {
     <!-- Gaps -->
     @if ((gaps.value() ?? []).length) {
       <section class="gaps" aria-live="polite">
-        <h3>Missing for the baseline code</h3>
+        <h2>Missing for the baseline code</h2>
         <p class="muted">
           Seats use these sizes, but the baseline code has no row, so their gross weight is unknown.
         </p>
@@ -111,7 +111,7 @@ function cell(v: string | null): string {
     <!-- Rows -->
     <section>
       <div class="row">
-        <h3>Rows</h3>
+        <h2>Rows</h2>
         <span class="spacer"></span>
         <button matButton (click)="exportCsv()" [disabled]="!(matrix.value() ?? []).length">
           Export CSV
@@ -144,34 +144,34 @@ function cell(v: string | null): string {
       </div>
 
       @if (matrix.isLoading()) {
-        <mat-progress-bar mode="indeterminate" />
+        <mat-progress-bar aria-label="Loading" mode="indeterminate" />
       }
       @if (error()) {
         <div class="error-box" role="alert">{{ error() }}</div>
       }
 
       <div class="scroll">
-        <table class="plain">
+        <table class="plain stack" aria-label="Stone matrix">
           <thead>
             <tr>
-              <th>Size (mm)</th>
-              <th>Code</th>
-              <th>Sieve</th>
-              <th class="num">Weight / stone (g)</th>
-              <th class="num">Carats / stone</th>
-              <th class="num">Price</th>
-              <th></th>
+              <th scope="col">Size (mm)</th>
+              <th scope="col">Code</th>
+              <th scope="col">Sieve</th>
+              <th scope="col" class="num">Weight / stone (g)</th>
+              <th scope="col" class="num">Carats / stone</th>
+              <th scope="col" class="num">Price</th>
+              <th scope="col"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             @for (r of shown(); track r.stone_code + r.size_mm) {
               <tr>
-                <td>{{ r.size_mm | fixed: 2 }}</td>
-                <td class="mono">{{ r.stone_code }}</td>
-                <td>{{ r.sieve || '–' }}</td>
-                <td class="num">{{ r.carats_per_stone | stoneGrams: 5 }}</td>
-                <td class="num muted">{{ r.carats_per_stone | fixed: 4 }}</td>
-                <td class="num">
+                <td data-label="Size (mm)">{{ r.size_mm | fixed: 2 }}</td>
+                <td data-label="Code" class="mono">{{ r.stone_code }}</td>
+                <td data-label="Sieve">{{ r.sieve || '–' }}</td>
+                <td data-label="Weight / stone (g)" class="num">{{ r.carats_per_stone | stoneGrams: 5 }}</td>
+                <td data-label="Carats / stone" class="num muted">{{ r.carats_per_stone | fixed: 4 }}</td>
+                <td data-label="Price" class="num">
                   @if (price(r); as p) {
                     {{ p | fixed: 2 }}
                     <span class="muted small">{{
@@ -183,14 +183,14 @@ function cell(v: string | null): string {
                     >
                   }
                 </td>
-                <td class="actions">
+                <td class="row-actions">
                   <button matButton (click)="editRow(r)">Edit</button>
                   <button matButton (click)="deleteRow(r)" [disabled]="busy()">Delete</button>
                 </td>
               </tr>
             } @empty {
               <tr>
-                <td colspan="7" class="muted">No rows. Add one or import a CSV.</td>
+                <td colspan="7" class="muted empty-row">No rows. Add one or import a CSV.</td>
               </tr>
             }
           </tbody>
@@ -207,7 +207,7 @@ function cell(v: string | null): string {
     section {
       margin: 16px 0;
     }
-    h3 {
+    h2 {
       margin: 0 0 8px;
     }
     .spacer {
@@ -234,7 +234,7 @@ function cell(v: string | null): string {
     .unset {
       color: var(--mat-sys-error);
     }
-    .actions {
+    td.row-actions {
       white-space: nowrap;
     }
   `,

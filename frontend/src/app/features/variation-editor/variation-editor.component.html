@@ -2,7 +2,7 @@
   <a [routerLink]="['/designs', code()]" class="muted back">← {{ code() }}</a>
 
   @if (design.isLoading() && !design.hasValue()) {
-    <mat-progress-bar mode="indeterminate" />
+    <mat-progress-bar aria-label="Loading" mode="indeterminate" />
   }
 
   @if (design.hasValue() && !variation()) {
@@ -18,7 +18,7 @@
 
     <!-- 1. Base input -->
     <mat-card appearance="outlined">
-      <mat-card-header><mat-card-title>Base input</mat-card-title></mat-card-header>
+      <mat-card-header><h2 mat-card-title>Base input</h2></mat-card-header>
       <mat-card-content>
         <app-base-input [metals]="metals()" [initial]="v" (valueChange)="base.set($event)" />
         @if (baseError()) {
@@ -34,7 +34,7 @@
 
     <!-- 2. CAD files -->
     <mat-card appearance="outlined">
-      <mat-card-header><mat-card-title>CAD files</mat-card-title></mat-card-header>
+      <mat-card-header><h2 mat-card-title>CAD files</h2></mat-card-header>
       <mat-card-content>
         <p class="muted small">
           Files are hashed (SHA-256 of the original bytes) and compressed while streaming to
@@ -67,7 +67,7 @@
 
     <!-- 3. Stone seats -->
     <mat-card appearance="outlined">
-      <mat-card-header><mat-card-title>Stone seats</mat-card-title></mat-card-header>
+      <mat-card-header><h2 mat-card-title>Stone seats</h2></mat-card-header>
       <mat-card-content>
         <p class="muted small">
           Enter only the size and count. Leave “Lock to” as flexible unless this seat must keep a
@@ -97,21 +97,21 @@
         <form [formGroup]="seatForm" (ngSubmit)="saveSeats()">
           <div formArrayName="seats">
             <div class="scroll-x">
-            <table class="seat-table plain">
+            <table class="seat-table plain stack" aria-label="Stone seats">
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Size (mm)</th>
-                  <th>Count</th>
-                  <th>Lock to</th>
-                  <th></th>
+                  <th scope="col">#</th>
+                  <th scope="col">Size (mm)</th>
+                  <th scope="col">Count</th>
+                  <th scope="col">Lock to</th>
+                  <th scope="col"><span class="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 @for (g of seats.controls; track g; let i = $index) {
                   <tr [formGroupName]="i">
-                    <td>{{ i + 1 }}</td>
-                    <td>
+                    <td data-label="Seat">{{ i + 1 }}</td>
+                    <td data-label="Size (mm)">
                       <mat-form-field appearance="outline" subscriptSizing="dynamic" class="cell">
                         <input
                           matInput
@@ -124,7 +124,7 @@
                         }
                       </mat-form-field>
                     </td>
-                    <td>
+                    <td data-label="Count">
                       <mat-form-field appearance="outline" subscriptSizing="dynamic" class="cell">
                         <input
                           matInput
@@ -137,7 +137,7 @@
                         }
                       </mat-form-field>
                     </td>
-                    <td>
+                    <td data-label="Lock to">
                       <mat-form-field appearance="outline" subscriptSizing="dynamic" class="cell">
                         <mat-select
                           formControlName="locked"
@@ -150,7 +150,7 @@
                         </mat-select>
                       </mat-form-field>
                     </td>
-                    <td>
+                    <td class="row-actions">
                       <button
                         matButton
                         type="button"
@@ -186,7 +186,7 @@
         </form>
 
         @if (seatBusy() || seatsResource.isLoading()) {
-          <mat-progress-bar mode="indeterminate" />
+          <mat-progress-bar aria-label="Loading" mode="indeterminate" />
         }
         @if (seatError()) {
           <div class="error-box" role="alert">{{ seatError() }}</div>

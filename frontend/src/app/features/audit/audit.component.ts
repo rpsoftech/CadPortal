@@ -102,37 +102,37 @@ export function statusKind(status: number): StatusKind {
       </div>
 
       @if (log.isLoading()) {
-        <mat-progress-bar mode="indeterminate" />
+        <mat-progress-bar aria-label="Loading" mode="indeterminate" />
       }
       @if (log.error()) {
         <div class="error-box" role="alert">Could not load the audit log.</div>
       }
 
       <div class="scroll">
-        <table class="plain">
+        <table class="plain stack" aria-label="Audit log entries">
           <thead>
             <tr>
-              <th>When</th>
-              <th>User</th>
-              <th>Action</th>
-              <th>Entity</th>
-              <th>Detail</th>
-              <th>Result</th>
+              <th scope="col">When</th>
+              <th scope="col">User</th>
+              <th scope="col">Action</th>
+              <th scope="col">Entity</th>
+              <th scope="col">Detail</th>
+              <th scope="col">Result</th>
             </tr>
           </thead>
           <tbody>
             @for (e of rows(); track e.id) {
               <tr [class]="'kind-' + kind(e.status)">
-                <td class="nowrap">{{ e.at | date: 'medium' }}</td>
-                <td>{{ e.user_email || '(not signed in)' }}</td>
-                <td class="mono">{{ e.action }}</td>
-                <td>
+                <td data-label="When" class="nowrap">{{ e.at | date: 'medium' }}</td>
+                <td data-label="User">{{ e.user_email || '(not signed in)' }}</td>
+                <td data-label="Action" class="mono">{{ e.action }}</td>
+                <td data-label="Entity">
                   @if (e.entity_type) {
                     {{ e.entity_type }}{{ e.entity_id ? ' #' + e.entity_id : '' }}
                   }
                 </td>
-                <td class="detail">{{ e.detail }}</td>
-                <td>
+                <td data-label="Detail" class="detail">{{ e.detail }}</td>
+                <td data-label="Result">
                   <span class="badge">{{ label(e.status) }}</span>
                   <span class="muted small">{{ e.status }}</span>
                 </td>
@@ -147,6 +147,8 @@ export function statusKind(status: number): StatusKind {
           </tbody>
         </table>
       </div>
+
+      <p class="sr-only" role="status">{{ total() }} entries match.</p>
 
       @if (total() > 0) {
         <mat-paginator

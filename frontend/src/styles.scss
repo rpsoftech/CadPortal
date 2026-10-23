@@ -64,15 +64,113 @@ body {
   margin: 8px 0;
 }
 
+/* ---- Accessibility helpers ------------------------------------------------------------------ */
+
+/* Text for screen readers only. */
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The first thing a keyboard user can reach: jumps past the toolbar to the page. */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -80px;
+  z-index: 2000;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+  border: 2px solid var(--mat-sys-primary);
+  font-weight: 600;
+  &:focus {
+    top: 8px;
+  }
+}
+
+/* A visible focus ring on everything Material does not already draw one for (2.4.7, 2.4.11). */
+a:focus-visible,
+button:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+input[type='file']:focus-visible,
+[role='button']:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--mat-sys-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+mat-toolbar :focus-visible {
+  outline-color: var(--brand-cream);
+}
+/* Landmarks and headings take programmatic focus after a route change; they are not controls. */
+main:focus,
+main:focus-visible,
+h1[tabindex='-1']:focus,
+h1[tabindex='-1']:focus-visible {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+main {
+  display: block;
+}
+
+/* Links in running text must not rely on colour alone (1.4.1). */
+.page p a,
+.page li a {
+  text-decoration: underline;
+}
+
+/* Phone: finger-sized controls (WCAG 2.5.8 asks for 24 px; we aim for 44 px). */
+@media (max-width: 720px), (pointer: coarse) {
+  :root {
+    --mat-button-text-container-height: 44px;
+    --mat-button-filled-container-height: 44px;
+    --mat-button-outlined-container-height: 44px;
+    --mat-button-protected-container-height: 44px;
+    --mat-button-tonal-container-height: 44px;
+  }
+  .mat-mdc-chip.mdc-evolution-chip,
+  .mat-mdc-standard-chip {
+    --mat-chip-container-height: 40px;
+  }
+}
+
+/* Phone: dialogs use nearly the whole screen width. */
+@media (max-width: 720px) {
+  .cdk-overlay-pane.mat-mdc-dialog-panel {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+  }
+  .mat-mdc-dialog-content {
+    max-height: calc(100dvh - 180px);
+  }
+}
+
+/* ---- Tables --------------------------------------------------------------------------------- */
+
 table.plain {
   border-collapse: collapse;
   width: 100%;
-  // On a phone a wide table scrolls inside its own box instead of making the whole page scroll sideways.
-  @media (max-width: 720px) {
-    display: block;
-    max-width: 100%;
-    overflow-x: auto;
-  }
   th,
   td {
     text-align: left;
@@ -86,5 +184,96 @@ table.plain {
   }
   tr.total td {
     font-weight: 600;
+  }
+}
+
+/*
+ * One approach for every plain table on a phone. Without .stack a wide table scrolls inside its own box
+ * instead of making the page scroll sideways. With .stack (and data-label on each td) every row becomes a
+ * card: "label: value" lines, and the buttons of the row (td.row-actions) at the bottom, full size.
+ * Real tables stay on screens wider than 720 px.
+ */
+@media (max-width: 720px) {
+  table.plain:not(.stack) {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  table.plain.stack {
+    display: block;
+    border: 0;
+    thead {
+      /* the column names live on each cell now; keep them for screen readers */
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+    tbody {
+      display: block;
+    }
+    tr {
+      display: block;
+      margin: 0 0 12px;
+      padding: 6px 14px;
+      border: 1px solid var(--mat-sys-outline-variant);
+      border-radius: 12px;
+      background: var(--mat-sys-surface-container-low);
+    }
+    tbody th {
+      display: block;
+      padding: 8px 0 4px;
+      border-bottom: 1px solid var(--mat-sys-outline-variant);
+      font-weight: 600;
+      text-align: left;
+    }
+    td {
+      display: block;
+      position: relative;
+      min-height: 2.5em;
+      padding: 8px 0 8px calc(38% + 12px);
+      border-bottom: 1px solid var(--mat-sys-outline-variant);
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+    td:last-child {
+      border-bottom: 0;
+    }
+    td::before {
+      content: attr(data-label);
+      position: absolute;
+      left: 0;
+      top: 8px;
+      width: 38%;
+      color: var(--mat-sys-on-surface-variant);
+      font-weight: 500;
+      overflow-wrap: normal;
+    }
+    td:not([data-label]),
+    td[data-label=''] {
+      min-height: 0;
+      padding-left: 0;
+    }
+    td:not([data-label])::before,
+    td[data-label='']::before {
+      content: none;
+    }
+    td.num {
+      text-align: left;
+    }
+    td.row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-height: 0;
+      padding: 10px 0 6px;
+    }
+    td.row-actions::before {
+      content: none;
+    }
+    td:empty {
+      display: none;
+    }
   }
 }

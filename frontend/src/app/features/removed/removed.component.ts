@@ -39,7 +39,7 @@ export function daysLeft(iso: string, now: Date = new Date()): number {
         for a limited time and then deleted for good.
       </p>
       @if (trash.isLoading()) {
-        <mat-progress-bar mode="indeterminate" />
+        <mat-progress-bar aria-label="Loading" mode="indeterminate" />
       }
       @if (trash.error()) {
         <div class="error-box" role="alert">Could not load the removed items.</div>
@@ -51,26 +51,26 @@ export function daysLeft(iso: string, now: Date = new Date()): number {
           @if (t.designs.length === 0) {
             <p class="muted">No deleted designs.</p>
           } @else {
-            <table class="plain">
+            <table class="plain stack" aria-label="Deleted designs">
               <thead>
                 <tr>
-                  <th>Design</th>
-                  <th>Category</th>
-                  <th>Variations</th>
-                  <th>Deleted</th>
-                  <th></th>
+                  <th scope="col">Design</th>
+                  <th scope="col">Category</th>
+                  <th scope="col">Variations</th>
+                  <th scope="col">Deleted</th>
+                  <th scope="col"><span class="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 @for (d of t.designs; track d.id) {
                   <tr>
-                    <td>
+                    <td data-label="Design">
                       <span class="mono">{{ d.code }}</span> {{ d.name }}
                     </td>
-                    <td>{{ d.category_name }}</td>
-                    <td class="num">{{ d.variation_count }}</td>
-                    <td>{{ d.deleted_at | date: 'medium' }}</td>
-                    <td>
+                    <td data-label="Category">{{ d.category_name }}</td>
+                    <td data-label="Variations" class="num">{{ d.variation_count }}</td>
+                    <td data-label="Deleted">{{ d.deleted_at | date: 'medium' }}</td>
+                    <td class="row-actions">
                       <button
                         matButton
                         [disabled]="busy()"
@@ -92,29 +92,29 @@ export function daysLeft(iso: string, now: Date = new Date()): number {
           @if (t.files.length === 0) {
             <p class="muted">No removed files.</p>
           } @else {
-            <table class="plain">
+            <table class="plain stack" aria-label="Removed files">
               <thead>
                 <tr>
-                  <th>File</th>
-                  <th>What happened</th>
-                  <th>When</th>
-                  <th>Kept for</th>
-                  <th></th>
+                  <th scope="col">File</th>
+                  <th scope="col">What happened</th>
+                  <th scope="col">When</th>
+                  <th scope="col">Kept for</th>
+                  <th scope="col"><span class="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 @for (f of t.files; track f.id) {
                   <tr>
-                    <td>
+                    <td data-label="File">
                       {{ f.label }}
                       <span class="muted small">{{
                         f.kind === 'cad' ? '(CAD file)' : '(photo or video)'
                       }}</span>
                     </td>
-                    <td>{{ reason(f) }}</td>
-                    <td>{{ f.deleted_at | date: 'medium' }}</td>
-                    <td>{{ days(f) }} more day{{ days(f) === 1 ? '' : 's' }}</td>
-                    <td>
+                    <td data-label="What happened">{{ reason(f) }}</td>
+                    <td data-label="When">{{ f.deleted_at | date: 'medium' }}</td>
+                    <td data-label="Kept for">{{ days(f) }} more day{{ days(f) === 1 ? '' : 's' }}</td>
+                    <td class="row-actions">
                       @if (f.restorable) {
                         <button
                           matButton

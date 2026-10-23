@@ -25,7 +25,12 @@ import { DesignImportResult } from '../../core/models';
         A code is only needed to bring over designs that already have one, such as an earlier
         export: it must be the category's prefix plus digits. Existing designs are never changed.
       </p>
-      <input type="file" accept=".csv,.tsv,.txt,text/csv" (change)="onFile($event)" />
+      <input
+        type="file"
+        accept=".csv,.tsv,.txt,text/csv"
+        aria-label="Choose a CSV file"
+        (change)="onFile($event)"
+      />
       <textarea
         class="paste mono"
         rows="8"

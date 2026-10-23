@@ -53,7 +53,7 @@ const COL = `
         @if (!data) {
           <mat-form-field appearance="outline">
             <mat-label>Code</mat-label>
-            <input matInput formControlName="code" placeholder="18KW" class="mono" />
+            <input matInput formControlName="code" placeholder="18KW" class="mono" autocapitalize="characters" autocomplete="off" spellcheck="false" />
             <mat-hint>2 to 12 letters or digits</mat-hint>
           </mat-form-field>
         }
@@ -361,7 +361,12 @@ export class MatrixRowDialogComponent {
         may be empty. Existing rows with the same size and code are updated; nothing is deleted.
         Stone codes must already exist.
       </p>
-      <input type="file" accept=".csv,.tsv,.txt,text/csv" (change)="onFile($event)" />
+      <input
+        type="file"
+        accept=".csv,.tsv,.txt,text/csv"
+        aria-label="Choose a CSV file"
+        (change)="onFile($event)"
+      />
       <textarea
         class="paste mono"
         rows="8"
@@ -637,7 +642,7 @@ export class TagDialogComponent {
       <mat-dialog-content class="col">
         <mat-form-field appearance="outline">
           <mat-label>Code</mat-label>
-          <input matInput formControlName="code" placeholder="3HD" class="mono" />
+          <input matInput formControlName="code" placeholder="3HD" class="mono" autocapitalize="characters" autocomplete="off" spellcheck="false" />
           <mat-hint>1 to 12 letters or digits. Add its sizes in the matrix afterwards.</mat-hint>
         </mat-form-field>
         @if (error()) {
