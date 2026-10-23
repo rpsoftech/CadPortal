@@ -13,7 +13,10 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
   imports: [RouterOutlet, RouterLink, MatToolbarModule, MatButtonModule, MatMenuModule],
   template: `
     <mat-toolbar>
-      <a routerLink="/" class="brand">CadPortal</a>
+      <a routerLink="/" class="brand" aria-label="Golden Oak Jewels LLP, home">
+        <img src="brand/mark-cream.png" alt="" class="brand-mark" />
+        <span>Golden Oak</span>
+      </a>
       @if (auth.user(); as u) {
         <nav class="links" aria-label="Main">
           @if (auth.canEdit()) {
@@ -59,11 +62,20 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
   `,
   styles: `
     .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
       color: inherit;
       text-decoration: none;
       font-weight: 600;
       font-size: 1.2rem;
       margin-right: 12px;
+    }
+    .brand-mark {
+      height: 36px;
+      width: auto;
     }
     .spacer {
       flex: 1;
