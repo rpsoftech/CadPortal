@@ -50,6 +50,12 @@ body {
 table.plain {
   border-collapse: collapse;
   width: 100%;
+  // On a phone a wide table scrolls inside its own box instead of making the whole page scroll sideways.
+  @media (max-width: 720px) {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
   th,
   td {
     text-align: left;
