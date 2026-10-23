@@ -443,7 +443,7 @@ CADPORTAL_VERSION=1.2.3 docker compose -f docker-compose.prod.yml -f docker-comp
 | Variations | `POST /designs/:id/variations`, `PUT /variations/:id/base-input`, `DELETE /variations/:id` |
 | Seats and BOM | `GET/PUT /variations/:id/seats`, `POST /variations/:id/clone-seats`, `GET /variations/:id/simulate-bom?code=2HD` |
 | CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl`, `DELETE /variations/:id/cad?kind=3dm\|stl` |
-| Exports | `POST /exports/job-bag-pdf`, `POST /exports/costing-csv`, `GET /exports/designs-csv` (any role) |
+| Exports | `POST /exports/job-bag-pdf`, `POST /exports/job-bags-pdf` (many bags in one PDF), `POST /exports/costing-csv`, `GET /exports/designs-csv` (any role) |
 
 All paths are under `/api/v1`. Alongside the routes above:
 
@@ -557,6 +557,19 @@ each variation. Each group holds up to **5 files, photos and videos together**.
   design's first photo (the 480 px thumbnail, sharp enough at 50 mm). A design without photos, or
   storage that cannot be reached, gives the same sheet as before: the photo is never a reason for
   a job bag to fail.
+- **Job bags carry a QR code:** top right, 30 mm with its quiet zone and the highest error
+  correction, with the variation code printed under it. With `APP_BASE_URL` set it holds
+  `<APP_BASE_URL>/designs/LR0001?v=LR0001-V1`: a phone scan opens the design page with that variation
+  selected. Without it, it holds the plain text `LR0001-V1`. Only codes go into it, never names,
+  weights or prices.
+- **Many job bags in one PDF:** on a design page, **Print all job bags** (every variation, with the
+  chosen metal and stone code) or tick variations and **Print selected**. The API is
+  `POST /exports/job-bags-pdf`: `items` (`variation_id`, optional `metal_code`/`stone_code`) and/or
+  `design_ids`, with shared `metal_code`/`stone_code`; at most 200 bags, in the order given, "Page n of N"
+  in the footer. If any bag lacks stone-weight rows the answer is 422 listing every such variation
+  and nothing is printed; with `skip_incomplete: true` the complete bags are printed, the skipped ones
+  are named in the `X-Skipped` header and on a last page. For a catalog selection bar,
+  `ApiService.jobBagsPdf()` is ready to call. Each print is audited as `export.job_bags` (the count).
 - Deleting a media file removes its stored object (after the retention period, see Undo below). A deleted variation keeps its photos until it is purged. Uploads, deletions and cover
   changes are in the audit log (`media.upload`, `media.delete`, `media.cover`).
 

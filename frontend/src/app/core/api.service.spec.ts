@@ -76,6 +76,24 @@ describe('ApiService', () => {
     expect(http.expectOne('/api/v1/exports/job-bag-pdf').request.responseType).toBe('blob');
   });
 
+  it('posts several job bags and keeps the response so X-Skipped can be read', () => {
+    let skipped: string | null = null;
+    api
+      .jobBagsPdf({ design_ids: [3], metal_code: '18KR', stone_code: '2HD', skip_incomplete: true })
+      .subscribe((res) => (skipped = res.headers.get('X-Skipped')));
+    const req = http.expectOne('/api/v1/exports/job-bags-pdf');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.responseType).toBe('blob');
+    expect(req.request.body).toEqual({
+      design_ids: [3],
+      metal_code: '18KR',
+      stone_code: '2HD',
+      skip_incomplete: true,
+    });
+    req.flush(new Blob(['%PDF-']), { headers: { 'X-Skipped': 'LR0003-V1,LR0003-V2' } });
+    expect(skipped).toBe('LR0003-V1,LR0003-V2');
+  });
+
   it('saves matrix rows and the baseline in one call', () => {
     const row = {
       size_mm: '1.10',
