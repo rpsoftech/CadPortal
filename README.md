@@ -557,7 +557,7 @@ each variation. Each group holds up to **5 files, photos and videos together**.
   design's first photo (the 480 px thumbnail, sharp enough at 50 mm). A design without photos, or
   storage that cannot be reached, gives the same sheet as before: the photo is never a reason for
   a job bag to fail.
-- Deleting a media file, or a variation, removes its stored objects. Uploads, deletions and cover
+- Deleting a media file removes its stored object (after the retention period, see Undo below). A deleted variation keeps its photos until it is purged. Uploads, deletions and cover
   changes are in the audit log (`media.upload`, `media.delete`, `media.cover`).
 
 ### Undo: the Removed screen
@@ -573,14 +573,32 @@ Admins and designers have a **Removed** link in the top bar for taking back a mi
   (otherwise the screen says which variation has it), and a photo or video needs room (5 per design or
   variation) and a live design. A file that was **replaced** by a newer upload can be restored only
   after the newer one is removed.
-- **A deleted variation** cannot be restored from the app (its seats and weights are gone), but its
-  files are kept for the same period; whoever runs the server can recover them from the bucket by the
-  keys in the `trashed_files` table.
+- **Deleted variations** are listed too, with their design, when they were deleted and how many days
+  are left. **Restore** brings back the variation exactly as it was: base input, stone seats, CAD
+  files and photos, with its weights worked out again. While a variation is deleted it is invisible and
+  cannot be edited, downloaded or used in a job bag; its code (`LR0001-V2`) is never given to a new
+  variation, and its CAD checksums stay reserved, so uploading the same file to another variation is
+  refused with a message saying it is kept on a deleted variation. A variation whose design is
+  deleted says "Restore the design first". After `DELETED_FILE_RETENTION_DAYS` the hourly job deletes
+  the variation and its stored files for good (with `0`, deletion is immediate and the number is
+  free again, as it always was). Variations deleted before this existed have their files in the
+  list below, "Cannot be put back", as before.
 - Set `DELETED_FILE_RETENTION_DAYS=0` to delete files at once, as before. Storage is only freed when the
   period ends, so a busy catalog uses a little more space for 30 days.
-- Restores are in the audit log (`trash.restore_file`, `design.restore`).
+- Restores are in the audit log (`trash.restore_file`, `design.restore`, `variation.restore`).
 - This is a safety net, not a backup: after the period the file is gone from R2 unless you turned on
   R2 object versioning or keep your own copy.
+
+### Duplicating a design
+
+**Duplicate** (design page, admins and designers) makes a new design in the same category with the
+next automatic code (`LR0007` becomes `LR0008`). The dialog asks for a name (default
+"<name> (copy)"), which variations to copy (default all) and whether to copy the tags. Each copied
+variation is renumbered (`-V1`, `-V2`, ...) and keeps its base input and stone seats, sizes, counts and
+locks; its weights are worked out again in the same transaction, and the whole copy is all or nothing.
+**CAD files, photos and videos are not copied**: a CAD file can be stored only once (checksums are
+unique), so upload them to the new design yourself. A deleted design cannot be duplicated, and deleted
+variations are never copied. The audit log records `design.duplicate` ("from LR0007").
 
 ### Importing designs
 

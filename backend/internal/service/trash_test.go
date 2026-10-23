@@ -130,37 +130,6 @@ func TestRestoreRefusesAChecksumThatIsNowUsedElsewhere(t *testing.T) {
 	}
 }
 
-func TestDeletedVariationFilesAreKeptButNotRestorable(t *testing.T) {
-	s, mem := trashService(t)
-	ctx := context.Background()
-	des := newDesign(t, s, "LR0703")
-	v, _ := s.CreateVariation(ctx, des.ID, BaseInput{VolumeMM3: dp("200")})
-	vid := v.ID
-	s.UploadCAD(ctx, v.ID, "a.3dm", bytes.NewReader(randBytes(t, 1000))) //nolint:errcheck
-	if _, err := s.AddMedia(ctx, AddMediaInput{DesignID: des.ID, VariationID: &vid, Filename: "p.png", Body: bytes.NewReader(testPNG(40, 30))}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.DeleteVariation(ctx, v.ID); err != nil {
-		t.Fatal(err)
-	}
-	if len(mem.Keys()) != 3 { // the CAD file, the photo and its thumbnail
-		t.Errorf("objects were deleted with the variation: %v", mem.Keys())
-	}
-	items := trashed(t, s)
-	if len(items) != 2 {
-		t.Fatalf("trash = %+v", items)
-	}
-	for _, it := range items {
-		if it.Restorable || it.Reason != "variation_deleted" {
-			t.Errorf("%+v", it)
-		}
-		_, err := s.RestoreFile(ctx, it.ID)
-		if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "variation was deleted") {
-			t.Errorf("restore: %v", err)
-		}
-	}
-}
-
 func TestDeletedPhotoComesBackWithItsThumbnailIfThereIsRoom(t *testing.T) {
 	s, mem := trashService(t)
 	ctx := context.Background()

@@ -217,6 +217,17 @@ describe('ApiService', () => {
     expect(http.expectOne('/api/v1/variations/9').request.method).toBe('DELETE');
   });
 
+  it('restores variations and duplicates designs', () => {
+    api.restoreVariation(9).subscribe();
+    const r = http.expectOne('/api/v1/variations/9/restore');
+    expect(r.request.method).toBe('POST');
+    r.flush(null);
+    api.duplicateDesign(4, { name: 'X', variation_ids: [1, 2], copy_tags: false }).subscribe();
+    const d = http.expectOne('/api/v1/designs/4/duplicate');
+    expect(d.request.method).toBe('POST');
+    expect(d.request.body).toEqual({ name: 'X', variation_ids: [1, 2], copy_tags: false });
+  });
+
   it('lists the audit log with filters and reads the total from the header', () => {
     let page: { items: unknown[]; total: number } | undefined;
     api
