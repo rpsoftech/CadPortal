@@ -497,7 +497,7 @@ test('forgot password: an admin makes a reset link, the user chooses a password 
   await user.getByLabel('New password', { exact: true }).fill('the new passphrase 2');
   await user.getByLabel('Repeat the new password').fill('the new passphrase 2');
   await user.getByRole('button', { name: 'Save the password' }).click();
-  await expect(user.getByText('Sign in to CadPortal')).toBeVisible();
+  await expect(user.getByRole('button', { name: 'Sign in' })).toBeVisible();
 
   await signIn(user, 'forgot-me@example.com', 'the new passphrase 2');
 
