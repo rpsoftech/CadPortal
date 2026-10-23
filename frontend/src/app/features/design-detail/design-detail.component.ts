@@ -4,6 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -21,6 +22,10 @@ import { FixedPipe, StoneGramsPipe } from '../../core/format';
 import { BomResult, CostingItem, Variation } from '../../core/models';
 import { saveBlob } from '../../shared/download';
 import { MediaGalleryComponent } from './media-gallery.component';
+import {
+  DuplicateDesignData,
+  DuplicateDesignDialogComponent,
+} from '../../shared/duplicate-design-dialog.component';
 import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design-dialog.component';
 import {
   NewVariationData,
@@ -42,6 +47,7 @@ export type BomState =
     MatButtonModule,
     MatButtonToggleModule,
     MatCardModule,
+    MatCheckboxModule,
     MatChipsModule,
     MatFormFieldModule,
     MatInputModule,
@@ -58,6 +64,8 @@ export type BomState =
 export class DesignDetailComponent {
   /** Route param, bound by withComponentInputBinding(). */
   readonly code = input.required<string>();
+  /** Optional ?v=<variation code> hint, as in the job-bag QR code: opens with that variation selected. */
+  readonly v = input<string>();
 
   private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
@@ -104,7 +112,9 @@ export class DesignDetailComponent {
   protected readonly variationId = linkedSignal<Variation[] | undefined, number | null>({
     source: () => this.design.value()?.variations,
     computation: (vs, prev) =>
-      vs?.some((v) => v.id === prev?.value) ? prev!.value : (vs?.[0]?.id ?? null),
+      vs?.some((v) => v.id === prev?.value)
+        ? prev!.value
+        : (vs?.find((x) => x.code === this.v())?.id ?? vs?.[0]?.id ?? null),
   });
   protected readonly stoneCode = linkedSignal<{ code: string; baseline: boolean }[], string>({
     source: () => this.stoneCodes().map((c) => ({ code: c.code, baseline: c.is_default_baseline })),
@@ -199,6 +209,71 @@ export class DesignDetailComponent {
     );
   }
 
+  /** Several job bags in one PDF: every variation of this design, or the ticked ones. */
+  protected readonly printIds = signal<ReadonlySet<number>>(new Set());
+  protected readonly skipIncomplete = signal(false);
+  protected readonly printCount = computed(
+    () => (this.design.value()?.variations ?? []).filter((v) => this.printIds().has(v.id)).length,
+  );
+
+  protected togglePrint(id: number, on: boolean): void {
+    const next = new Set(this.printIds());
+    if (on) next.add(id);
+    else next.delete(id);
+    this.printIds.set(next);
+  }
+
+  protected printAll(): void {
+    const d = this.design.value();
+    if (d)
+      this.printBags(
+        d.variations.map((v) => v.id),
+        `jobbags-${d.code}.pdf`,
+      );
+  }
+
+  protected printSelected(): void {
+    const d = this.design.value();
+    if (d) {
+      // Page order follows the variation order on screen, not the order of ticking.
+      this.printBags(
+        d.variations.filter((v) => this.printIds().has(v.id)).map((v) => v.id),
+        `jobbags-${d.code}-selected.pdf`,
+      );
+    }
+  }
+
+  private printBags(ids: number[], filename: string): void {
+    if (ids.length === 0) return;
+    this.exportBusy.set(true);
+    this.exportError.set(null);
+    this.api
+      .jobBagsPdf({
+        items: ids.map((variation_id) => ({ variation_id })),
+        metal_code: this.metalCode(),
+        stone_code: this.stoneCode(),
+        skip_incomplete: this.skipIncomplete(),
+      })
+      .subscribe({
+        next: (res) => {
+          saveBlob(res.body!, filename);
+          this.exportBusy.set(false);
+          const skipped = res.headers.get('X-Skipped');
+          if (skipped) {
+            this.snack.open(
+              `Not printed (stone data missing): ${skipped.split(',').join(', ')}`,
+              'Dismiss',
+              { duration: 10000 },
+            );
+          }
+        },
+        error: async (e) => {
+          this.exportError.set(await toApiError(e));
+          this.exportBusy.set(false);
+        },
+      });
+  }
+
   protected costingCsv(): void {
     const d = this.design.value();
     if (!d || this.costing.invalid) return;
@@ -268,6 +343,30 @@ export class DesignDetailComponent {
         if (!code) return;
         this.snack.open('Design saved', 'OK', { duration: 3000 });
         this.refresh();
+      });
+  }
+
+  protected duplicateDesign(): void {
+    const d = this.design.value();
+    if (!d) return;
+    const data: DuplicateDesignData = {
+      designId: d.id,
+      code: d.code,
+      name: d.name,
+      variations: d.variations.map((v) => ({ id: v.id, code: v.code })),
+      tagCount: d.tags.length,
+    };
+    this.dialog
+      .open<DuplicateDesignDialogComponent, DuplicateDesignData, string>(
+        DuplicateDesignDialogComponent,
+        { data, width: '560px' },
+      )
+      .afterClosed()
+      .subscribe((code) => {
+        if (code) {
+          this.snack.open(`Created ${code} from ${d.code}`, 'OK', { duration: 4000 });
+          void this.router.navigate(['/designs', code]);
+        }
       });
   }
 

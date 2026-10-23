@@ -15,8 +15,9 @@ VALUES ($1, sqlc.narg('variation_id'), $2, $3, $4, $5, $6, sqlc.narg('thumb_key'
 RETURNING *;
 
 -- name: ListMediaByDesign :many
-SELECT * FROM design_media WHERE design_id = $1
-ORDER BY variation_id NULLS FIRST, position, id;
+SELECT m.* FROM design_media m WHERE m.design_id = $1
+  AND (m.variation_id IS NULL OR EXISTS (SELECT 1 FROM cad_variations v WHERE v.id = m.variation_id AND v.deleted_at IS NULL))
+ORDER BY m.variation_id NULLS FIRST, m.position, m.id;
 
 -- name: ListMediaByVariation :many
 SELECT * FROM design_media WHERE variation_id = $1;

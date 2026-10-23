@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
@@ -66,39 +69,205 @@ func (s *Service) UpdateDesign(ctx context.Context, id int64, in DesignInput) (d
 	return d, err
 }
 
-// DeleteVariation removes a variation with its seats, weights and stored CAD files. The
-// database row goes first; objects are deleted afterwards on a best-effort basis (an
-// orphaned object is harmless, a row pointing at a missing object is not).
+// DeleteVariation deletes a variation so that it can be brought back: the row stays, hidden
+// everywhere, with its seats, base input, CAD files and photos, until the trash purge removes
+// it for good after the retention period (at once when Retention is 0 or less). Its code stays
+// taken, and so do its CAD checksums, so a restore can never collide with a later upload.
 func (s *Service) DeleteVariation(ctx context.Context, id int64) error {
-	var gone []retired
+	var keys []string
 	err := s.inTx(ctx, func(q *db.Queries) error {
-		// The variation's photos go with it (the rows cascade); remember them to retire the objects.
-		photos, err := q.ListMediaByVariation(ctx, pgtype.Int8{Int64: id, Valid: true})
+		var purgeAfter pgtype.Timestamptz
+		if s.Retention > 0 {
+			purgeAfter = pgtype.Timestamptz{Time: time.Now().Add(s.Retention), Valid: true}
+		}
+		v, err := q.SoftDeleteVariation(ctx, db.SoftDeleteVariationParams{ID: id, PurgeAfter: purgeAfter})
 		if err != nil {
 			return err
 		}
-		v, err := q.DeleteVariation(ctx, id)
-		if err != nil {
+		// A hidden variation must not feed any weight query; a restore recomputes them.
+		if err := q.DeleteVariationWeights(ctx, id); err != nil {
 			return err
 		}
-		for _, kind := range []string{"3dm", "stl"} {
-			if r := cadRetired(v, kind, "variation_deleted"); r != nil {
-				r.Restore = nil // the variation is gone, so there is nowhere to put it back
-				gone = append(gone, *r)
-			}
+		if s.Retention > 0 {
+			return nil
 		}
-		for _, p := range photos {
-			r := mediaRetired(p, v.Code, "variation_deleted")
-			r.Restore = nil
-			gone = append(gone, r)
-		}
-		return nil
+		keys, err = purgeVariationRow(ctx, q, v)
+		return err
 	})
 	if err != nil {
 		return err
 	}
-	s.retire(ctx, gone...)
+	s.deleteObjects(ctx, keys...)
 	return nil
+}
+
+// purgeVariationRow removes a deleted variation's row (seats, weights and photo rows cascade)
+// and returns the stored objects that belonged to it.
+func purgeVariationRow(ctx context.Context, q *db.Queries, v db.CadVariation) ([]string, error) {
+	var keys []string
+	for _, k := range []pgtype.Text{v.File3dmKey, v.FileStlKey} {
+		if k.Valid {
+			keys = append(keys, k.String)
+		}
+	}
+	photos, err := q.ListMediaForPurgedVariation(ctx, pgtype.Int8{Int64: v.ID, Valid: true})
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range photos {
+		keys = append(keys, p.ObjectKey)
+		if p.ThumbKey.Valid {
+			keys = append(keys, p.ThumbKey.String)
+		}
+	}
+	return keys, q.HardDeleteVariation(ctx, v.ID)
+}
+
+// deleteObjects removes stored objects on a best-effort basis (an orphaned object is harmless,
+// a row pointing at a missing object is not, so the row always goes first).
+func (s *Service) deleteObjects(ctx context.Context, keys ...string) {
+	if s.Store == nil {
+		return
+	}
+	ctx = context.WithoutCancel(ctx)
+	for _, k := range keys {
+		_ = s.Store.Delete(ctx, k)
+	}
+}
+
+// RestoreVariation brings a deleted variation back with its seats, base input, CAD files and
+// photos, and recomputes its weights in the same transaction. Its design must be live.
+func (s *Service) RestoreVariation(ctx context.Context, id int64) (VariationDetail, error) {
+	var out VariationDetail
+	err := s.inTx(ctx, func(q *db.Queries) error {
+		v, err := q.GetDeletedVariationForUpdate(ctx, id)
+		if err != nil {
+			return err
+		}
+		if _, err := q.GetDesignByID(ctx, v.DesignID); errors.Is(err, pgx.ErrNoRows) {
+			return invalid("%s belongs to a deleted design: restore the design first", v.Code)
+		} else if err != nil {
+			return err
+		}
+		if _, err := q.RestoreVariation(ctx, id); err != nil {
+			return err
+		}
+		return s.reload(ctx, q, id, &out)
+	})
+	return out, err
+}
+
+const maxDesignNameRunes = 200
+
+// DuplicateInput says what to copy. VariationIDs nil means every live variation.
+type DuplicateInput struct {
+	Name         string
+	VariationIDs []int64
+	CopyTags     bool
+}
+
+// DuplicateDesign creates a new design in the same category with the next automatic code, the
+// same tags (optionally) and, for each chosen variation, a new variation with the same base
+// input and stone seats, its weights computed in the same transaction. CAD files and photos are
+// not copied: checksums are unique, and a copy of a file is the file. All or nothing.
+func (s *Service) DuplicateDesign(ctx context.Context, sourceID int64, in DuplicateInput) (DesignDetail, error) {
+	var newCode string
+	err := s.inTx(ctx, func(q *db.Queries) error {
+		src, err := q.GetDesignByID(ctx, sourceID) // a deleted source is not found
+		if err != nil {
+			return err
+		}
+		live, err := q.ListVariationsByDesign(ctx, src.ID)
+		if err != nil {
+			return err
+		}
+		chosen := live
+		if in.VariationIDs != nil {
+			byID := make(map[int64]bool, len(live))
+			for _, v := range live {
+				byID[v.ID] = true
+			}
+			picked := map[int64]bool{}
+			for _, vid := range in.VariationIDs {
+				if !byID[vid] {
+					return invalid("variation %d is not a variation of %s", vid, src.Code)
+				}
+				picked[vid] = true
+			}
+			chosen = nil
+			for _, v := range live { // keep the source order so V1, V2 stay in sequence
+				if picked[v.ID] {
+					chosen = append(chosen, v)
+				}
+			}
+		}
+		name := strings.TrimSpace(in.Name)
+		if name == "" {
+			name = copyName(src.Name)
+		}
+		if r := []rune(name); len(r) > maxDesignNameRunes {
+			name = string(r[:maxDesignNameRunes])
+		}
+		code, err := allocateCode(ctx, q, src.CategoryID)
+		if err != nil {
+			return err
+		}
+		d, err := q.CreateDesign(ctx, db.CreateDesignParams{Code: code, Name: name, CategoryID: src.CategoryID})
+		if err != nil {
+			return err
+		}
+		newCode = d.Code
+		if in.CopyTags {
+			tags, err := q.ListDesignTags(ctx, src.ID)
+			if err != nil {
+				return err
+			}
+			ids := make([]int64, len(tags))
+			for i, t := range tags {
+				ids[i] = t.ID
+			}
+			if err := setTags(ctx, q, d.ID, ids); err != nil {
+				return err
+			}
+		}
+		for _, sv := range chosen {
+			seq, err := q.NextVariationSeq(ctx, d.ID)
+			if err != nil {
+				return err
+			}
+			nv, err := q.CreateVariation(ctx, db.CreateVariationParams{
+				DesignID: d.ID, Seq: seq, Code: fmt.Sprintf("%s-V%d", d.Code, seq),
+				BaseVolumeMm3: sv.BaseVolumeMm3, BaseRefWeightG: sv.BaseRefWeightG, BaseRefMetalID: sv.BaseRefMetalID,
+			})
+			if err != nil {
+				return err
+			}
+			if err := q.CloneSeats(ctx, db.CloneSeatsParams{TargetID: nv.ID, SourceID: sv.ID}); err != nil {
+				return err
+			}
+			if err := RecalcVariation(ctx, q, nv.ID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return DesignDetail{}, err
+	}
+	return s.GetDesignByCode(ctx, newCode)
+}
+
+// copyName is "<name> (copy)", cut so the suffix always survives.
+func copyName(name string) string {
+	const suffix = " (copy)"
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return strings.TrimSpace(suffix)
+	}
+	if r := []rune(name); len(r) > maxDesignNameRunes-len(suffix) {
+		name = string(r[:maxDesignNameRunes-len(suffix)])
+	}
+	return name + suffix
 }
 
 func (s *Service) DeleteDesign(ctx context.Context, id int64) error {
