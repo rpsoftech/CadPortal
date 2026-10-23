@@ -121,7 +121,7 @@
             class="pick"
             [checked]="selection.has(d.id)"
             (change)="selection.toggle(d)"
-            [attr.aria-label]="'Select ' + d.code"
+            [aria-label]="'Select ' + d.code"
           />
         }
         <a [routerLink]="['/designs', d.code]" class="cover" [attr.aria-label]="'Open ' + d.code">
