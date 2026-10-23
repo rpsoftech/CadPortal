@@ -12,6 +12,7 @@ import { ApiService } from '../../core/api.service';
 import { toApiError } from '../../core/errors';
 import { FixedPipe, StoneGramsPipe, exactGrams, fixed } from '../../core/format';
 import { MATRIX_COLUMNS } from '../../core/matrix-csv';
+import { BASIS_LABELS, priceFor } from '../../core/matrix-price';
 import { StoneCode, StoneMatrixRow } from '../../core/models';
 import { saveBlob } from '../../shared/download';
 import {
@@ -174,13 +175,9 @@ function cell(v: string | null): string {
                 <td data-label="Price" class="num">
                   @if (price(r); as p) {
                     {{ p | fixed: 2 }}
-                    <span class="muted small">{{
-                      r.rate_basis === 'ct' ? 'per ct' : 'per pc'
-                    }}</span>
+                    <span class="muted small">{{ basisLabels[r.rate_basis].short }}</span>
                   } @else {
-                    <span class="unset"
-                      >not set ({{ r.rate_basis === 'ct' ? 'per carat' : 'per piece' }})</span
-                    >
+                    <span class="unset">not set ({{ basisLabels[r.rate_basis].long }})</span>
                   }
                 </td>
                 <td class="row-actions">
@@ -362,13 +359,15 @@ export class MatrixTabComponent {
       .subscribe((n) => n && this.changed(`Imported ${n} rows. Weights are being rebuilt.`, true));
   }
 
-  /** The price costing uses for a row: per piece unless the row is priced per carat. */
+  protected readonly basisLabels = BASIS_LABELS;
+
+  /** The price costing uses for a row: the one on the row's own basis (piece, carat or gram). */
   protected price(r: StoneMatrixRow): string | null {
-    return r.rate_basis === 'ct' ? r.rate_per_ct : r.rate_per_pc;
+    return priceFor(r, r.rate_basis);
   }
 
   protected exportCsv(): void {
-    // The same eight columns the master-data zip writes, so either file can be imported again.
+    // The same nine columns the master-data zip writes, so either file can be imported again.
     const lines = [MATRIX_COLUMNS.join(',')];
     for (const r of this.matrix.value() ?? []) {
       lines.push(
@@ -381,6 +380,7 @@ export class MatrixTabComponent {
           r.rate_basis,
           r.rate_per_pc ? fixed(r.rate_per_pc, 2) : '',
           r.rate_per_ct ? fixed(r.rate_per_ct, 2) : '',
+          r.rate_per_g ? fixed(r.rate_per_g, 2) : '',
         ].join(','),
       );
     }

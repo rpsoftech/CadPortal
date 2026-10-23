@@ -69,6 +69,24 @@ export const routes: Routes = [
           import('./features/removed/removed.component').then((m) => m.RemovedComponent),
       },
       {
+        path: 'costing-sheets',
+        title: 'Costing sheets',
+        canActivate: [roleGuard('admin', 'designer')],
+        loadComponent: () =>
+          import('./features/costing-sheets/costing-sheets.component').then(
+            (m) => m.CostingSheetsComponent,
+          ),
+      },
+      {
+        path: 'costing-sheets/:id',
+        title: 'Costing sheet',
+        canActivate: [roleGuard('admin', 'designer')],
+        loadComponent: () =>
+          import('./features/costing-sheets/costing-sheet-detail.component').then(
+            (m) => m.CostingSheetDetailComponent,
+          ),
+      },
+      {
         path: 'audit',
         title: 'Audit log',
         canActivate: [roleGuard('admin')],

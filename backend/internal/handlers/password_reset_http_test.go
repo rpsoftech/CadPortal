@@ -90,7 +90,7 @@ func TestForgotPasswordAnswersTheSameWhoeverAsks(t *testing.T) {
 
 	// Without a mail server: still the same neutral answer, and /auth/config says why nothing arrives.
 	cfg := do(r, "GET", "/api/v1/auth/config", "", "", nil)
-	if cfg.Code != 200 || !strings.Contains(cfg.Body.String(), `"password_reset_email":false`) {
+	if cfg.Code != 200 || !strings.Contains(cfg.Body.String(), `"password_reset_email":false`) || !strings.Contains(cfg.Body.String(), `"idle_timeout_minutes":0`) {
 		t.Errorf("config without mail: %d %s", cfg.Code, cfg.Body)
 	}
 	codeA, bodyA := post("asha@example.com")

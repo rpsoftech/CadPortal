@@ -55,6 +55,11 @@ import { safeReturnUrl } from '../../core/guards';
                 <mat-error>Enter your password</mat-error>
               }
             </mat-form-field>
+            @if (reason() === 'idle' && !error()) {
+              <div class="info-box" role="status" data-testid="idle-notice">
+                You were signed out because you were inactive. Please sign in again.
+              </div>
+            }
             @if (error()) {
               <div class="error-box" role="alert">{{ error() }}</div>
             }
@@ -88,6 +93,12 @@ import { safeReturnUrl } from '../../core/guards';
       height: auto;
       margin: 24px auto 8px;
     }
+    .info-box {
+      padding: 10px 12px;
+      border-radius: 4px;
+      background: var(--mat-sys-surface-container-high, #eee);
+      margin-bottom: 8px;
+    }
     mat-card-header {
       justify-content: center;
     }
@@ -101,6 +112,8 @@ import { safeReturnUrl } from '../../core/guards';
 export class LoginComponent {
   /** Bound from the ?returnUrl= query parameter by withComponentInputBinding(). */
   readonly returnUrl = input<string>();
+  /** ?reason=idle after an automatic sign-out. */
+  readonly reason = input<string>();
 
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);

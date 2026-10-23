@@ -15,7 +15,7 @@ import (
 const maxCostingItems = 200
 
 // MissingCostInputsError lists everything that blocks a costing export: metals
-// with no wastage % set and (size, code) pairs with no rate per carat. Missing
+// with no wastage % set and (size, code) pairs with no price (per piece, per carat or per gram, as each is set). Missing
 // values are never treated as zero.
 type MissingCostInputsError struct {
 	Wastage    []string           `json:"metals_missing_wastage"`
@@ -27,7 +27,7 @@ func (e *MissingCostInputsError) Error() string {
 	if len(e.Wastage) > 0 {
 		parts = append(parts, "wastage % not set for metals: "+strings.Join(e.Wastage, ", "))
 	}
-	for _, basis := range []struct{ code, what string }{{"pc", "price per piece"}, {"ct", "rate per carat"}} {
+	for _, basis := range []struct{ code, what string }{{"pc", "price per piece"}, {"ct", "rate per carat"}, {"g", "price per gram"}} {
 		var ps []string
 		for _, p := range e.StoneRates {
 			if p.Basis == basis.code || (p.Basis == "" && basis.code == "ct") {
@@ -64,6 +64,60 @@ type CostRow struct {
 	calc.Cost
 }
 
+type rateKey struct{ size, code string }
+
+// stoneRate is the price that applies to a matrix row: per piece, per carat or per gram, by its rate basis.
+type stoneRate struct {
+	basis     string
+	price     decimal.NullDecimal
+	carats    decimal.Decimal // carats per stone, for the snapshot of a saved sheet
+	sizeMM    decimal.Decimal
+	stoneCode string
+}
+
+func (s *Service) stoneRates(ctx context.Context) (map[rateKey]stoneRate, error) {
+	matrix, err := s.Q.ListStoneMatrix(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rates := map[rateKey]stoneRate{}
+	for _, m := range matrix {
+		sr := stoneRate{basis: m.RateBasis, price: m.RatePerPc, carats: m.CaratsPerStone, sizeMM: m.SizeMm, stoneCode: m.StoneCode}
+		switch m.RateBasis {
+		case "ct":
+			sr.price = m.RatePerCt
+		case "g":
+			sr.price = m.RatePerG
+		}
+		rates[rateKey{m.SizeMm.StringFixed(2), m.StoneCode}] = sr
+	}
+	return rates, nil
+}
+
+// stoneCostLines prices each BOM line. A line whose matrix row has no price is returned in missing and
+// left out of the lines: it is never costed as zero.
+func stoneCostLines(bom BOMResult, rates map[rateKey]stoneRate) (lines []calc.StoneCostLine, missing []calc.MissingPair) {
+	lines = make([]calc.StoneCostLine, 0, len(bom.Lines))
+	for _, l := range bom.Lines {
+		r := rates[rateKey{l.SizeMM.StringFixed(2), l.StoneCode}]
+		if !r.price.Valid {
+			missing = append(missing, calc.MissingPair{SizeMM: l.SizeMM.StringFixed(2), Code: l.StoneCode, Basis: r.basis})
+			continue
+		}
+		line := calc.StoneCostLine{LineCarats: l.LineCarats, ExactCarats: l.ExactCarats, Pcs: l.StoneCount, Basis: r.basis}
+		switch r.basis {
+		case "ct":
+			line.RatePerCt = r.price.Decimal
+		case "g":
+			line.RatePerG = r.price.Decimal
+		default:
+			line.RatePerPc = r.price.Decimal
+		}
+		lines = append(lines, line)
+	}
+	return lines, missing
+}
+
 // CostingRows prices each requested (variation, metal, stone code). Gold rate
 // and setting rate come from the request (no live pricing); wastage % comes
 // from the metal master and stone rates from stone_size_matrix.
@@ -78,22 +132,9 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 		return nil, invalid("setting_rate_per_pc must not be negative")
 	}
 
-	matrix, err := s.Q.ListStoneMatrix(ctx)
+	rates, err := s.stoneRates(ctx)
 	if err != nil {
 		return nil, err
-	}
-	type rateKey struct{ size, code string }
-	type stoneRate struct {
-		basis string
-		price decimal.NullDecimal // the one that applies: per piece or per carat
-	}
-	rates := map[rateKey]stoneRate{}
-	for _, m := range matrix {
-		sr := stoneRate{basis: m.RateBasis, price: m.RatePerPc}
-		if m.RateBasis == "ct" {
-			sr.price = m.RatePerCt
-		}
-		rates[rateKey{m.SizeMm.StringFixed(2), m.StoneCode}] = sr
 	}
 
 	missingMetals := map[string]bool{}
@@ -126,20 +167,9 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 			return nil, invalid("item %d: metal %q is not active", i+1, it.MetalCode)
 		}
 
-		lines := make([]calc.StoneCostLine, 0, len(bom.Lines))
-		for _, l := range bom.Lines {
-			r := rates[rateKey{l.SizeMM.StringFixed(2), l.StoneCode}]
-			if !r.price.Valid {
-				missingRates[calc.MissingPair{SizeMM: l.SizeMM.StringFixed(2), Code: l.StoneCode, Basis: r.basis}] = true
-				continue
-			}
-			line := calc.StoneCostLine{LineCarats: l.LineCarats, Pcs: l.StoneCount, Basis: r.basis}
-			if r.basis == "ct" {
-				line.RatePerCt = r.price.Decimal
-			} else {
-				line.RatePerPc = r.price.Decimal
-			}
-			lines = append(lines, line)
+		lines, missing := stoneCostLines(bom, rates)
+		for _, p := range missing {
+			missingRates[p] = true
 		}
 		if !metal.WastagePct.Valid {
 			missingMetals[metal.Code] = true
@@ -179,6 +209,11 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 
 // JobBag is the data printed on a job-bag PDF.
 type JobBag struct {
+	DesignID    int64
+	VariationID int64
+	// QR is the text the job-bag QR code holds: a link to the design page when the portal has a public
+	// address, otherwise the plain variation code. Never names, never prices.
+	QR            string
 	DesignCode    string
 	DesignName    string
 	Category      string
@@ -202,6 +237,16 @@ type JobBag struct {
 // JobBag assembles the spec sheet for one variation in one metal, with the
 // planner-chosen stone code resolved through the BOM rules.
 func (s *Service) JobBag(ctx context.Context, variationID int64, metalCode, stoneCode string) (JobBag, error) {
+	jb, err := s.JobBagData(ctx, variationID, metalCode, stoneCode)
+	if err != nil {
+		return JobBag{}, err
+	}
+	jb.Photo = s.jobBagPhoto(ctx, jb.DesignID, variationID)
+	return jb, nil
+}
+
+// JobBagData is JobBag without the photo, so many bags can be checked before any photo is read.
+func (s *Service) JobBagData(ctx context.Context, variationID int64, metalCode, stoneCode string) (JobBag, error) {
 	if metalCode == "" {
 		return JobBag{}, invalid("metal_code is required")
 	}
@@ -262,6 +307,7 @@ func (s *Service) JobBag(ctx context.Context, variationID int64, metalCode, ston
 	}
 	jb.File3dmName, jb.File3dmSHA256 = v.File3dmName.String, v.File3dmSha256.String
 	jb.FileStlName, jb.FileStlSHA256 = v.FileStlName.String, v.FileStlSha256.String
-	jb.Photo = s.jobBagPhoto(ctx, d.ID, variationID)
+	jb.DesignID, jb.VariationID = d.ID, variationID
+	jb.QR = s.jobBagQR(d.Code, bom.VariationCode)
 	return jb, nil
 }

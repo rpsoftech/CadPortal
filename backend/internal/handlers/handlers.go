@@ -30,8 +30,12 @@ type H struct {
 	// Validate is the per-request token check (user active, role unchanged, password
 	// not changed since issue). Nil means signature and expiry only (tests).
 	Validate auth.Validator
-	// TokenTTL is how long a login token lives (0 = DefaultTokenTTL).
+	// TokenTTL is how long a login token lives (0 = DefaultTokenTTL). This is the absolute cap on a
+	// session: the idle timeout can end it sooner, but nothing extends it.
 	TokenTTL time.Duration
+	// IdleTimeoutMinutes is told to the web app (GET /auth/config), which signs the user out after this
+	// long without activity. 0 = never. The server does not enforce it: the token expiry does.
+	IdleTimeoutMinutes int
 	// MaxUploadBytes caps a single CAD upload (0 = DefaultMaxUploadBytes).
 	MaxUploadBytes int64
 	// LocalFiles, when set (development storage), serves signed download links.
@@ -142,7 +146,15 @@ func (h *H) Register(r *gin.Engine) {
 
 	// Exports: job bags for every role; costing exposes money, so admin/designer only.
 	v1.POST("/exports/job-bag-pdf", anyRole, h.jobBagPDF)
+	v1.POST("/exports/job-bags-pdf", anyRole, h.jobBagsPDF)
 	v1.POST("/exports/costing-csv", editor, h.costingCSV)
+	v1.POST("/exports/costing-preview", editor, h.costingPreview)
+	v1.POST("/costing-sheets", editor, h.createCostingSheet)
+	v1.GET("/costing-sheets", editor, h.listCostingSheets)
+	v1.GET("/costing-sheets/:id", editor, h.getCostingSheet)
+	v1.GET("/costing-sheets/:id/csv", editor, h.costingSheetCSV)
+	v1.DELETE("/costing-sheets/:id", editor, h.deleteCostingSheet)
+	v1.POST("/costing-sheets/:id/recost", editor, h.recostCostingSheet)
 	v1.GET("/exports/designs-csv", anyRole, h.designsCSV)
 }
 
@@ -152,10 +164,21 @@ func fail(c *gin.Context, err error) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": mme.Error(), "missing": mme.Pairs})
 		return
 	}
+	var jbe *service.JobBagsError
+	if errors.As(err, &jbe) {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": jbe.Error(), "failures": jbe.Failures})
+		return
+	}
 	var mci *service.MissingCostInputsError
 	if errors.As(err, &mci) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": mci.Error(),
 			"metals_missing_wastage": mci.Wastage, "stone_rates_missing": mci.StoneRates})
+		return
+	}
+	var ice *service.IncompleteCostingError
+	if errors.As(err, &ice) {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": ice.Error(), "problems": ice.Problems,
+			"metals_missing_wastage": ice.Wastage, "stone_rates_missing": ice.StoneRates, "missing": ice.Matrix})
 		return
 	}
 	status := http.StatusInternalServerError
@@ -310,6 +333,7 @@ func (h *H) listStoneMatrix(c *gin.Context) {
 		for i := range out { // stone rates are commercially sensitive
 			out[i].RatePerCt = decimal.NullDecimal{}
 			out[i].RatePerPc = decimal.NullDecimal{}
+			out[i].RatePerG = decimal.NullDecimal{}
 		}
 	}
 	respond(c, http.StatusOK, out, err)
@@ -325,6 +349,7 @@ func (h *H) updateStoneMatrix(c *gin.Context) {
 			CaratsPerStone decimal.Decimal     `json:"carats_per_stone"`
 			RatePerCt      decimal.NullDecimal `json:"rate_per_ct"`
 			RatePerPc      decimal.NullDecimal `json:"rate_per_pc"`
+			RatePerG       decimal.NullDecimal `json:"rate_per_g"`
 			RateBasis      string              `json:"rate_basis"`
 		} `json:"rows"`
 	}
@@ -336,7 +361,7 @@ func (h *H) updateStoneMatrix(c *gin.Context) {
 	for i, r := range in.Rows {
 		rows[i] = service.MatrixRowInput{SizeMM: r.SizeMM, StoneCode: r.StoneCode,
 			Sieve: r.Sieve, CaratsPerStone: r.CaratsPerStone, RatePerCt: r.RatePerCt,
-			RatePerPc: r.RatePerPc, RateBasis: r.RateBasis}
+			RatePerPc: r.RatePerPc, RatePerG: r.RatePerG, RateBasis: r.RateBasis}
 	}
 	if err := h.S.UpdateStoneMatrix(c, rows, in.BaselineCode); err != nil {
 		fail(c, err)
@@ -749,16 +774,26 @@ func (h *H) jobBagPDF(c *gin.Context) {
 
 func (h *H) costingCSV(c *gin.Context) {
 	var in struct {
+		service.SheetRequest
 		Items []struct {
 			VariationID int64  `json:"variation_id"`
 			MetalCode   string `json:"metal_code"`
 			StoneCode   string `json:"stone_code"`
 		} `json:"items"`
-		GoldRatePerG     decimal.Decimal `json:"gold_rate_per_g"`
-		SettingRatePerPc decimal.Decimal `json:"setting_rate_per_pc"`
 	}
 	if c.ShouldBindJSON(&in) != nil {
 		badRequest(c, "invalid JSON body")
+		return
+	}
+	if len(in.VariationIDs) > 0 || len(in.DesignIDs) > 0 {
+		// Several designs / variations: one row per variation, a total row, incomplete ones per skip_incomplete.
+		res, csv, ok := h.costRun(c, in.SheetRequest)
+		if !ok {
+			return
+		}
+		auditNote(c, "design", "", fmt.Sprintf("%d variations in %d designs, %d not costed",
+			len(res.Rows), res.Totals.Designs, res.IncompleteVariations()))
+		sendCostingCSV(c, res, csv, "costing.csv")
 		return
 	}
 	req := service.CostingRequest{GoldRatePerG: in.GoldRatePerG, SettingRatePerPc: in.SettingRatePerPc}
@@ -837,4 +872,57 @@ func (h *H) serveLocalFile(c *gin.Context) {
 	}
 	hd.Set("X-Content-Type-Options", "nosniff")
 	http.ServeContent(c.Writer, c.Request, "", st.ModTime(), f)
+}
+
+// jobBagsPDF prints many job bags into one PDF. Every bag is checked before anything is drawn, so a
+// missing stone-weight row anywhere is reported for all affected variations at once.
+func (h *H) jobBagsPDF(c *gin.Context) {
+	var in struct {
+		Items []struct {
+			VariationID int64  `json:"variation_id"`
+			MetalCode   string `json:"metal_code"`
+			StoneCode   string `json:"stone_code"`
+		} `json:"items"`
+		DesignIDs      []int64 `json:"design_ids"`
+		MetalCode      string  `json:"metal_code"`
+		StoneCode      string  `json:"stone_code"`
+		SkipIncomplete bool    `json:"skip_incomplete"`
+	}
+	if c.ShouldBindJSON(&in) != nil {
+		badRequest(c, "invalid JSON body")
+		return
+	}
+	req := service.JobBagsRequest{DesignIDs: in.DesignIDs, MetalCode: in.MetalCode, StoneCode: in.StoneCode, SkipIncomplete: in.SkipIncomplete}
+	for _, it := range in.Items {
+		req.Items = append(req.Items, service.JobBagItem(it))
+	}
+	bags, skipped, err := h.S.PlanJobBags(c, req)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	b := export.NewJobBagsPDF(fmt.Sprintf("%d job bags", len(bags)))
+	for _, jb := range bags {
+		jb.Photo = h.S.JobBagPhoto(c, jb) // one photo at a time; the PDF keeps each distinct photo once
+		if err := b.AddBag(jb); err != nil {
+			fail(c, err)
+			return
+		}
+	}
+	b.AddSkippedPage(skipped)
+	pdf, err := b.Bytes()
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	auditNote(c, "variation", "", strconv.Itoa(len(bags)))
+	if len(skipped) > 0 {
+		codes := make([]string, len(skipped))
+		for i, f := range skipped {
+			codes[i] = f.VariationCode
+		}
+		c.Header("X-Skipped", strings.Join(codes, ","))
+	}
+	c.Header("Content-Disposition", `attachment; filename="jobbags.pdf"`)
+	c.Data(http.StatusOK, "application/pdf", pdf)
 }

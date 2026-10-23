@@ -141,9 +141,28 @@
     </p>
   }
 
+  @if (auth.canEdit() && state().items.length) {
+    <mat-checkbox
+      class="select-page"
+      [checked]="pageAllSelected()"
+      [indeterminate]="pageSomeSelected()"
+      (change)="togglePage($event.checked)"
+    >
+      Select all on this page
+    </mat-checkbox>
+  }
+
   <div class="grid">
     @for (d of state().items; track d.id) {
-      <mat-card appearance="outlined">
+      <mat-card appearance="outlined" [class.picked]="selection.has(d.id)">
+        @if (auth.canEdit()) {
+          <mat-checkbox
+            class="pick"
+            [checked]="selection.has(d.id)"
+            (change)="selection.toggle(d)"
+            [aria-label]="'Select ' + d.code"
+          />
+        }
         <a [routerLink]="['/designs', d.code]" class="cover" [attr.aria-label]="'Open ' + d.code">
           @if (d.cover_url) {
             <img [src]="d.cover_url" [alt]="d.code + ' cover photo'" loading="lazy" />
@@ -201,5 +220,11 @@
       showFirstLastButtons
       aria-label="Select page of designs"
     />
+  }
+
+  @if (auth.canEdit()) {
+    <app-selection-bar>
+      <button matButton="filled" type="button" (click)="costSelected()">Cost selected</button>
+    </app-selection-bar>
   }
 </div>

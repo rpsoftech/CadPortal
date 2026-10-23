@@ -10,10 +10,13 @@ import (
 	"github.com/rpsoftech/cad-portal/backend/internal/auth"
 )
 
-// authConfig tells the sign-in screens whether "forgot password" can send an email. It is public and
-// reveals nothing about any account.
+// authConfig tells the web app whether "forgot password" can send an email and how long it may sit idle
+// before signing the user out. It is public and reveals nothing about any account.
 func (h *H) authConfig(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"password_reset_email": h.S.ResetEmailEnabled()})
+	c.JSON(http.StatusOK, gin.H{
+		"password_reset_email": h.S.ResetEmailEnabled(),
+		"idle_timeout_minutes": h.IdleTimeoutMinutes,
+	})
 }
 
 // forgotPassword is the public "forgot password" form. It answers the same way whatever the address is

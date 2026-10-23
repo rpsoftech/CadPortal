@@ -1,4 +1,4 @@
-import { HttpClient, HttpEvent, HttpParams, HttpRequest } from '@angular/common/http';
+import { HttpClient, HttpEvent, HttpParams, HttpRequest, HttpResponse } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { MonoTypeOperatorFunction, Observable, catchError, map, of, tap, throwError } from 'rxjs';
 import {
@@ -11,6 +11,12 @@ import {
   BomResult,
   Category,
   CostingItem,
+  CostingSheet,
+  CostingSheetComparison,
+  CostingSheetSummary,
+  CostPreview,
+  CostSheetRequest,
+  JobBagsRequest,
   DesignDetail,
   DuplicateDesignBody,
   DesignFilter,
@@ -332,6 +338,18 @@ export class ApiService {
   }): Observable<Blob> {
     return this.http.post(`${BASE}/exports/job-bag-pdf`, body, { responseType: 'blob' });
   }
+  /**
+   * Several job bags in one PDF, in the given order (at most 200). Give `items`, or `design_ids` for
+   * every variation of those designs, with a shared `metal_code` and `stone_code` as defaults.
+   * With `skip_incomplete` the complete bags are printed and the `X-Skipped` response header lists the
+   * variation codes left out; otherwise a bag with missing stone data fails the whole request (422).
+   */
+  jobBagsPdf(body: JobBagsRequest): Observable<HttpResponse<Blob>> {
+    return this.http.post(`${BASE}/exports/job-bags-pdf`, body, {
+      responseType: 'blob',
+      observe: 'response',
+    });
+  }
   /** Every master-data table as CSV files in one zip (admin only). */
   masterDataZip(): Observable<Blob> {
     return this.http.get(`${BASE}/masters/export`, { responseType: 'blob' });
@@ -345,6 +363,50 @@ export class ApiService {
     setting_rate_per_pc: string;
   }): Observable<Blob> {
     return this.http.post(`${BASE}/exports/costing-csv`, body, { responseType: 'blob' });
+  }
+
+  // ----- costing several designs, and saved costing sheets (admin/designer) -----
+  /** Costs a selection without failing on incomplete data: rows plus the problems, as JSON. */
+  costingPreview(body: CostSheetRequest): Observable<CostPreview> {
+    return this.http.post<CostPreview>(`${BASE}/exports/costing-preview`, body);
+  }
+  /** One CSV for the whole selection. Fails with 422 (and names what is missing) unless skip_incomplete. */
+  costingSelectionCsv(body: CostSheetRequest): Observable<Blob> {
+    return this.http.post(`${BASE}/exports/costing-csv`, body, { responseType: 'blob' });
+  }
+  createCostingSheet(body: CostSheetRequest & { name: string }): Observable<CostingSheet> {
+    return this.http.post<CostingSheet>(`${BASE}/costing-sheets`, body);
+  }
+  costingSheets(limit: number, offset: number): Observable<{ items: CostingSheetSummary[]; total: number }> {
+    const params = new HttpParams().set('limit', limit).set('offset', offset);
+    return this.http
+      .get<CostingSheetSummary[]>(`${BASE}/costing-sheets`, { params, observe: 'response' })
+      .pipe(
+        map((r) => ({
+          items: r.body ?? [],
+          total: Number(r.headers.get('X-Total-Count') ?? r.body?.length ?? 0),
+        })),
+      );
+  }
+  costingSheet(id: number): Observable<CostingSheet> {
+    return this.http.get<CostingSheet>(`${BASE}/costing-sheets/${id}`);
+  }
+  /** The CSV exactly as it was made when the sheet was saved. */
+  costingSheetCsv(id: number): Observable<Blob> {
+    return this.http.get(`${BASE}/costing-sheets/${id}/csv`, { responseType: 'blob' });
+  }
+  deleteCostingSheet(id: number): Observable<void> {
+    return this.http.delete<void>(`${BASE}/costing-sheets/${id}`);
+  }
+  /** A new sheet from the same variations with today's masters; rates left out stay as saved. */
+  recostCostingSheet(
+    id: number,
+    body: { name?: string; gold_rate_per_g?: string; setting_rate_per_pc?: string; skip_incomplete?: boolean },
+  ): Observable<{ sheet: CostingSheet; comparison: CostingSheetComparison }> {
+    return this.http.post<{ sheet: CostingSheet; comparison: CostingSheetComparison }>(
+      `${BASE}/costing-sheets/${id}/recost`,
+      body,
+    );
   }
 }
 

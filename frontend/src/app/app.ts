@@ -8,6 +8,7 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { AuthService } from './core/auth.service';
+import { IdleService } from './core/idle.service';
 import { ChangePasswordDialogComponent } from './shared/change-password-dialog.component';
 
 @Component({
@@ -24,6 +25,7 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
       @if (auth.user(); as u) {
         <nav class="links" aria-label="Main">
           @if (auth.canEdit()) {
+            <a matButton routerLink="/costing-sheets">Costing sheets</a>
             <a matButton routerLink="/removed">Removed</a>
           }
           @if (auth.isAdmin()) {
@@ -37,6 +39,7 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
           <!-- On a phone the links do not fit beside the account button, so they live in a menu. -->
           <button matButton class="nav-menu" [matMenuTriggerFor]="nav">Menu</button>
           <mat-menu #nav="matMenu">
+            <a mat-menu-item routerLink="/costing-sheets">Costing sheets</a>
             <a mat-menu-item routerLink="/removed">Removed</a>
             @if (auth.isAdmin()) {
               <a mat-menu-item routerLink="/master-data">Master data</a>
@@ -114,7 +117,7 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
         max-width: 48vw;
       }
     }
-    @media (max-width: 760px) {
+    @media (max-width: 1100px) {
       .links {
         display: none;
       }
@@ -140,6 +143,8 @@ export class App {
   protected readonly announcement = signal('');
   private readonly dialog = inject(MatDialog);
   private readonly snack = inject(MatSnackBar);
+  /** Instantiated here so the idle sign-out watches every signed-in screen. */
+  private readonly idle = inject(IdleService);
 
   constructor() {
     // After a route change, move focus to the page heading and announce the page title, so keyboard and

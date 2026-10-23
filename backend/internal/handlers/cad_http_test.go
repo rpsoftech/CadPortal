@@ -9,8 +9,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -22,36 +20,14 @@ import (
 	"github.com/rpsoftech/cad-portal/backend/internal/migrate"
 	"github.com/rpsoftech/cad-portal/backend/internal/service"
 	"github.com/rpsoftech/cad-portal/backend/internal/storage"
+	"github.com/rpsoftech/cad-portal/backend/internal/testdb"
 )
 
 var testSecret = []byte("handler-test-secret-handler-test-secret")
 
-// httpTestDB provisions a dedicated database so this package never races the
-// service tests (which reset cad_portal_test) when packages run in parallel.
-func httpTestDB(t *testing.T) string {
-	t.Helper()
-	base := os.Getenv("TEST_DATABASE_URL")
-	if base == "" {
-		base = "postgres://cad:cad@localhost:5433/cad_portal_test?sslmode=disable"
-	}
-	ctx := context.Background()
-	admin, err := pgxpool.New(ctx, base)
-	if err == nil {
-		err = admin.Ping(ctx)
-	}
-	if err != nil {
-		if os.Getenv("CI") != "" { // a Postgres service that failed to start must not look green
-			t.Fatalf("test database unavailable in CI: %v", err)
-		}
-		t.Skipf("test database unavailable: %v", err)
-	}
-	defer admin.Close()
-	const name = "cad_portal_handlers_test"
-	admin.Exec(ctx, "CREATE DATABASE "+name) //nolint:errcheck // exists on reruns
-	u, _ := url.Parse(base)
-	u.Path = "/" + name
-	return u.String()
-}
+// httpTestDB returns the URL of this package's own database (internal/testdb), so it never
+// races another package's tests when packages run in parallel.
+func httpTestDB(t *testing.T) string { return testdb.DSN(t) }
 
 func newHTTPEnv(t *testing.T) (*gin.Engine, *service.Service, *storage.Memory) {
 	t.Helper()

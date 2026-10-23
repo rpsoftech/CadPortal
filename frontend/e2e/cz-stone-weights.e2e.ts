@@ -34,6 +34,6 @@ test.describe('docs/imports/cz-stone-weights.csv', () => {
   test('keeps the supplier size name in the sieve column and leaves prices empty', () => {
     const row = r.rows.find((x) => x.stone_code === 'HD' && x.size_mm === '1.10');
     expect(row?.sieve).toBe('1/10');
-    expect(r.rows.every((x) => x.rate_per_pc === null && x.rate_per_ct === null)).toBe(true);
+    expect(r.rows.every((x) => x.rate_per_pc === null && x.rate_per_ct === null && x.rate_per_g === null)).toBe(true);
   });
 });

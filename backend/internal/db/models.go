@@ -75,6 +75,28 @@ type Category struct {
 	NextSeq    int32              `json:"next_seq"`
 }
 
+type CostingSheet struct {
+	ID               int64              `json:"id"`
+	Name             string             `json:"name"`
+	CreatedBy        pgtype.Int8        `json:"created_by"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	RecostOf         pgtype.Int8        `json:"recost_of"`
+	MetalCode        string             `json:"metal_code"`
+	StoneCode        string             `json:"stone_code"`
+	GoldRatePerG     decimal.Decimal    `json:"gold_rate_per_g"`
+	SettingRatePerPc decimal.Decimal    `json:"setting_rate_per_pc"`
+	DesignCount      int32              `json:"design_count"`
+	VariationCount   int32              `json:"variation_count"`
+	IncompleteCount  int32              `json:"incomplete_count"`
+	Total            decimal.Decimal    `json:"total"`
+	Inputs           []byte             `json:"inputs"`
+	ResultRows       []byte             `json:"result_rows"`
+	Totals           []byte             `json:"totals"`
+	Problems         []byte             `json:"problems"`
+	Rates            []byte             `json:"rates"`
+	Csv              string             `json:"csv"`
+}
+
 type DesignMedium struct {
 	ID          int64              `json:"id"`
 	DesignID    int64              `json:"design_id"`
@@ -96,6 +118,11 @@ type DesignMedium struct {
 type DesignTag struct {
 	DesignID int64 `json:"design_id"`
 	TagID    int64 `json:"tag_id"`
+}
+
+type MaintenanceClaim struct {
+	Name      string             `json:"name"`
+	ClaimedAt pgtype.Timestamptz `json:"claimed_at"`
 }
 
 type MasterDesign struct {
@@ -149,6 +176,7 @@ type StoneSizeMatrix struct {
 	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
 	RatePerPc      decimal.NullDecimal `json:"rate_per_pc"`
 	RateBasis      string              `json:"rate_basis"`
+	RatePerG       decimal.NullDecimal `json:"rate_per_g"`
 }
 
 type Tag struct {
