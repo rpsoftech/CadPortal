@@ -59,6 +59,7 @@ func TestWriteMasterDataZip(t *testing.T) {
 			{SizeMm: d("1.1"), StoneCode: "2HD", Sieve: pgtype.Text{String: "+0000", Valid: true}, CaratsPerStone: d("0.007"),
 				RatePerCt: decimal.NullDecimal{Decimal: d("50000"), Valid: true}, RateBasis: "ct"},
 			{SizeMm: d("1.2"), StoneCode: "2HD", CaratsPerStone: d("0.0095"), RateBasis: "pc", RatePerPc: decimal.NullDecimal{Decimal: d("150"), Valid: true}}, // no sieve
+			{SizeMm: d("2.5"), StoneCode: "2HD", CaratsPerStone: d("0.065"), RateBasis: "g", RatePerG: decimal.NullDecimal{Decimal: d("5000"), Valid: true}},
 		},
 		Categories: []db.Category{
 			{Name: "Rings", CodePrefix: pgtype.Text{String: "LR", Valid: true}, NextSeq: 41},
@@ -96,16 +97,17 @@ func TestWriteMasterDataZip(t *testing.T) {
 	eq("stone_codes.csv", [][]string{{"code", "baseline", "active"}, {"1HD", "true", "true"}, {"2HD", "false", "false"}})
 	// The stone matrix file is the import format, fixed decimals included.
 	eq("stone_matrix.csv", [][]string{
-		{"size_mm", "stone_code", "sieve", "carats_per_stone", "grams_per_stone", "rate_basis", "rate_per_pc", "rate_per_ct"},
-		{"1.10", "2HD", "+0000", "0.0070", "0.00140", "ct", "", "50000.00"},
-		{"1.20", "2HD", "", "0.0095", "0.00190", "pc", "150.00", ""},
+		{"size_mm", "stone_code", "sieve", "carats_per_stone", "grams_per_stone", "rate_basis", "rate_per_pc", "rate_per_ct", "rate_per_g"},
+		{"1.10", "2HD", "+0000", "0.0070", "0.00140", "ct", "", "50000.00", ""},
+		{"1.20", "2HD", "", "0.0095", "0.00190", "pc", "150.00", "", ""},
+		{"2.50", "2HD", "", "0.0650", "0.01300", "g", "", "", "5000.00"},
 	})
 	eq("categories.csv", [][]string{
 		{"name", "code_prefix", "last_number_used"}, {"Rings", "LR", "41"}, {"'=Evil", "", "0"},
 	})
 	eq("tags.csv", [][]string{{"group", "name", "active"}, {"Motif", "Floral", "true"}, {"Audience", "Bridal", "false"}})
 	readme := got["README.txt"][0][0]
-	for _, frag := range []string{"2026-10-21 12:00 UTC", "2 alloys, 2 stone codes, 2 matrix rows, 2 categories, 2 tags", "wastage"} {
+	for _, frag := range []string{"2026-10-21 12:00 UTC", "2 alloys, 2 stone codes, 3 matrix rows, 2 categories, 2 tags", "wastage"} {
 		if !strings.Contains(readme, frag) {
 			t.Errorf("README lacks %q:\n%s", frag, readme)
 		}

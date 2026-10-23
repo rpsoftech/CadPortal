@@ -18,6 +18,7 @@ export const MATRIX_COLUMNS = [
   'rate_basis',
   'rate_per_pc',
   'rate_per_ct',
+  'rate_per_g',
 ] as const;
 type Column = (typeof MATRIX_COLUMNS)[number];
 
@@ -41,10 +42,14 @@ const ALIASES: Record<string, Column> = {
   rate_per_ct: 'rate_per_ct',
   price_per_ct: 'rate_per_ct',
   price_per_carat: 'rate_per_ct',
+  rate_per_g: 'rate_per_g',
+  price_per_g: 'rate_per_g',
+  price_per_gram: 'rate_per_g',
 };
 
-/** Files without a header: the older five columns, or the full eight. */
+/** Files without a header: the older five columns, the eight written before per-gram prices, or all nine. */
 const LEGACY: Column[] = ['size_mm', 'stone_code', 'sieve', 'carats_per_stone', 'rate_per_ct'];
+const EIGHT: Column[] = MATRIX_COLUMNS.slice(0, 8);
 
 /** Splits one line, honouring double quotes. Tab-separated text (pasted from Excel) is detected. */
 export function splitLine(line: string): string[] {
@@ -94,9 +99,9 @@ function headerColumns(cells: string[]): Column[] | null {
 /**
  * Parses pasted or uploaded stone matrix data. With a header row, columns may come in any order and
  * under the names above; the weight per stone is given as carats_per_stone or grams_per_stone, and the
- * price as rate_per_pc and/or rate_per_ct with rate_basis (pc or ct) saying which one costing uses.
- * Without a header the older five columns (size, code, sieve, carats, rate per carat) or the full eight
- * are read by position. Values stay strings so no precision is lost; limits mirror the server's (size
+ * price as rate_per_pc, rate_per_ct and/or rate_per_g with rate_basis (pc, ct or g) saying which one
+ * costing uses. Without a header the older five columns (size, code, sieve, carats, rate per carat), the
+ * eight written before per-gram prices, or all nine are read by position. Values stay strings so no precision is lost; limits mirror the server's (size
  * 2 dp, carats 4 dp, prices 2 dp). A weight that would need rounding is refused. Every problem is
  * reported with its line number; nothing is guessed or defaulted to zero.
  */
@@ -128,7 +133,13 @@ export function parseMatrixCsv(text: string): CsvParseResult {
         continue;
       }
     }
-    const cols = columns ?? (cells.length === MATRIX_COLUMNS.length ? [...MATRIX_COLUMNS] : LEGACY);
+    const cols =
+      columns ??
+      (cells.length === MATRIX_COLUMNS.length
+        ? [...MATRIX_COLUMNS]
+        : cells.length === EIGHT.length
+          ? EIGHT
+          : LEGACY);
     if (cells.length !== cols.length) {
       errors.push(
         `Line ${n}: expected ${cols.length} columns (${cols.join(', ')}), found ${cells.length}`,
@@ -164,13 +175,19 @@ export function parseMatrixCsv(text: string): CsvParseResult {
     }
 
     const basis = get('rate_basis').toLowerCase();
-    if (basis !== '' && basis !== 'pc' && basis !== 'ct') {
-      problems.push(`rate_basis "${get('rate_basis')}" must be pc (per piece) or ct (per carat)`);
+    if (basis !== '' && basis !== 'pc' && basis !== 'ct' && basis !== 'g') {
+      problems.push(
+        `rate_basis "${get('rate_basis')}" must be pc (per piece), ct (per carat) or g (per gram)`,
+      );
     }
     const pc = get('rate_per_pc');
     const ct = get('rate_per_ct');
     if (pc !== '') problems.push(decimalError('rate_per_pc', pc, 2, true));
     if (ct !== '') problems.push(decimalError('rate_per_ct', ct, 2, true));
+    const g = get('rate_per_g');
+    if (g !== '') problems.push(decimalError('rate_per_g', g, 2, true));
+    if (basis === 'g' && g === '')
+      problems.push('rate_basis g needs a rate_per_g (price per gram)');
 
     const bad = problems.filter((p): p is string => p !== null);
     if (bad.length) {
@@ -190,6 +207,7 @@ export function parseMatrixCsv(text: string): CsvParseResult {
       carats_per_stone: carats,
       rate_per_pc: pc === '' ? null : pc,
       rate_per_ct: ct === '' ? null : ct,
+      rate_per_g: g === '' ? null : g,
       rate_basis: basis as RateBasis | '',
     });
   }

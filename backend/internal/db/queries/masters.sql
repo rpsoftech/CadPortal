@@ -42,20 +42,21 @@ SELECT * FROM stone_codes WHERE code = $1;
 
 -- name: ListStoneMatrix :many
 SELECT m.size_mm, m.stone_code_id, sc.code AS stone_code, m.sieve,
-       m.carats_per_stone, m.rate_per_ct, m.rate_per_pc, m.rate_basis
+       m.carats_per_stone, m.rate_per_ct, m.rate_per_pc, m.rate_basis, m.rate_per_g
 FROM stone_size_matrix m
 JOIN stone_codes sc ON sc.id = m.stone_code_id
 ORDER BY sc.code, m.size_mm;
 
 -- name: UpsertStoneMatrixRow :one
-INSERT INTO stone_size_matrix (size_mm, stone_code_id, sieve, carats_per_stone, rate_per_ct, rate_per_pc, rate_basis)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO stone_size_matrix (size_mm, stone_code_id, sieve, carats_per_stone, rate_per_ct, rate_per_pc, rate_basis, rate_per_g)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (size_mm, stone_code_id) DO UPDATE
 SET sieve = EXCLUDED.sieve,
     carats_per_stone = EXCLUDED.carats_per_stone,
     rate_per_ct = EXCLUDED.rate_per_ct,
     rate_per_pc = EXCLUDED.rate_per_pc,
-    rate_basis = EXCLUDED.rate_basis
+    rate_basis = EXCLUDED.rate_basis,
+    rate_per_g = EXCLUDED.rate_per_g
 RETURNING (xmax = 0) AS inserted, size_mm, stone_code_id;
 
 -- name: SetBaselineStoneCode :exec

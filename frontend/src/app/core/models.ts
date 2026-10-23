@@ -55,7 +55,7 @@ export interface StoneCode {
   active: boolean;
 }
 
-export type RateBasis = 'pc' | 'ct';
+export type RateBasis = 'pc' | 'ct' | 'g';
 
 export interface StoneMatrixRow {
   size_mm: Dec;
@@ -65,7 +65,9 @@ export interface StoneMatrixRow {
   carats_per_stone: Dec;
   rate_per_ct: Dec | null;
   rate_per_pc: Dec | null;
-  /** Which price costing uses for this row: per piece (the default) or per carat. */
+  /** Price per gram of stone weight (carats x 0.200). */
+  rate_per_g: Dec | null;
+  /** Which price costing uses for this row: per piece (the default), per carat or per gram. */
   rate_basis: RateBasis;
 }
 
@@ -77,6 +79,7 @@ export interface MatrixRowInput {
   carats_per_stone: string;
   rate_per_pc: string | null;
   rate_per_ct: string | null;
+  rate_per_g: string | null;
   /** Empty lets the server decide: per piece, unless only a per-carat price is given. */
   rate_basis: RateBasis | '';
 }

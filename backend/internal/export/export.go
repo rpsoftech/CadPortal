@@ -33,7 +33,22 @@ func safeCell(s string) string {
 var CostingHeader = []string{
 	"variation", "metal", "stone_code", "net_g", "wastage_pct", "gold_g_with_wastage",
 	"gold_rate_per_g", "gold_cost", "stone_ct", "stone_g", "stone_cost",
-	"setting_pcs", "setting_rate_per_pc", "setting_cost", "total",
+	"setting_pcs", "setting_rate_per_pc", "setting_cost", "total", "stone_pricing",
+}
+
+// stonePricing says how each stone line was priced and the quantity priced, e.g.
+// "24 pcs x 2.00/pc; 0.0336 g x 5.00/g; 0.0650 ct x 900.00/ct".
+func stonePricing(lines []calc.PricedLine) string {
+	parts := make([]string, len(lines))
+	for i, l := range lines {
+		qty := l.Qty.StringFixed(4)
+		if l.Basis == "pc" {
+			qty = l.Qty.StringFixed(0)
+		}
+		unit := strings.TrimSuffix(l.Unit(), "s") // "pcs" prices per "pc"
+		parts[i] = fmt.Sprintf("%s %s x %s/%s", qty, l.Unit(), l.Rate.StringFixed(2), unit)
+	}
+	return strings.Join(parts, "; ")
 }
 
 // WriteCostingCSV writes one row per costed variation/metal.
@@ -49,7 +64,7 @@ func WriteCostingCSV(w io.Writer, rows []service.CostRow) error {
 			r.GoldRatePerG.String(), r.GoldCost.StringFixed(2),
 			r.StoneCarats.StringFixed(4), calc.RoundLineGrams(calc.StoneWeight(r.StoneCarats)).StringFixed(4), r.StoneCost.StringFixed(2),
 			strconv.Itoa(r.SettingPcs), r.SettingRatePerPc.String(), r.SettingCost.StringFixed(2),
-			r.Total.StringFixed(2),
+			r.Total.StringFixed(2), stonePricing(r.StonePriced),
 		}
 		if err := cw.Write(rec); err != nil {
 			return err
