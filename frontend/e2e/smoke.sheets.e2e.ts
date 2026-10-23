@@ -130,7 +130,8 @@ async function openCostDialog(page: Page, s: Seeded, pick: (keyof Seeded)[]) {
 async function fillCosting(page: Page, dialog: ReturnType<Page['getByRole']>, gold = '6000') {
   await dialog.getByLabel('Metal').click();
   await page.getByRole('option', { name: '22KY' }).click();
-  await dialog.getByLabel('Stone code').click();
+  await expect(page.locator('.cdk-overlay-backdrop-showing')).toHaveCount(1); // the dialog's own
+  await dialog.getByLabel('Stone code').click({ force: true }); // the empty field's label sits over it
   await page.getByRole('option', { name: '2HD' }).click();
   await dialog.getByLabel('Gold rate / g').fill(gold);
   await dialog.getByLabel('Setting rate / pc').fill('25');
@@ -153,6 +154,7 @@ test('select two designs, cost them together, save the costing and open it later
   await page.goto('/');
   await page.getByLabel('Search code or name').fill(`Sheet ${s.tag}`);
   await expect(page.getByRole('checkbox', { name: `Select ${s.c.code}` })).toBeVisible();
+  await expect(page.getByText('3 designs', { exact: true })).toBeVisible(); // the search has applied
   // "Select all on this page" ticks every card; unticking it clears them again.
   await page.getByRole('checkbox', { name: 'Select all on this page' }).check();
   await expect(page.getByText('3 selected')).toBeVisible();
