@@ -18,6 +18,7 @@ import (
 	"github.com/rpsoftech/cad-portal/backend/internal/auth"
 	"github.com/rpsoftech/cad-portal/backend/internal/calc"
 	"github.com/rpsoftech/cad-portal/backend/internal/export"
+	"github.com/rpsoftech/cad-portal/backend/internal/logx"
 	"github.com/rpsoftech/cad-portal/backend/internal/service"
 	"github.com/rpsoftech/cad-portal/backend/internal/storage"
 )
@@ -188,6 +189,9 @@ func fail(c *gin.Context, err error) {
 	if status == http.StatusInternalServerError {
 		_ = c.Error(err) // keep detail in server logs only
 		msg = "internal error"
+		// The id lets someone find this request in the logs without being shown the detail.
+		c.JSON(status, gin.H{"error": msg, "request_id": c.GetString(logx.RequestIDKey)})
+		return
 	}
 	c.JSON(status, gin.H{"error": msg})
 }
