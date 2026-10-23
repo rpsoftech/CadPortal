@@ -15,17 +15,37 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
     <mat-toolbar>
       <a routerLink="/" class="brand">CadPortal</a>
       @if (auth.user(); as u) {
+        <nav class="links" aria-label="Main">
+          @if (auth.canEdit()) {
+            <a matButton routerLink="/removed">Removed</a>
+          }
+          @if (auth.isAdmin()) {
+            <a matButton routerLink="/master-data">Master data</a>
+            <a matButton routerLink="/users">Users</a>
+            <a matButton routerLink="/audit">Audit</a>
+            <a matButton routerLink="/backups">Backups</a>
+          }
+        </nav>
         @if (auth.canEdit()) {
-          <a matButton routerLink="/removed">Removed</a>
-        }
-        @if (auth.isAdmin()) {
-          <a matButton routerLink="/master-data">Master data</a>
-          <a matButton routerLink="/users">Users</a>
-          <a matButton routerLink="/audit">Audit</a>
-          <a matButton routerLink="/backups">Backups</a>
+          <!-- On a phone the links do not fit beside the account button, so they live in a menu. -->
+          <button matButton class="nav-menu" [matMenuTriggerFor]="nav" aria-label="Menu">Menu</button>
+          <mat-menu #nav="matMenu">
+            <a mat-menu-item routerLink="/removed">Removed</a>
+            @if (auth.isAdmin()) {
+              <a mat-menu-item routerLink="/master-data">Master data</a>
+              <a mat-menu-item routerLink="/users">Users</a>
+              <a mat-menu-item routerLink="/audit">Audit</a>
+              <a mat-menu-item routerLink="/backups">Backups</a>
+            }
+          </mat-menu>
         }
         <span class="spacer"></span>
-        <button matButton="outlined" [matMenuTriggerFor]="menu" aria-label="Account menu">
+        <button
+          matButton="outlined"
+          class="account"
+          [matMenuTriggerFor]="menu"
+          aria-label="Account menu"
+        >
           {{ u.name || u.email }} · {{ u.role }}
         </button>
         <mat-menu #menu="matMenu">
@@ -47,6 +67,32 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
     }
     .spacer {
       flex: 1;
+    }
+    .links {
+      display: flex;
+    }
+    .nav-menu {
+      display: none;
+    }
+    .account {
+      max-width: 55vw;
+    }
+    .account ::ng-deep .mdc-button__label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    @media (max-width: 760px) {
+      .links {
+        display: none;
+      }
+      .nav-menu {
+        display: inline-flex;
+      }
+      .brand {
+        font-size: 1.05rem;
+        margin-right: 0;
+      }
     }
     .menu-id {
       padding: 8px 16px;

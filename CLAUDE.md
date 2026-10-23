@@ -150,6 +150,7 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   23. Weight per stone kept to 8 decimals of carats; ready-made CZ stone weight list (docs/imports/cz-stone-weights.csv)
   24. Backups: nightly database dump (7 daily, 4 weekly, 12 monthly, one per year forever; age-encrypted) and incremental copy of all stored files to a second bucket, run history in `backup_runs`, setup-checklist warning when stale; photos and video stay un-gzipped on purpose
   25. Backups screen (admin): run history, "Back up now" (picked up by the backup service within a minute), list and download of encrypted dumps via a read-only token (`BACKUP_VIEW_*`)
-  26. Staging and production images: every green main commit is published as :staging (and :sha-<commit>); production runs only tagged versions (no :latest); scripts/deploy.sh pulls and restarts only the app containers, never the database
+  26. Phone-width layout: the top bar collapses into a Menu, wide tables scroll inside their own box, and a Playwright test asserts no screen scrolls sideways at 375 px
+  27. Staging and production images: every green main commit is published as :staging (and :sha-<commit>); production runs only tagged versions (no :latest); scripts/deploy.sh pulls and restarts only the app containers, never the database
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.
