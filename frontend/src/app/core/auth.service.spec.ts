@@ -120,6 +120,24 @@ describe('AuthService', () => {
     expect(nav).toHaveBeenCalledWith(['/login']);
   });
 
+  it('an idle sign-out clears the session and says why on the login page', () => {
+    const { auth, http, router } = setup();
+    const nav = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    vi.spyOn(router, 'url', 'get').mockReturnValue('/designs/LR0001');
+    auth.login('a@b.co', 'x').subscribe();
+    http.expectOne('/api/v1/auth/login').flush(response());
+    auth.expireIdle();
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(sessionStorage.getItem('cadportal.session')).toBeNull();
+    expect(nav).toHaveBeenCalledWith(['/login'], {
+      queryParams: { reason: 'idle', returnUrl: '/designs/LR0001' },
+    });
+    // Signed out already: nothing more happens.
+    nav.mockClear();
+    auth.expireIdle();
+    expect(nav).not.toHaveBeenCalled();
+  });
+
   it('changing the password swaps in the new token', () => {
     const { auth, http } = setup();
     auth.login('a@b.co', 'x').subscribe();

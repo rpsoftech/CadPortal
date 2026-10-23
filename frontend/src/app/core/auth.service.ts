@@ -92,6 +92,16 @@ export class AuthService {
     });
   }
 
+  /** No activity for the idle period: sign out and say why on the login page. */
+  expireIdle(): void {
+    if (!this.session()) return;
+    const returnUrl = this.router.url;
+    this.clear();
+    void this.router.navigate(['/login'], {
+      queryParams: { reason: 'idle', ...(returnUrl && returnUrl !== '/login' ? { returnUrl } : {}) },
+    });
+  }
+
   private start(r: LoginResponse): void {
     const s: Session = { token: r.token, expiresAt: r.expires_at, user: r.user };
     this.session.set(s);

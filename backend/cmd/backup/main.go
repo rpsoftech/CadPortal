@@ -1,4 +1,4 @@
-// Command backup is the portal's backup service. Run with no arguments it stays up and, every night,
+// Command backup is the portal's backup service. Run with no arguments it stays up and, on schedule (nightly by default),
 // dumps the database and copies new CAD files, photos and videos to a second bucket. The other commands
 // are for the day something has to be restored.
 //
@@ -155,7 +155,11 @@ func policy() (backup.Policy, error) {
 	if p.Weekly, err = atoi("BACKUP_KEEP_WEEKLY", backup.DefaultPolicy.Weekly); err != nil {
 		return p, err
 	}
-	p.Monthly, err = atoi("BACKUP_KEEP_MONTHLY", backup.DefaultPolicy.Monthly)
+	if p.Monthly, err = atoi("BACKUP_KEEP_MONTHLY", backup.DefaultPolicy.Monthly); err != nil {
+		return p, err
+	}
+	hours, err := atoi("BACKUP_KEEP_RECENT_HOURS", int(backup.DefaultPolicy.KeepRecent/time.Hour))
+	p.KeepRecent = time.Duration(hours) * time.Hour
 	return p, err
 }
 
@@ -243,7 +247,7 @@ func runDaemon(ctx context.Context) error {
 		return err
 	}
 	defer pool.Close()
-	hour, min, err := backup.ParseTimeOfDay(env("BACKUP_AT", "02:00"))
+	times, err := backup.ParseTimesOfDay(env("BACKUP_AT", "02:00"))
 	if err != nil {
 		return err
 	}
@@ -253,17 +257,19 @@ func runDaemon(ctx context.Context) error {
 	}
 	q := db.New(pool)
 
-	// After a restart or an outage, do not wait for the next night if the last good backup is old.
+	// After a restart or an outage, do not wait for the next slot if the last good backup is old: older than
+	// the longest gap in the schedule plus two hours (26 hours for one run a night).
+	stale := backup.CatchUpAfter(times)
 	last, err := q.LastGoodBackupRun(ctx)
-	if err != nil || !last.FinishedAt.Valid || time.Since(last.FinishedAt.Time) >= 26*time.Hour {
-		log.Print("no backup in the last 26 hours: taking one now")
+	if err != nil || !last.FinishedAt.Valid || time.Since(last.FinishedAt.Time) >= stale {
+		log.Printf("no backup in the last %s: taking one now", stale)
 		time.Sleep(10 * time.Second) // let the database finish starting
 		r.Run(ctx)
 	}
 	// Every half minute look for a "Back up now" from the portal; otherwise wait for the night.
 	poll := time.NewTicker(30 * time.Second)
 	defer poll.Stop()
-	next := backup.NextRun(time.Now(), hour, min, loc)
+	next := backup.NextRun(time.Now(), times, loc)
 	log.Printf("next backup at %s", next.In(loc).Format("2006-01-02 15:04 MST"))
 	for {
 		select {
@@ -282,7 +288,7 @@ func runDaemon(ctx context.Context) error {
 				if !ran { // a backup requested a moment ago already covers tonight
 					r.Run(ctx)
 				}
-				next = backup.NextRun(time.Now(), hour, min, loc)
+				next = backup.NextRun(time.Now(), times, loc)
 				log.Printf("next backup at %s", next.In(loc).Format("2006-01-02 15:04 MST"))
 			}
 		}

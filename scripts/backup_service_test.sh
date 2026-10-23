@@ -115,7 +115,7 @@ docker run -d --name "$net-daemon" --network "$net" \
   -e DATABASE_URL="postgres://cad:pw@$net-pg:5432/cad_portal?sslmode=disable" \
   -e S3_ENDPOINT="http://$net-s3:9000" -e S3_BUCKET=vault -e S3_ACCESS_KEY_ID=testkey -e S3_SECRET_ACCESS_KEY=testsecret123 \
   -e BACKUP_S3_BUCKET=backups -e BACKUP_S3_ACCESS_KEY_ID=testkey -e BACKUP_S3_SECRET_ACCESS_KEY=testsecret123 \
-  -e BACKUP_S3_ENDPOINT="http://$net-s3:9000" -e BACKUP_AGE_RECIPIENT="$pub" "$IMAGE" >/dev/null
+  -e BACKUP_S3_ENDPOINT="http://$net-s3:9000" -e BACKUP_AGE_RECIPIENT="$pub"   -e BACKUP_AT="21:15, 03:00,09:30,03:00" "$IMAGE" >/dev/null
 picked=""
 for _ in $(seq 1 40); do
   picked=$(sql "SELECT count(*) FROM backup_requests WHERE picked_up_at IS NOT NULL AND (SELECT count(*) FROM backup_runs WHERE ok) > $before")
@@ -123,6 +123,7 @@ for _ in $(seq 1 40); do
   sleep 3
 done
 docker logs "$net-daemon" 2>&1 | tail -5
+docker logs "$net-daemon" 2>&1 | grep -q "next backup at" || fail "the service did not report its next scheduled run (BACKUP_AT list)"
 docker rm -f "$net-daemon" >/dev/null 2>&1
 [ "$picked" = "1" ] || fail "a requested backup was not picked up by the running service"
 
@@ -143,5 +144,8 @@ if docker run --rm --network "$net" -e DATABASE_URL="postgres://cad:pw@$net-pg:5
   fail "it ran without BACKUP_AGE_RECIPIENT"
 fi
 if svc -e BACKUP_S3_BUCKET=vault -- once >/dev/null 2>&1; then fail "it accepted the vault as the backup bucket"; fi
+
+# ---- a bad time in the BACKUP_AT list stops the service with a message instead of running on a wrong schedule
+if svc -e BACKUP_AT="02:00,25:00" -- run >/dev/null 2>&1; then fail "it accepted BACKUP_AT=02:00,25:00"; fi
 
 echo "backup service OK"

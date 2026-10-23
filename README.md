@@ -140,6 +140,21 @@ Sign in with the account you created above. The session lives in `sessionStorage
 ends with the browser tab. The UI only uses the role to hide controls; the server checks
 the token and role on every request.
 
+**Sign-out and session length.** Two limits apply, both set on the server so they change with a restart
+and no rebuild:
+
+- `SESSION_HOURS` (default 8, 1 to 720) is the absolute life of a login. It is the expiry of the token the
+  server signs; activity does not extend it and there is no refresh token. After that, or on a `401`, the
+  app returns to the sign-in page.
+- `IDLE_TIMEOUT_MINUTES` (default 30, 0 to 1440, 0 = off) signs the user out after that long with no
+  activity: mouse, key, touch or scroll in *any* tab of the same browser (the last-activity time is shared
+  through `localStorage`; if that is unavailable each tab counts its own). About a minute before, a dialog
+  says "You will be signed out in N s" with a *Stay signed in* button; with a timeout of 1 minute the
+  warning is 30 s. Requests the app makes on its own do not count as activity. The app reads the value from
+  the public `GET /api/v1/auth/config` (`idle_timeout_minutes`) when someone signs in. The idle timeout
+  is enforced by the browser, not the server: it protects an unattended screen, not a stolen token (that is
+  what `SESSION_HOURS` and the per-request token check are for).
+
 ## Configuration
 
 See [.env.example](.env.example). Never commit real credentials: `.env` is gitignored.
@@ -247,16 +262,33 @@ when you push a version tag).
 ### Backups
 
 The `backup` service (a separate small image, because the API image has no shell or `pg_dump`) does
-two things every night at `BACKUP_AT` (default 02:00 `BACKUP_TZ`, UTC), into a **second bucket**:
+two things at `BACKUP_AT` (default one run a night, 02:00 `BACKUP_TZ`, UTC; or several, see
+[How often](#how-often)), into a **second bucket**:
 
 | What | How it is stored | Kept |
 |---|---|---|
-| **Database** | `pg_dump -Fc` (already compressed), checked with `pg_restore --list` before it is kept, then **encrypted** to your public key (age) as `db/cad_portal-<time>.dump.age` | 7 daily, 4 weekly, 12 monthly, and **one per year for good** (`BACKUP_KEEP_*` change the first three) |
+| **Database** | `pg_dump -Fc` (already compressed), checked with `pg_restore --list` before it is kept, then **encrypted** to your public key (age) as `db/cad_portal-<time>.dump.age` | 7 daily, 4 weekly, 12 monthly, and **one per year for good** (`BACKUP_KEEP_*` change the first three); the newest dump of each period, plus every dump of the last 48 hours (`BACKUP_KEEP_RECENT_HOURS`) |
 | **CAD files, photos, video** | every object the vault has and the backup lacks, copied byte for byte (same type and `Content-Encoding`) to `files/<same key>`. Objects have random names and are never rewritten, so this is incremental: night two copies only what is new | nothing is ever deleted from the backup, so a file removed in the portal stays recoverable there |
 
 Both halves are independent (a failed file copy never stops the database dump), every run is recorded,
 and the setup checklist warns admins if no good backup is newer than 36 hours (`BACKUP_MAX_AGE_HOURS`).
-If the service was down, it takes a backup at start-up instead of waiting for the next night.
+If the service was down, it takes a backup at start-up instead of waiting for the next run (when the last
+good one is older than the longest gap in the schedule plus two hours: 26 hours for one run a night).
+
+#### How often
+
+`BACKUP_AT` is one time or a comma-separated list of 24-hour times in `BACKUP_TZ`, for example
+`BACKUP_AT=02:00,08:00,14:00,20:00`. Each entry is checked (a bad one stops the service with a message),
+duplicates are dropped, the list is sorted, and the next run is the soonest one after now. Dump names carry
+the time, so several a day are fine. Retention keeps, as before, the *newest* dump of each of the last 7 days /
+4 weeks / 12 months and of every year, and now also **every** dump taken in the last `BACKUP_KEEP_RECENT_HOURS`
+(default 48; 0 turns this off), so 02:00, 08:00, 14:00 and 20:00 of yesterday and today are all still there and
+older days thin out to the last dump of the day.
+
+If you run more than once a day, also change the two things that watch for stale backups, because their defaults
+assume a nightly run: `BACKUP_MAX_AGE_HOURS` (the setup-checklist warning, default 36; use a bit over twice the
+longest gap, for example 14 for every 6 hours) and the expected interval of the `BACKUP_HEARTBEAT_URL` monitor.
+The start-up catch-up adjusts itself.
 
 **What is compressed:** CAD files are gzipped by the portal before they reach R2 (flagged
 `Content-Encoding: gzip`, so browsers still receive the original file), and the database dump is
@@ -311,8 +343,14 @@ docker compose -f docker-compose.prod.yml run --rm backup restore-files        #
 runs this whole cycle in CI against a real database and an S3-compatible server, including a dump restored
 into a fresh database and a deleted CAD file coming back with its encoding.
 
-**Limits, honestly:** this is a nightly full dump, so a disaster can lose up to a day of changes (there is
-no point-in-time recovery). Files are copied as they appear in the vault, so a file uploaded and lost the
+**Limits, honestly:** the recovery point is the time of the last good dump: up to a day lost with the default
+single nightly run, up to the longest gap in `BACKUP_AT` (6 hours for the four-times-a-day example) otherwise.
+A full dump of this catalog is small, so running it every few hours costs little. True point-in-time recovery
+(restore to any second) is deliberately **not built**: it needs WAL archiving, meaning a base backup plus a
+continuous stream of WAL files shipped to the backup bucket (`archive_command`, or a tool such as pgBackRest or
+WAL-G), a restore procedure that replays them to a chosen time, and monitoring that the archive is not falling
+behind. That is more moving parts to run and to rehearse than this portal's size justifies today; if losing
+a few hours of work is not acceptable, that is the next step and it is a decision for the owner. Files are copied as they appear in the vault, so a file uploaded and lost the
 same day before the night run is not in the backup. The backup bucket is only as safe as its token: keep
 that token off the server's other services, and rotate it like any secret.
 
@@ -337,7 +375,8 @@ ping every 5 minutes with a few minutes of grace, and put its URL in `HEARTBEAT_
 it can reach its database and stays silent when it cannot, so the monitor alerts you if the server, the API
 or the database goes down.
 
-Do the same for backups with a second check that expects a ping every 26 hours, and put its URL in
+Do the same for backups with a second check that expects a ping every 26 hours (a little over the longest
+gap in `BACKUP_AT` if you back up more than once a day), and put its URL in
 `BACKUP_HEARTBEAT_URL`. The backup service pings only after a *good* backup, so a backup that stops or fails
 alerts you even if the whole server is gone. These URLs are secret-like and are never written to the logs
 (only the host is).
@@ -671,8 +710,15 @@ yarn ng build
 yarn ng test --watch=false
 ```
 
-The tests wipe databases whose names end in `_test`, and refuse to touch any other
-database.
+`TEST_DATABASE_URL` is only the *admin* connection. Every Go test package that uses the database gets
+its own, made on demand by `internal/testdb` (`cad_portal_internal_service_test`,
+`cad_portal_internal_handlers_test`, ...; the name comes from the package directory), so `go test ./...`
+can run packages in parallel (`-p 8` included) without one package wiping the schema under another. A
+database is only ever wiped if its name ends in `_test`. A missing database server fails the run when
+`CI` is set and skips the database tests otherwise. A new package that needs the database calls
+`testdb.Reset(t)` (or `testdb.DSN(t)`); do not hard-code a database name. The one thing this cannot
+protect against is running `go test` twice at once against the same server: use separate servers
+for that.
 
 ### Browser smoke tests
 
