@@ -6,6 +6,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth.service';
+import { IdleService } from './core/idle.service';
 import { ChangePasswordDialogComponent } from './shared/change-password-dialog.component';
 
 @Component({
@@ -116,6 +117,8 @@ export class App {
   protected readonly auth = inject(AuthService);
   private readonly dialog = inject(MatDialog);
   private readonly snack = inject(MatSnackBar);
+  /** Instantiated here so the idle sign-out watches every signed-in screen. */
+  private readonly idle = inject(IdleService);
 
   protected changePassword(): void {
     this.dialog

@@ -130,6 +130,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	idleMinutes, err := idleTimeoutMinutes(os.Getenv("IDLE_TIMEOUT_MINUTES"))
+	if err != nil {
+		return err
+	}
+	sessionTTL, err := sessionDuration(os.Getenv("SESSION_HOURS"))
+	if err != nil {
+		return err
+	}
 	sender, baseURL, err := mailConfig(os.Getenv)
 	if err != nil {
 		return err
@@ -172,6 +180,7 @@ func run() error {
 	r.Use(logx.Middleware(logger), logx.Recovery(logger))
 	(&handlers.H{
 		S: svc, JWTSecret: []byte(jwtSecret), Validate: svc.ValidateToken, LocalFiles: localStore,
+		TokenTTL: sessionTTL, IdleTimeoutMinutes: idleMinutes,
 	}).Register(r)
 
 	srv := &http.Server{
@@ -448,6 +457,32 @@ func backupMaxAge(v, storageEnv, bucket string) (time.Duration, error) {
 	n, err := strconv.Atoi(v)
 	if err != nil || n < 0 || n > 8760 {
 		return 0, fmt.Errorf("BACKUP_MAX_AGE_HOURS must be a whole number of hours (0 turns the warning off), got %q", v)
+	}
+	return time.Duration(n) * time.Hour, nil
+}
+
+// idleTimeoutMinutes parses IDLE_TIMEOUT_MINUTES: how long the web app may sit without activity before it
+// signs the user out. Empty means 30, and 0 turns it off.
+func idleTimeoutMinutes(v string) (int, error) {
+	if strings.TrimSpace(v) == "" {
+		return 30, nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 || n > 1440 {
+		return 0, fmt.Errorf("IDLE_TIMEOUT_MINUTES must be a whole number of minutes from 0 (off) to 1440, got %q", v)
+	}
+	return n, nil
+}
+
+// sessionDuration parses SESSION_HOURS: the absolute lifetime of a login, however active the user is.
+// Empty means handlers.DefaultTokenTTL (8 hours).
+func sessionDuration(v string) (time.Duration, error) {
+	if strings.TrimSpace(v) == "" {
+		return handlers.DefaultTokenTTL, nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 1 || n > 720 {
+		return 0, fmt.Errorf("SESSION_HOURS must be a whole number of hours from 1 to 720, got %q", v)
 	}
 	return time.Duration(n) * time.Hour, nil
 }

@@ -431,6 +431,8 @@ export interface Backups {
 export interface AuthConfig {
   /** "Forgot password" can send an email (a mail server is configured). */
   password_reset_email: boolean;
+  /** Minutes without activity before the app signs the user out; 0 = never. */
+  idle_timeout_minutes: number;
 }
 
 /** A one-hour reset link an admin hands to a user. `path` is relative to the portal's address. */

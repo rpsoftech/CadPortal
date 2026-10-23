@@ -30,8 +30,12 @@ type H struct {
 	// Validate is the per-request token check (user active, role unchanged, password
 	// not changed since issue). Nil means signature and expiry only (tests).
 	Validate auth.Validator
-	// TokenTTL is how long a login token lives (0 = DefaultTokenTTL).
+	// TokenTTL is how long a login token lives (0 = DefaultTokenTTL). This is the absolute cap on a
+	// session: the idle timeout can end it sooner, but nothing extends it.
 	TokenTTL time.Duration
+	// IdleTimeoutMinutes is told to the web app (GET /auth/config), which signs the user out after this
+	// long without activity. 0 = never. The server does not enforce it: the token expiry does.
+	IdleTimeoutMinutes int
 	// MaxUploadBytes caps a single CAD upload (0 = DefaultMaxUploadBytes).
 	MaxUploadBytes int64
 	// LocalFiles, when set (development storage), serves signed download links.

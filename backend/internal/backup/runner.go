@@ -187,7 +187,7 @@ func (r *Runner) prune(ctx context.Context) error {
 			dumps = append(dumps, d)
 		}
 	}
-	_, drop := r.Policy.Prune(dumps)
+	_, drop := r.Policy.Prune(r.now(), dumps)
 	for _, d := range drop {
 		if err := r.Dest.Delete(ctx, d.Key); err != nil {
 			return err

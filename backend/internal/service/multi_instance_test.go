@@ -224,3 +224,13 @@ func TestConcurrentMigrationsFromEmptyDatabase(t *testing.T) {
 		t.Fatalf("schema_migrations: version=%d dirty=%v err=%v", version, dirty, err)
 	}
 }
+
+// dbUnavailable mirrors the rule of internal/testdb: in CI a database that is not there is a failure,
+// elsewhere the test is skipped.
+func dbUnavailable(t *testing.T, err error) {
+	t.Helper()
+	if os.Getenv("CI") != "" {
+		t.Fatalf("test database unavailable in CI: %v", err)
+	}
+	t.Skipf("test database unavailable: %v", err)
+}

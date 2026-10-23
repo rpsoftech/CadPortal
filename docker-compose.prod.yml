@@ -55,6 +55,10 @@ services:
       HEARTBEAT_URL: ${HEARTBEAT_URL:-}
       HEARTBEAT_INTERVAL_MINUTES: ${HEARTBEAT_INTERVAL_MINUTES:-5}
       AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-0}
+      # A login lasts at most SESSION_HOURS (1 to 720); the web app signs a user out after
+      # IDLE_TIMEOUT_MINUTES (0 to 1440, 0 = never) without activity, with a 60 second warning.
+      SESSION_HOURS: ${SESSION_HOURS:-8}
+      IDLE_TIMEOUT_MINUTES: ${IDLE_TIMEOUT_MINUTES:-30}
       # Removed or replaced CAD files, photos and videos are kept this many days and can be restored;
       # 0 deletes them at once.
       DELETED_FILE_RETENTION_DAYS: ${DELETED_FILE_RETENTION_DAYS:-30}
@@ -131,11 +135,14 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-json}
       # Pinged after every GOOD backup (set the monitor to expect a ping about every 26 hours). Empty means off.
       BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
+      # One time ("02:00") or a list ("02:00,08:00,14:00,20:00"); BACKUP_KEEP_RECENT_HOURS keeps every dump
+      # of the last N hours on top of the daily/weekly/monthly ones.
       BACKUP_AT: ${BACKUP_AT:-02:00}
       BACKUP_TZ: ${BACKUP_TZ:-UTC}
       BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-7}
       BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-4}
       BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-12}
+      BACKUP_KEEP_RECENT_HOURS: ${BACKUP_KEEP_RECENT_HOURS:-48}
     volumes:
       - backup-scratch:/scratch   # a dump is written here while it is checked and uploaded
     read_only: true

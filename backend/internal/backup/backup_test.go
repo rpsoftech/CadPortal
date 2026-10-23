@@ -59,7 +59,7 @@ func TestDumpKeyRoundTrip(t *testing.T) {
 func TestPruneKeepsDailyWeeklyMonthlyAndEveryYear(t *testing.T) {
 	// One dump a night for 3 years: 1095 dumps.
 	dumps := dumpsEvery(at("2028-12-31 00:00"), 1095)
-	keep, drop := DefaultPolicy.Prune(dumps)
+	keep, drop := DefaultPolicy.Prune(at("2031-01-01 00:00"), dumps)
 	if len(keep)+len(drop) != len(dumps) {
 		t.Fatalf("keep %d + drop %d != %d", len(keep), len(drop), len(dumps))
 	}
@@ -116,7 +116,7 @@ func TestPruneTable(t *testing.T) {
 			for _, s := range c.dumps {
 				ds = append(ds, Dump{Key: DumpKey(at(s), false), Time: at(s)})
 			}
-			keep, _ := c.policy.Prune(ds)
+			keep, _ := c.policy.Prune(at("2031-01-01 00:00"), ds)
 			got := keys(keep)
 			// A year's newest dump is kept as well, so compare against the expectation plus yearly floors.
 			if fmt.Sprint(got) != fmt.Sprint(c.want) {
@@ -128,22 +128,33 @@ func TestPruneTable(t *testing.T) {
 
 func TestNextRun(t *testing.T) {
 	ist := time.FixedZone("IST", 5*3600+1800)
+	one := []TimeOfDay{{2, 0}}
+	four := []TimeOfDay{{2, 0}, {8, 0}, {14, 0}, {20, 0}}
 	cases := []struct {
-		now  string
-		want string
+		name  string
+		times []TimeOfDay
+		now   string
+		want  string
 	}{
-		{"2026-10-22 01:00", "2026-10-22 02:00"},
-		{"2026-10-22 02:00", "2026-10-23 02:00"}, // exactly at the time: the next night
-		{"2026-10-22 23:59", "2026-10-23 02:00"},
+		{"before the night run", one, "2026-10-22 01:00", "2026-10-22 02:00"},
+		{"exactly at the time: the next night", one, "2026-10-22 02:00", "2026-10-23 02:00"},
+		{"late evening", one, "2026-10-22 23:59", "2026-10-23 02:00"},
+		{"four a day, before the first", four, "2026-10-22 01:00", "2026-10-22 02:00"},
+		{"four a day, between", four, "2026-10-22 09:30", "2026-10-22 14:00"},
+		{"four a day, exactly at one", four, "2026-10-22 14:00", "2026-10-22 20:00"},
+		{"four a day, after the last", four, "2026-10-22 20:01", "2026-10-23 02:00"},
+		{"month end rolls over", four, "2026-10-31 21:00", "2026-11-01 02:00"},
 	}
 	for _, c := range cases {
-		got := NextRun(at(c.now).In(time.UTC), 2, 0, time.UTC)
-		if !got.Equal(at(c.want)) {
-			t.Errorf("%s: got %v want %s", c.now, got, c.want)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			got := NextRun(at(c.now).In(time.UTC), c.times, time.UTC)
+			if !got.Equal(at(c.want)) {
+				t.Errorf("got %v want %s", got, c.want)
+			}
+		})
 	}
 	// 02:00 in India is 20:30 UTC the evening before.
-	got := NextRun(at("2026-10-22 12:00"), 2, 0, ist)
+	got := NextRun(at("2026-10-22 12:00"), one, ist)
 	if want := at("2026-10-22 20:30"); !got.Equal(want) {
 		t.Errorf("IST: got %v want %v", got, want)
 	}
@@ -151,6 +162,105 @@ func TestNextRun(t *testing.T) {
 		if _, _, err := ParseTimeOfDay(bad); err == nil {
 			t.Errorf("%q should be refused", bad)
 		}
+	}
+}
+
+func TestParseTimesOfDay(t *testing.T) {
+	ok := []struct{ in, want string }{
+		{"02:00", "[02:00]"},
+		{"02:00,08:00,14:00,20:00", "[02:00 08:00 14:00 20:00]"},
+		{"20:00, 02:00 ,14:00,08:00", "[02:00 08:00 14:00 20:00]"}, // spaces and order do not matter
+		{"02:00,02:00,2:00", "[02:00]"},                            // duplicates, incl. 2:00 vs 02:00
+		{"02:00,", "[02:00]"},
+		{"23:59,00:00", "[00:00 23:59]"},
+	}
+	for _, c := range ok {
+		got, err := ParseTimesOfDay(c.in)
+		if err != nil || fmt.Sprint(got) != c.want {
+			t.Errorf("%q: got %v, %v want %s", c.in, got, err, c.want)
+		}
+	}
+	for _, bad := range []string{"", " ", ",", "02:00,24:00", "02:00;08:00", "02:00,abc", "02:00,08:61"} {
+		if got, err := ParseTimesOfDay(bad); err == nil {
+			t.Errorf("%q should be refused, got %v", bad, got)
+		}
+	}
+}
+
+func TestMaxGapAndCatchUp(t *testing.T) {
+	cases := []struct {
+		in      string
+		gap, up time.Duration
+	}{
+		{"02:00", 24 * time.Hour, 26 * time.Hour},
+		{"02:00,08:00,14:00,20:00", 6 * time.Hour, 8 * time.Hour},
+		{"00:00,12:00", 12 * time.Hour, 14 * time.Hour},
+		{"06:00,07:00", 23 * time.Hour, 25 * time.Hour},
+	}
+	for _, c := range cases {
+		ts, err := ParseTimesOfDay(c.in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if g := MaxGap(ts); g != c.gap {
+			t.Errorf("%s: gap %v want %v", c.in, g, c.gap)
+		}
+		if u := CatchUpAfter(ts); u != c.up {
+			t.Errorf("%s: catch-up %v want %v", c.in, u, c.up)
+		}
+	}
+}
+
+func TestPruneKeepRecent(t *testing.T) {
+	// Four dumps a day for four days, newest 2026-10-24 20:00.
+	var times []string
+	for d := 21; d <= 24; d++ {
+		for _, h := range []string{"02", "08", "14", "20"} {
+			times = append(times, fmt.Sprintf("2026-10-%d %s:00", d, h))
+		}
+	}
+	mk := func() (ds []Dump) {
+		for _, s := range times {
+			ds = append(ds, Dump{Key: DumpKey(at(s), false), Time: at(s)})
+		}
+		return ds
+	}
+	now := at("2026-10-24 20:30")
+	dayOnly := Policy{Daily: 2}
+	if keep, _ := dayOnly.Prune(now, mk()); len(keep) != 2 { // the 24th's and 23rd's last dumps (a 2 day window)
+		t.Errorf("without KeepRecent kept %v", keys(keep))
+	}
+	p := Policy{Daily: 2, KeepRecent: 48 * time.Hour}
+	keep, drop := p.Prune(now, mk())
+	got := map[string]bool{}
+	for _, k := range keys(keep) {
+		got[k] = true
+	}
+	// everything after 2026-10-22 20:30 is within 48 hours: 23rd (4) + 24th (4) = 8, and the 22nd 20:00 is just outside
+	// but it is not the newest of a kept day, so it goes.
+	if len(keep) != 8 {
+		t.Errorf("kept %d (%v) want 8", len(keep), keys(keep))
+	}
+	for _, k := range []string{"20261023-020000", "20261023-080000", "20261024-140000", "20261024-200000"} {
+		if !got[k] {
+			t.Errorf("recent dump %s was dropped", k)
+		}
+	}
+	if got["20261022-200000"] || got["20261021-200000"] {
+		t.Error("an older intraday dump that is not a day's newest must be pruned")
+	}
+	if len(keep)+len(drop) != len(times) {
+		t.Error("keep + drop must cover all dumps")
+	}
+	// A dump exactly KeepRecent old is no longer "recent"; one a minute younger is.
+	edge := []Dump{
+		{Key: DumpKey(at("2026-10-22 20:30"), false), Time: at("2026-10-22 20:30")},
+		{Key: DumpKey(at("2026-10-22 20:31"), false), Time: at("2026-10-22 20:31")},
+		{Key: DumpKey(at("2026-10-24 20:30"), false), Time: at("2026-10-24 20:30")},
+	}
+	keep, _ = Policy{KeepRecent: 48 * time.Hour}.Prune(now, edge)
+	if fmt.Sprint(keys(keep)) != "[20261022-203100 20261024-203000]" {
+		t.Errorf("edge: kept %v", keys(keep))
 	}
 }
 
