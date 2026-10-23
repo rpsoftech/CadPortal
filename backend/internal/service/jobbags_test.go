@@ -92,3 +92,26 @@ func TestPlanJobBags(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanJobBagsIgnoresDeletedVariations(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	a := fixtureVariation(t, s, "LR058")
+	v, _ := s.Q.GetVariation(ctx, a)
+	second, err := s.CreateVariation(ctx, v.DesignID, BaseInput{VolumeMM3: dp("100")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteVariation(ctx, second.ID); err != nil {
+		t.Fatal(err)
+	}
+	req := JobBagsRequest{MetalCode: "18KR", StoneCode: "2HD", DesignIDs: []int64{v.DesignID}}
+	bags, _, err := s.PlanJobBags(ctx, req)
+	if err != nil || len(bags) != 1 || bags[0].VariationCode != "LR058-V1" {
+		t.Fatalf("design_ids must skip the deleted variation: %v %d", err, len(bags))
+	}
+	req = JobBagsRequest{MetalCode: "18KR", StoneCode: "2HD", Items: []JobBagItem{{VariationID: second.ID}}}
+	if _, _, err := s.PlanJobBags(ctx, req); !errors.Is(err, ErrNotFound) {
+		t.Errorf("a deleted variation asked for by id: %v", err)
+	}
+}

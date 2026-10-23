@@ -362,9 +362,30 @@ export interface TrashedFile {
   has_thumbnail: boolean;
 }
 
+/** A deleted variation: kept with its seats, files and photos until purge_after. */
+export interface DeletedVariation {
+  id: number;
+  code: string;
+  design_code: string;
+  design_name: string;
+  deleted_at: string;
+  /** Null when no retention period is set (nothing is purged automatically). */
+  purge_after: string | null;
+  has_files: boolean;
+  /** True while its design is deleted: restore the design first. */
+  design_deleted: boolean;
+}
+
 export interface Trash {
   designs: DeletedDesign[];
+  variations: DeletedVariation[];
   files: TrashedFile[];
+}
+
+export interface DuplicateDesignBody {
+  name?: string;
+  variation_ids?: number[];
+  copy_tags: boolean;
 }
 
 /** One run of the backup service. */

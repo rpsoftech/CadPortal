@@ -22,6 +22,10 @@ import { FixedPipe, StoneGramsPipe } from '../../core/format';
 import { BomResult, CostingItem, Variation } from '../../core/models';
 import { saveBlob } from '../../shared/download';
 import { MediaGalleryComponent } from './media-gallery.component';
+import {
+  DuplicateDesignData,
+  DuplicateDesignDialogComponent,
+} from '../../shared/duplicate-design-dialog.component';
 import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design-dialog.component';
 import {
   NewVariationData,
@@ -339,6 +343,30 @@ export class DesignDetailComponent {
         if (!code) return;
         this.snack.open('Design saved', 'OK', { duration: 3000 });
         this.refresh();
+      });
+  }
+
+  protected duplicateDesign(): void {
+    const d = this.design.value();
+    if (!d) return;
+    const data: DuplicateDesignData = {
+      designId: d.id,
+      code: d.code,
+      name: d.name,
+      variations: d.variations.map((v) => ({ id: v.id, code: v.code })),
+      tagCount: d.tags.length,
+    };
+    this.dialog
+      .open<DuplicateDesignDialogComponent, DuplicateDesignData, string>(
+        DuplicateDesignDialogComponent,
+        { data, width: '560px' },
+      )
+      .afterClosed()
+      .subscribe((code) => {
+        if (code) {
+          this.snack.open(`Created ${code} from ${d.code}`, 'OK', { duration: 4000 });
+          void this.router.navigate(['/designs', code]);
+        }
       });
   }
 

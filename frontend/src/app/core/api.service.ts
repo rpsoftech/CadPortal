@@ -13,6 +13,7 @@ import {
   CostingItem,
   JobBagsRequest,
   DesignDetail,
+  DuplicateDesignBody,
   DesignFilter,
   DesignImportResult,
   DesignImportRow,
@@ -286,6 +287,14 @@ export class ApiService {
   }
   restoreDesign(id: number): Observable<void> {
     return this.http.post<void>(`${BASE}/designs/${id}/restore`, null);
+  }
+  restoreVariation(id: number): Observable<void> {
+    return this.http.post<void>(`${BASE}/variations/${id}/restore`, null);
+  }
+
+  /** A new design (next automatic code) with copies of the chosen variations' base input and seats. */
+  duplicateDesign(id: number, body: DuplicateDesignBody): Observable<DesignDetail> {
+    return this.http.post<DesignDetail>(`${BASE}/designs/${id}/duplicate`, body);
   }
 
   // ----- photos and video -----
