@@ -147,3 +147,9 @@ SELECT * FROM categories WHERE id = $1;
 
 -- name: DesignCodeTaken :one
 SELECT EXISTS (SELECT 1 FROM master_designs WHERE code = $1);
+
+-- name: ClaimMaintenanceSlot :execrows
+-- Takes the slot when nobody claimed it within the last min_gap_seconds. Exactly one concurrent caller gets 1.
+INSERT INTO maintenance_claims (name, claimed_at) VALUES (sqlc.arg('name'), now())
+ON CONFLICT (name) DO UPDATE SET claimed_at = now()
+WHERE maintenance_claims.claimed_at <= now() - make_interval(secs => sqlc.arg('min_gap_seconds')::float8);

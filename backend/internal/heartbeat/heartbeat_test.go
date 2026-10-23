@@ -96,3 +96,27 @@ func TestRunPingsWhileHealthyAndGoesQuietWhenNot(t *testing.T) {
 		t.Errorf("one more line for the recovery, got %d", logs.Load())
 	}
 }
+
+func TestRunGatedPingsOnlyWhenTheGateIsOurs(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1) }))
+	defer srv.Close()
+	ok := func(context.Context) error { return nil }
+	run := func(gate func(context.Context) (bool, error)) {
+		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+		defer cancel()
+		RunGated(ctx, srv.URL, time.Hour, ok, gate, func(string, ...any) {})
+	}
+	run(func(context.Context) (bool, error) { return false, nil })
+	if hits.Load() != 0 {
+		t.Fatalf("pinged %d times although another instance holds the slot", hits.Load())
+	}
+	run(func(context.Context) (bool, error) { return true, nil })
+	if hits.Load() != 1 {
+		t.Fatalf("pings with our slot = %d, want 1", hits.Load())
+	}
+	run(func(context.Context) (bool, error) { return true, errors.New("db down") })
+	if hits.Load() != 1 {
+		t.Fatal("a failing gate must not ping")
+	}
+}

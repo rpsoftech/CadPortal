@@ -12,6 +12,26 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const claimMaintenanceSlot = `-- name: ClaimMaintenanceSlot :execrows
+INSERT INTO maintenance_claims (name, claimed_at) VALUES ($1, now())
+ON CONFLICT (name) DO UPDATE SET claimed_at = now()
+WHERE maintenance_claims.claimed_at <= now() - make_interval(secs => $2::float8)
+`
+
+type ClaimMaintenanceSlotParams struct {
+	Name          string  `json:"name"`
+	MinGapSeconds float64 `json:"min_gap_seconds"`
+}
+
+// Takes the slot when nobody claimed it within the last min_gap_seconds. Exactly one concurrent caller gets 1.
+func (q *Queries) ClaimMaintenanceSlot(ctx context.Context, arg ClaimMaintenanceSlotParams) (int64, error) {
+	result, err := q.db.Exec(ctx, claimMaintenanceSlot, arg.Name, arg.MinGapSeconds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const claimRecalcJob = `-- name: ClaimRecalcJob :one
 UPDATE weight_recalc_jobs
 SET status = 'running', started_at = now()

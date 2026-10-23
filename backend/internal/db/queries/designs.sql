@@ -198,3 +198,14 @@ LEFT JOIN cad_variations v ON v.design_id = d.id
 LEFT JOIN metals m ON m.id = v.base_ref_metal_id
 WHERE d.deleted_at IS NULL
 ORDER BY d.code, v.seq NULLS FIRST;
+
+-- name: ListAllVariationsForRecalc :many
+-- Locks every variation (NO KEY UPDATE: edits of a variation wait, foreign-key checks do not) in id order,
+-- so the full rebuild and a seat edit take the variation row before its weight rows, always.
+SELECT * FROM cad_variations ORDER BY id FOR NO KEY UPDATE;
+
+-- name: ListAllSeatsForRecalc :many
+SELECT s.variation_id, s.size_mm, s.stone_count, sc.code AS locked_code
+FROM variation_stone_seats s
+LEFT JOIN stone_codes sc ON sc.id = s.locked_stone_code_id
+ORDER BY s.variation_id, s.position;

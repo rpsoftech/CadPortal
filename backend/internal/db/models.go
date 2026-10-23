@@ -96,6 +96,11 @@ type DesignTag struct {
 	TagID    int64 `json:"tag_id"`
 }
 
+type MaintenanceClaim struct {
+	Name      string             `json:"name"`
+	ClaimedAt pgtype.Timestamptz `json:"claimed_at"`
+}
+
 type MasterDesign struct {
 	ID         int64              `json:"id"`
 	Code       string             `json:"code"`

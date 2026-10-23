@@ -344,6 +344,45 @@ func (q *Queries) InsertSeat(ctx context.Context, arg InsertSeatParams) error {
 	return err
 }
 
+const listAllSeatsForRecalc = `-- name: ListAllSeatsForRecalc :many
+SELECT s.variation_id, s.size_mm, s.stone_count, sc.code AS locked_code
+FROM variation_stone_seats s
+LEFT JOIN stone_codes sc ON sc.id = s.locked_stone_code_id
+ORDER BY s.variation_id, s.position
+`
+
+type ListAllSeatsForRecalcRow struct {
+	VariationID int64           `json:"variation_id"`
+	SizeMm      decimal.Decimal `json:"size_mm"`
+	StoneCount  int32           `json:"stone_count"`
+	LockedCode  pgtype.Text     `json:"locked_code"`
+}
+
+func (q *Queries) ListAllSeatsForRecalc(ctx context.Context) ([]ListAllSeatsForRecalcRow, error) {
+	rows, err := q.db.Query(ctx, listAllSeatsForRecalc)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllSeatsForRecalcRow
+	for rows.Next() {
+		var i ListAllSeatsForRecalcRow
+		if err := rows.Scan(
+			&i.VariationID,
+			&i.SizeMm,
+			&i.StoneCount,
+			&i.LockedCode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAllVariationIDs = `-- name: ListAllVariationIDs :many
 SELECT id FROM cad_variations ORDER BY id
 `
@@ -361,6 +400,52 @@ func (q *Queries) ListAllVariationIDs(ctx context.Context) ([]int64, error) {
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllVariationsForRecalc = `-- name: ListAllVariationsForRecalc :many
+SELECT id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes FROM cad_variations ORDER BY id FOR NO KEY UPDATE
+`
+
+// Locks every variation (NO KEY UPDATE: edits of a variation wait, foreign-key checks do not) in id order,
+// so the full rebuild and a seat edit take the variation row before its weight rows, always.
+func (q *Queries) ListAllVariationsForRecalc(ctx context.Context) ([]CadVariation, error) {
+	rows, err := q.db.Query(ctx, listAllVariationsForRecalc)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CadVariation
+	for rows.Next() {
+		var i CadVariation
+		if err := rows.Scan(
+			&i.ID,
+			&i.DesignID,
+			&i.Seq,
+			&i.Code,
+			&i.BaseVolumeMm3,
+			&i.BaseRefWeightG,
+			&i.BaseRefMetalID,
+			&i.File3dmSha256,
+			&i.FileStlSha256,
+			&i.BaselineStoneCarats,
+			&i.BaselineGrossWeightG,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.File3dmKey,
+			&i.File3dmName,
+			&i.File3dmSizeBytes,
+			&i.FileStlKey,
+			&i.FileStlName,
+			&i.FileStlSizeBytes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
