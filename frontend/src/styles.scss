@@ -1,14 +1,31 @@
 @use '@angular/material' as mat;
 
+/* Golden Oak Jewels brand colours (from the logo) */
+:root {
+  --brand-maroon: #762e42;
+  --brand-cream: #f9e7bf;
+}
+
 html {
   color-scheme: light dark;
   @include mat.theme(
     (
-      color: mat.$azure-palette,
+      color: (
+        primary: mat.$rose-palette,
+        tertiary: mat.$orange-palette,
+      ),
       typography: system-ui,
       density: 0,
     )
   );
+}
+
+mat-toolbar {
+  --mat-toolbar-container-background-color: var(--brand-maroon);
+  --mat-toolbar-container-text-color: var(--brand-cream);
+  --mat-button-text-label-text-color: var(--brand-cream);
+  --mat-button-outlined-label-text-color: var(--brand-cream);
+  --mat-button-outlined-outline-color: color-mix(in srgb, var(--brand-cream) 55%, transparent);
 }
 
 body {
@@ -50,6 +67,12 @@ body {
 table.plain {
   border-collapse: collapse;
   width: 100%;
+  // On a phone a wide table scrolls inside its own box instead of making the whole page scroll sideways.
+  @media (max-width: 720px) {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
   th,
   td {
     text-align: left;

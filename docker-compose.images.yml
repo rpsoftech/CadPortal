@@ -2,7 +2,7 @@
 #
 #   CADPORTAL_VERSION=1.2.3 docker compose -f docker-compose.prod.yml -f docker-compose.images.yml up -d
 #
-# Add --pull always to fetch a moved tag such as latest. Everything else (database,
+# Add --pull always to fetch a moved tag such as staging. Everything else (database,
 # environment, hardening) comes from docker-compose.prod.yml; this file only says where the
 # application images come from. The images are published by .github/workflows/release.yml.
 services:

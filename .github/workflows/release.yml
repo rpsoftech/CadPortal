@@ -65,11 +65,11 @@ jobs:
         uses: docker/metadata-action@v6.2.0
         with:
           images: ghcr.io/${{ github.repository }}-${{ matrix.name }}
-          # v1.2.3 gives 1.2.3, 1.2 and latest; a pre-release (v1.2.3-rc1) gets only its own tag.
+          # v1.2.3 gives 1.2.3 and 1.2; a pre-release (v1.2.3-rc1) gets only its own tag. There is no
+          # "latest": production pins an exact version, and :staging belongs to staging.yml.
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
       - name: Build and push
         id: push
         uses: docker/build-push-action@v7.4.0
