@@ -204,6 +204,8 @@ export function costUsable(r: CostPreview | null, skip: boolean): boolean {
     }
     table.plain {
       font-size: 0.9rem;
+      /* a block table (phone width) would otherwise be squeezed to nothing in the flex column */
+      flex: none;
     }
     @media (max-width: 720px) {
       .col {

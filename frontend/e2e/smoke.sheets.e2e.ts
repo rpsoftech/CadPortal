@@ -71,7 +71,7 @@ async function setPrice(page: Page, size: string, ct: string, perPc: string | nu
     ],
     baseline_code: '',
   });
-  expect(r.status).toBe(200);
+  expect([200, 202]).toContain(r.status); // 202: weights are rebuilt in the background
 }
 
 interface Seeded {
