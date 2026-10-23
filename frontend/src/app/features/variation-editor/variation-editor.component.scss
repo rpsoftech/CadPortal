@@ -29,8 +29,18 @@ h1 {
 }
 .seat-table {
   min-width: 480px;
-  // keep the table a real table inside the scrolling box, whatever the page-wide phone rule says
-  display: table;
+}
+@media (max-width: 720px) {
+  // one card per seat (the shared .stack rule): no sideways scrolling box
+  .seat-table {
+    min-width: 0;
+  }
+  .cell {
+    width: 100%;
+  }
+  .actions button {
+    flex: 1 1 auto;
+  }
 }
 .cell {
   width: 150px;

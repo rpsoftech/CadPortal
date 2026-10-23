@@ -26,7 +26,7 @@ export function fullLink(origin: string, link: ResetLink): string {
       @if (error()) {
         <div class="error-box" role="alert">{{ error() }}</div>
       } @else if (!link()) {
-        <mat-progress-bar mode="indeterminate" />
+        <mat-progress-bar aria-label="Loading" mode="indeterminate" />
       } @else {
         <p>
           Send this link to {{ user.name || user.email }}. It works once, until

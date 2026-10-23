@@ -43,7 +43,7 @@ function matches(group: AbstractControl): ValidationErrors | null {
     <div class="wrap">
       <mat-card appearance="outlined">
         <mat-card-header>
-          <mat-card-title>Choose a new password</mat-card-title>
+          <h1 mat-card-title>Choose a new password</h1>
         </mat-card-header>
         @if (!token()) {
           <mat-card-content>
@@ -96,7 +96,7 @@ function matches(group: AbstractControl): ValidationErrors | null {
                 <div class="error-box" role="alert">{{ error() }}</div>
               }
               @if (busy()) {
-                <mat-progress-bar mode="indeterminate" />
+                <mat-progress-bar aria-label="Loading" mode="indeterminate" />
               }
             </mat-card-content>
             <mat-card-actions align="end">

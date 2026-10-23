@@ -117,6 +117,27 @@ export class CatalogComponent {
     tagIds: new FormControl<number[]>([], { nonNullable: true }),
   });
 
+  /** The filter panel is folded away on a phone; on wider screens it is always shown. */
+  protected readonly filtersOpen = signal(false);
+
+  /** How many filters are set (the search box is not counted: it is always in view). */
+  protected readonly activeFilters = toSignal(
+    this.form.valueChanges.pipe(
+      startWith(null),
+      map(() => {
+        const v = this.form.getRawValue();
+        const set = (x: string | null) => (x ?? '').trim() !== '';
+        return (
+          (v.categoryId !== null ? 1 : 0) +
+          (v.metalCode !== null ? 1 : 0) +
+          [v.minNetWt, v.maxNetWt, v.minGrossWt, v.maxGrossWt, v.maxStoneCts].filter(set).length +
+          v.tagIds.length
+        );
+      }),
+    ),
+    { initialValue: 0 },
+  );
+
   protected readonly pageSizeOptions = [12, 24, 48, 96];
   protected readonly pageIndex = signal(0);
   protected readonly pageSize = signal(24);

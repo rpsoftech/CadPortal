@@ -83,7 +83,7 @@ const IDLE: UploadState = { busy: false, progress: null, current: '', errors: []
   imports: [MatButtonModule, MatCardModule, MatDialogModule, MatProgressBarModule],
   template: `
     <mat-card appearance="outlined">
-      <mat-card-header><mat-card-title>Photos & video</mat-card-title></mat-card-header>
+      <mat-card-header><h2 mat-card-title>Photos & video</h2></mat-card-header>
       <mat-card-content>
         @for (t of targets(); track t.variationId) {
           <section class="target" [attr.aria-label]="'Photos and video: ' + t.label">
@@ -97,6 +97,7 @@ const IDLE: UploadState = { busy: false, progress: null, current: '', errors: []
                   (click)="picker.click()"
                   [disabled]="t.left === 0 || state(t.variationId).busy"
                   [title]="t.left === 0 ? 'Remove one first: at most ' + max + ' fit here' : ''"
+                  [attr.aria-label]="'Add photo or video to ' + t.label"
                 >
                   Add photo or video
                 </button>
@@ -116,6 +117,7 @@ const IDLE: UploadState = { busy: false, progress: null, current: '', errors: []
               <div class="busy" role="status">
                 Sending {{ state(t.variationId).current }}…
                 <mat-progress-bar
+                  aria-label="Upload progress"
                   [mode]="state(t.variationId).progress === null ? 'indeterminate' : 'determinate'"
                   [value]="state(t.variationId).progress ?? 0"
                 />
@@ -160,9 +162,13 @@ const IDLE: UploadState = { busy: false, progress: null, current: '', errors: []
                     @if (canEdit()) {
                       <div class="actions">
                         @if (m.kind === 'image' && m.variation_id === null && !m.is_cover) {
-                          <button matButton (click)="makeCover(m)">Make cover</button>
+                          <button matButton (click)="makeCover(m)" [attr.aria-label]="'Make cover: ' + m.filename">
+                            Make cover
+                          </button>
                         }
-                        <button matButton (click)="remove(m)">Delete</button>
+                        <button matButton (click)="remove(m)" [attr.aria-label]="'Delete ' + m.filename">
+                          Delete
+                        </button>
                       </div>
                     }
                   </li>
@@ -265,6 +271,11 @@ const IDLE: UploadState = { busy: false, progress: null, current: '', errors: []
     }
     .busy {
       margin: 8px 0;
+    }
+    @media (max-width: 720px) {
+      .grid {
+        grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+      }
     }
   `,
 })

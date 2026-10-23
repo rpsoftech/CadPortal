@@ -2,7 +2,7 @@
   <a routerLink="/" class="muted back">← Catalog</a>
 
   @if (design.isLoading() && !design.hasValue()) {
-    <mat-progress-bar mode="indeterminate" />
+    <mat-progress-bar aria-label="Loading" mode="indeterminate" />
   }
   @if (designError()) {
     <div class="error-box">{{ designError() }}</div>
@@ -32,6 +32,7 @@
     }
 
     <app-media-gallery
+      class="gallery"
       [designId]="d.id"
       [media]="d.media"
       [variations]="d.variations"
@@ -43,24 +44,24 @@
       <p class="muted">No variations yet. Add one to set its weight, seats and CAD files.</p>
     } @else {
       <!-- Weight matrix across all metals -->
-      <mat-card appearance="outlined">
-        <mat-card-header><mat-card-title>Weight matrix</mat-card-title></mat-card-header>
+      <mat-card appearance="outlined" class="weights">
+        <mat-card-header><h2 mat-card-title>Weight matrix</h2></mat-card-header>
         <mat-card-content class="scroll">
-          <table class="plain">
+          <table class="plain stack" aria-label="Weights by metal and variation, in grams">
             <thead>
               <tr>
-                <th>Metal</th>
+                <th scope="col">Metal</th>
                 @for (v of d.variations; track v.id) {
-                  <th class="num mono">{{ v.code }}</th>
+                  <th scope="col" class="num mono">{{ v.code }}</th>
                 }
               </tr>
             </thead>
             <tbody>
               @for (m of matrixMetals(); track m) {
                 <tr [class.current]="m === metalCode()">
-                  <td class="mono">{{ m }}</td>
+                  <th scope="row" class="mono">{{ m }}</th>
                   @for (v of d.variations; track v.id) {
-                    <td class="num">
+                    <td class="num" [attr.data-label]="v.code">
                       @if (cell(v, m); as c) {
                         <div>Net {{ c.net | fixed: 3 }}</div>
                         <div class="muted">Gross {{ c.gross | fixed: 3 }}</div>
@@ -72,17 +73,17 @@
                 </tr>
               }
               <tr class="total">
-                <td>Baseline stone (g)</td>
+                <th scope="row">Baseline stone (g)</th>
                 @for (v of d.variations; track v.id) {
-                  <td class="num">
+                  <td class="num" [attr.data-label]="v.code">
                     {{ hasGap(v) ? '–' : (v.baseline_stone_carats | stoneGrams: 4) }}
                   </td>
                 }
               </tr>
               <tr class="total muted">
-                <td>Baseline stone (ct)</td>
+                <th scope="row">Baseline stone (ct)</th>
                 @for (v of d.variations; track v.id) {
-                  <td class="num">{{ hasGap(v) ? '–' : (v.baseline_stone_carats | fixed: 4) }}</td>
+                  <td class="num" [attr.data-label]="v.code">{{ hasGap(v) ? '–' : (v.baseline_stone_carats | fixed: 4) }}</td>
                 }
               </tr>
             </tbody>
@@ -117,7 +118,7 @@
 
       <!-- BOM simulator -->
       <mat-card appearance="outlined">
-        <mat-card-header><mat-card-title>BOM simulator</mat-card-title></mat-card-header>
+        <mat-card-header><h2 mat-card-title>BOM simulator</h2></mat-card-header>
         <mat-card-content>
           <div class="row">
             <mat-form-field appearance="outline" subscriptSizing="dynamic">
@@ -142,7 +143,7 @@
           </div>
 
           @if (bomState().status === 'loading') {
-            <mat-progress-bar mode="indeterminate" />
+            <mat-progress-bar aria-label="Calculating the stone list" mode="indeterminate" />
           }
           @if (bomError(); as err) {
             <div class="error-box" role="alert">
@@ -162,38 +163,38 @@
               <p class="muted">This variation has no stone seats.</p>
             } @else {
               <div class="scroll">
-                <table class="plain">
+                <table class="plain stack" aria-label="Stone bill of materials">
                   <thead>
                     <tr>
-                      <th>Size (mm)</th>
-                      <th class="num">Pcs</th>
-                      <th>Code</th>
-                      <th class="num">g / stone</th>
-                      <th class="num">Line g</th>
-                      <th class="num muted">ct / stone</th>
-                      <th class="num muted">Line ct</th>
+                      <th scope="col">Size (mm)</th>
+                      <th scope="col" class="num">Pcs</th>
+                      <th scope="col">Code</th>
+                      <th scope="col" class="num">g / stone</th>
+                      <th scope="col" class="num">Line g</th>
+                      <th scope="col" class="num muted">ct / stone</th>
+                      <th scope="col" class="num muted">Line ct</th>
                     </tr>
                   </thead>
                   <tbody>
                     @for (l of b.lines; track $index) {
                       <tr>
-                        <td>{{ l.size_mm | fixed: 2 }}</td>
-                        <td class="num">{{ l.stone_count }}</td>
-                        <td class="mono">{{ l.stone_code }}{{ l.locked ? ' 🔒' : '' }}</td>
-                        <td class="num">{{ l.carats_per_stone | stoneGrams: 5 }}</td>
-                        <td class="num">{{ l.line_weight_g | fixed: 4 }}</td>
-                        <td class="num muted">{{ l.carats_per_stone | fixed: 4 }}</td>
-                        <td class="num muted">{{ l.line_carats | fixed: 4 }}</td>
+                        <td data-label="Size (mm)">{{ l.size_mm | fixed: 2 }}</td>
+                        <td data-label="Pcs" class="num">{{ l.stone_count }}</td>
+                        <td data-label="Code" class="mono">{{ l.stone_code }}{{ l.locked ? ' 🔒' : '' }}</td>
+                        <td data-label="g / stone" class="num">{{ l.carats_per_stone | stoneGrams: 5 }}</td>
+                        <td data-label="Line g" class="num">{{ l.line_weight_g | fixed: 4 }}</td>
+                        <td data-label="ct / stone" class="num muted">{{ l.carats_per_stone | fixed: 4 }}</td>
+                        <td data-label="Line ct" class="num muted">{{ l.line_carats | fixed: 4 }}</td>
                       </tr>
                     }
                     <tr class="total">
                       <td>Total</td>
-                      <td class="num">{{ b.total_pcs }}</td>
+                      <td class="num" data-label="Pcs">{{ b.total_pcs }}</td>
                       <td></td>
                       <td></td>
-                      <td class="num">{{ b.total_carats | stoneGrams: 4 }}</td>
+                      <td class="num" data-label="Line g">{{ b.total_carats | stoneGrams: 4 }}</td>
                       <td></td>
-                      <td class="num muted">{{ b.total_carats | fixed: 4 }}</td>
+                      <td class="num muted" data-label="Line ct">{{ b.total_carats | fixed: 4 }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -218,7 +219,7 @@
 
       <!-- Exports -->
       <mat-card appearance="outlined">
-        <mat-card-header><mat-card-title>Exports</mat-card-title></mat-card-header>
+        <mat-card-header><h2 mat-card-title>Exports</h2></mat-card-header>
         <mat-card-content>
           <p class="muted">Uses the variation, metal and stone code selected above.</p>
           <div class="row">
@@ -293,7 +294,8 @@
           }
 
           @if (exportBusy()) {
-            <mat-progress-bar mode="indeterminate" />
+            <mat-progress-bar aria-label="Preparing the export" mode="indeterminate" />
+            <span class="sr-only" role="status">Preparing the export…</span>
           }
           @if (exportError(); as err) {
             <div class="error-box" role="alert">
@@ -318,39 +320,43 @@
       </mat-card>
 
       <!-- CAD files -->
-      <mat-card appearance="outlined">
-        <mat-card-header><mat-card-title>CAD files</mat-card-title></mat-card-header>
+      <mat-card appearance="outlined" class="cad-files">
+        <mat-card-header><h2 mat-card-title>CAD files</h2></mat-card-header>
         <mat-card-content>
-          <table class="plain">
+          <table class="plain stack" aria-label="CAD files by variation">
             <thead>
               <tr>
-                <th>Variation</th>
-                <th>3dm</th>
-                <th>stl</th>
+                <th scope="col">Variation</th>
+                <th scope="col">3dm</th>
+                <th scope="col">stl</th>
               </tr>
             </thead>
             <tbody>
               @for (v of d.variations; track v.id) {
                 <tr>
-                  <td class="mono">{{ v.code }}</td>
-                  <td>
+                  <td class="mono" data-label="Variation">{{ v.code }}</td>
+                  <td data-label="3dm">
                     @if (v.file_3dm_sha256) {
                       <div>{{ v.file_3dm_name }} · {{ size(v.file_3dm_size_bytes) }}</div>
                       <div class="mono muted small">
                         sha256 {{ v.file_3dm_sha256.slice(0, 16) }}…
                       </div>
-                      <button matButton (click)="download(v, '3dm')">Download</button>
+                      <button matButton (click)="download(v, '3dm')">
+                        Download
+                      </button>
                     } @else {
                       <span class="muted">Not uploaded</span>
                     }
                   </td>
-                  <td>
+                  <td data-label="stl">
                     @if (v.file_stl_sha256) {
                       <div>{{ v.file_stl_name }} · {{ size(v.file_stl_size_bytes) }}</div>
                       <div class="mono muted small">
                         sha256 {{ v.file_stl_sha256.slice(0, 16) }}…
                       </div>
-                      <button matButton (click)="download(v, 'stl')">Download</button>
+                      <button matButton (click)="download(v, 'stl')">
+                        Download
+                      </button>
                     } @else {
                       <span class="muted">Not uploaded</span>
                     }

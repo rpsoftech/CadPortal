@@ -48,6 +48,110 @@ async function check(page: Page, label: string): Promise<void> {
   expect(scroll.page, `${label} scrolls sideways: ${culprits}`).toBeLessThanOrEqual(scroll.view);
 }
 
+const SCREENS: [string, string][] = [
+  ['catalog', '/'],
+  ['design', '/designs/LR0001'],
+  ['variation-editor', '/designs/LR0001/variations/1/edit'],
+  ['master-data', '/master-data'],
+  ['master-data-matrix', '/master-data?tab=matrix'],
+  ['master-data-categories', '/master-data?tab=categories'],
+  ['removed', '/removed'],
+  ['audit', '/audit'],
+  ['backups', '/backups'],
+  ['users', '/users'],
+];
+
+// Other phone and tablet sizes: the smallest phone, a tablet, and a phone turned sideways.
+for (const [name, width, height] of [
+  ['320 px', 320, 640],
+  ['768 px', 768, 1024],
+  ['landscape 812x375', 812, 375],
+] as const) {
+  test.describe(name, () => {
+    test.use({ viewport: { width, height } });
+    test(`every screen fits ${name} without sideways scrolling`, async ({ page }) => {
+      await signIn(page);
+      for (const [label, url] of SCREENS) {
+        await page.goto(url);
+        await check(page, `${label} at ${name}`);
+      }
+    });
+  });
+}
+
+test('the catalog filters fold into a panel with a count, and the search stays in view', async ({ page }) => {
+  await signIn(page);
+  const toggle = page.getByRole('button', { name: /^Filters/ });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByLabel('Net min (g)')).toBeHidden();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await page.getByLabel('Net min (g)').fill('1');
+  await page.getByLabel('Gross max (g)').fill('9');
+  await expect(toggle).toHaveAccessibleName('Filters, 2 active');
+  await expect(page.getByRole('button', { name: /^Show \d+ design/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Clear filters' })).toBeVisible();
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await expect(toggle).toHaveAccessibleName('Filters');
+  await page.getByRole('button', { name: /^Show \d+ design/ }).click();
+  await expect(page.getByLabel('Net min (g)')).toBeHidden();
+
+  // the search box stays at the top while the list scrolls
+  await page.evaluate(() => window.scrollTo(0, 600));
+  await expect(page.getByLabel('Search code or name')).toBeInViewport();
+  await check(page, 'catalog scrolled');
+});
+
+test('tables become cards, and the seat grid is one card per seat with large fields', async ({ page }) => {
+  await signIn(page);
+  for (const [url, label] of [
+    ['/users', 'Users'],
+    ['/audit', 'Audit log entries'],
+    ['/master-data', 'Alloys'],
+    ['/master-data?tab=matrix', 'Stone matrix'],
+  ]) {
+    await page.goto(url);
+    const table = page.getByRole('table', { name: label });
+    await expect(table.locator('tbody tr').first()).toBeVisible();
+    expect(await table.locator('tbody tr').first().evaluate((el) => getComputedStyle(el).display)).toBe('block');
+    // a real label sits on each value
+    expect(await table.locator('tbody td[data-label]').count()).toBeGreaterThan(2);
+  }
+
+  await page.goto('/designs/LR0001/variations/1/edit');
+  await page.getByRole('button', { name: 'Add seat' }).click();
+  const size = page.getByLabel('Seat 1 size in mm');
+  await expect(size).toBeVisible();
+  const box = await size.locator('xpath=ancestor::mat-form-field').boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+  expect(box!.width).toBeGreaterThan(120);
+  expect(await size.getAttribute('inputmode')).toBe('decimal');
+  expect(await page.getByLabel('Seat 1 stone count').getAttribute('inputmode')).toBe('numeric');
+  await check(page, 'seat card');
+});
+
+test('buttons are finger sized on a phone, and dialogs use the screen width', async ({ page }) => {
+  await signIn(page);
+  for (const [label, url] of SCREENS) {
+    await page.goto(url);
+    await page.waitForLoadState('networkidle');
+    const small = await page.evaluate(() =>
+      Array.from(document.querySelectorAll<HTMLElement>('main button, main a[class*="mat-mdc-button"], main a[class*="mdc-button"]'))
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && r.height < 43.5 && !el.closest('mat-form-field, mat-chip-set, mat-chip-listbox, mat-slide-toggle, mat-button-toggle-group');
+        })
+        .map((el) => `${(el.textContent ?? '').trim().slice(0, 24)} ${Math.round(el.getBoundingClientRect().height)}px`),
+    );
+    expect(small, `${label}: buttons under 44 px`).toEqual([]);
+  }
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New design' }).click();
+  const w = (await page.getByRole('dialog').boundingBox())!.width;
+  expect(w).toBeGreaterThanOrEqual(375 - 16 - 1);
+});
+
 test('every screen fits a phone without sideways scrolling', async ({ page }) => {
   await signIn(page);
   await check(page, 'catalog');

@@ -70,7 +70,7 @@ export function ago(iso: string, now: Date = new Date()): string {
         here is for admins only.
       </p>
       @if (data.isLoading() && !data.value()) {
-        <mat-progress-bar mode="indeterminate" />
+        <mat-progress-bar aria-label="Loading" mode="indeterminate" />
       }
       @if (data.error()) {
         <div class="error-box" role="alert">Could not load the backups.</div>
@@ -111,22 +111,22 @@ export function ago(iso: string, now: Date = new Date()): string {
           } @else if (b.dumps.length === 0) {
             <p class="muted">No dumps in the backup bucket yet.</p>
           } @else {
-            <table class="plain">
+            <table class="plain stack" aria-label="Stored database dumps">
               <thead>
                 <tr>
-                  <th>Taken</th>
-                  <th>File</th>
-                  <th class="num">Size</th>
-                  <th></th>
+                  <th scope="col">Taken</th>
+                  <th scope="col">File</th>
+                  <th scope="col" class="num">Size</th>
+                  <th scope="col"><span class="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 @for (d of b.dumps; track d.key) {
                   <tr>
-                    <td>{{ d.taken_at | date: 'medium' }}</td>
-                    <td class="mono">{{ d.name }}</td>
-                    <td class="num">{{ bytes(d.bytes) }}</td>
-                    <td>
+                    <td data-label="Taken">{{ d.taken_at | date: 'medium' }}</td>
+                    <td data-label="File" class="mono">{{ d.name }}</td>
+                    <td data-label="Size" class="num">{{ bytes(d.bytes) }}</td>
+                    <td class="row-actions">
                       <button
                         matButton
                         [disabled]="busy()"
@@ -154,26 +154,26 @@ export function ago(iso: string, now: Date = new Date()): string {
           @if (b.runs.length === 0) {
             <p class="muted">The backup service has not run yet.</p>
           } @else {
-            <table class="plain">
+            <table class="plain stack" aria-label="Recent backup runs">
               <thead>
                 <tr>
-                  <th>Started</th>
-                  <th>Result</th>
-                  <th class="num">Database</th>
-                  <th>Files</th>
-                  <th>Problem</th>
+                  <th scope="col">Started</th>
+                  <th scope="col">Result</th>
+                  <th scope="col" class="num">Database</th>
+                  <th scope="col">Files</th>
+                  <th scope="col">Problem</th>
                 </tr>
               </thead>
               <tbody>
                 @for (r of b.runs; track r.id) {
                   <tr>
-                    <td>{{ r.started_at | date: 'medium' }}</td>
-                    <td>
+                    <td data-label="Started">{{ r.started_at | date: 'medium' }}</td>
+                    <td data-label="Result">
                       <span class="state" [class]="state(r)">{{ label(r) }}</span>
                     </td>
-                    <td class="num">{{ r.db_bytes ? bytes(r.db_bytes) : '' }}</td>
-                    <td>{{ files(r) }}</td>
-                    <td class="problem">{{ r.error }}</td>
+                    <td data-label="Database" class="num">{{ r.db_bytes ? bytes(r.db_bytes) : '' }}</td>
+                    <td data-label="Files">{{ files(r) }}</td>
+                    <td data-label="Problem" class="problem">{{ r.error }}</td>
                   </tr>
                 }
               </tbody>

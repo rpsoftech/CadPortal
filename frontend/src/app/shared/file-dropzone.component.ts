@@ -19,7 +19,6 @@ export interface StoredFile {
       role="button"
       [attr.tabindex]="disabled() ? -1 : 0"
       [attr.aria-disabled]="disabled()"
-      [attr.aria-label]="'Upload ' + kind() + ' file'"
       (click)="pick.click()"
       (keydown.enter)="pick.click()"
       (keydown.space)="pick.click(); $event.preventDefault()"
@@ -27,7 +26,7 @@ export interface StoredFile {
       (dragleave)="onDrag($event, false)"
       (drop)="onDrop($event)"
     >
-      <strong class="mono">.{{ kind() }}</strong>
+      <strong class="mono"><span class="sr-only">Upload </span>.{{ kind() }}</strong>
       <span class="muted">Drop a file here or click to choose</span>
       <input
         #pick
@@ -40,7 +39,7 @@ export interface StoredFile {
     </div>
 
     @if (progress() !== null) {
-      <mat-progress-bar mode="determinate" [value]="progress()!" />
+      <mat-progress-bar [attr.aria-label]="'Uploading the ' + kind() + ' file'" mode="determinate" [value]="progress()!" />
     }
     @if (error()) {
       <div class="error-box" role="alert">{{ error() }}</div>
@@ -50,7 +49,13 @@ export interface StoredFile {
       @if (stored().sha256; as sha) {
         <div class="ok">
           ✓ Stored: {{ stored().name }} · {{ sizeLabel() }}
-          <button type="button" class="remove" [disabled]="disabled()" (click)="removed.emit()">
+          <button
+            type="button"
+            class="remove"
+            [disabled]="disabled()"
+            [attr.aria-label]="'Remove the stored ' + kind() + ' file'"
+            (click)="removed.emit()"
+          >
             Remove
           </button>
         </div>
@@ -92,11 +97,18 @@ export interface StoredFile {
       margin-left: 8px;
       background: none;
       border: none;
-      padding: 0;
       color: var(--mat-sys-error);
       cursor: pointer;
       text-decoration: underline;
       font: inherit;
+      min-height: 24px;
+      padding: 4px 6px;
+    }
+    @media (max-width: 720px) {
+      .remove {
+        min-height: 44px;
+        padding: 8px 10px;
+      }
     }
     .small {
       font-size: 0.85rem;

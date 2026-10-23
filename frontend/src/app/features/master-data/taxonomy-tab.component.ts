@@ -18,7 +18,7 @@ import { nextDesignCode } from '../../shared/new-design-dialog.component';
   template: `
     <section>
       <div class="row">
-        <h3>Categories</h3>
+        <h2>Categories</h2>
         <span class="spacer"></span>
         <button matButton="filled" (click)="editCategory(null)">Add category</button>
       </div>
@@ -29,22 +29,22 @@ import { nextDesignCode } from '../../shared/new-design-dialog.component';
         field.
       </p>
       @if (categories.isLoading()) {
-        <mat-progress-bar mode="indeterminate" />
+        <mat-progress-bar aria-label="Loading" mode="indeterminate" />
       }
-      <table class="plain">
+      <table class="plain stack" aria-label="Categories">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Code prefix</th>
-            <th>Next code</th>
-            <th></th>
+            <th scope="col">Name</th>
+            <th scope="col">Code prefix</th>
+            <th scope="col">Next code</th>
+            <th scope="col"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           @for (c of categories.value() ?? []; track c.id) {
             <tr>
-              <td>{{ c.name }}</td>
-              <td>
+              <td data-label="Name">{{ c.name }}</td>
+              <td data-label="Code prefix">
                 <input
                   class="prefix-input mono"
                   maxlength="6"
@@ -56,14 +56,14 @@ import { nextDesignCode } from '../../shared/new-design-dialog.component';
                   (keydown.enter)="$any($event.target).blur()"
                 />
               </td>
-              <td class="mono">
+              <td data-label="Next code" class="mono">
                 @if (c.code_prefix) {
                   {{ nextCode(c) }}
                 } @else {
                   <span class="muted">–</span>
                 }
               </td>
-              <td><button matButton (click)="editCategory(c)">Edit</button></td>
+              <td class="row-actions"><button matButton (click)="editCategory(c)">Edit</button></td>
             </tr>
           }
         </tbody>
@@ -72,7 +72,7 @@ import { nextDesignCode } from '../../shared/new-design-dialog.component';
 
     <section>
       <div class="row">
-        <h3>Tags</h3>
+        <h2>Tags</h2>
         <span class="spacer"></span>
         <button matButton="filled" (click)="editTag(null)">Add tag</button>
       </div>
@@ -115,10 +115,17 @@ import { nextDesignCode } from '../../shared/new-design-dialog.component';
     .prefix-input:focus {
       outline: 2px solid var(--mat-sys-primary);
     }
+    @media (max-width: 720px) {
+      .prefix-input {
+        min-height: 44px;
+        width: 100%;
+        font-size: 1rem;
+      }
+    }
     section {
       margin: 0 0 24px;
     }
-    h3 {
+    h2 {
       margin: 0 0 4px;
     }
     .spacer {

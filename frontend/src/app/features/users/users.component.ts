@@ -23,38 +23,38 @@ import { ResetPasswordDialogComponent, UserDialogComponent } from './user-dialog
       </div>
 
       @if (users.isLoading()) {
-        <mat-progress-bar mode="indeterminate" />
+        <mat-progress-bar aria-label="Loading" mode="indeterminate" />
       }
       @if (users.error()) {
         <div class="error-box" role="alert">Could not load users.</div>
       }
 
       <div class="scroll">
-        <table class="plain">
+        <table class="plain stack" aria-label="Users">
           <thead>
             <tr>
-              <th>Email</th>
-              <th>Name</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Last sign-in</th>
-              <th></th>
+              <th scope="col">Email</th>
+              <th scope="col">Name</th>
+              <th scope="col">Role</th>
+              <th scope="col">Status</th>
+              <th scope="col">Last sign-in</th>
+              <th scope="col"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             @for (u of users.value() ?? []; track u.id) {
               <tr [class.disabled]="!u.active">
-                <td>
+                <td data-label="Email">
                   {{ u.email }}
                   @if (u.id === auth.user()?.id) {
                     <span class="muted">(you)</span>
                   }
                 </td>
-                <td>{{ u.name || '–' }}</td>
-                <td>{{ u.role }}</td>
-                <td>{{ u.active ? 'Active' : 'Disabled' }}</td>
-                <td>{{ u.last_login_at ? (u.last_login_at | date: 'medium') : 'Never' }}</td>
-                <td class="actions">
+                <td data-label="Name">{{ u.name || '–' }}</td>
+                <td data-label="Role">{{ u.role }}</td>
+                <td data-label="Status">{{ u.active ? 'Active' : 'Disabled' }}</td>
+                <td data-label="Last sign-in">{{ u.last_login_at ? (u.last_login_at | date: 'medium') : 'Never' }}</td>
+                <td class="row-actions actions">
                   <button matButton (click)="edit(u)">Edit</button>
                   <button matButton (click)="resetLink(u)" [disabled]="!u.active">Reset link</button>
                   <button matButton (click)="resetPassword(u)">Set password</button>
@@ -79,7 +79,7 @@ import { ResetPasswordDialogComponent, UserDialogComponent } from './user-dialog
     tr.disabled td {
       color: var(--mat-sys-on-surface-variant);
     }
-    .actions {
+    td.row-actions {
       white-space: nowrap;
     }
   `,

@@ -26,7 +26,7 @@ import { safeReturnUrl } from '../../core/guards';
       <mat-card appearance="outlined">
         <img src="brand/logo-maroon.png" alt="Golden Oak Jewels LLP" class="logo" />
         <mat-card-header>
-          <mat-card-title>Sign in</mat-card-title>
+          <h1 mat-card-title>Sign in</h1>
         </mat-card-header>
         <form [formGroup]="form" (ngSubmit)="submit()">
           <mat-card-content>
@@ -64,7 +64,7 @@ import { safeReturnUrl } from '../../core/guards';
               <div class="error-box" role="alert">{{ error() }}</div>
             }
             @if (busy()) {
-              <mat-progress-bar mode="indeterminate" />
+              <mat-progress-bar aria-label="Loading" mode="indeterminate" />
             }
           </mat-card-content>
           <mat-card-actions align="end">

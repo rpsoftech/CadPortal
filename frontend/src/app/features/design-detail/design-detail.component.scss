@@ -37,3 +37,42 @@
 tr.current td {
   background: var(--mat-sys-surface-container);
 }
+
+@media (max-width: 720px) {
+  /* Weights first, then the stone list and exports; photos last. */
+  .page {
+    display: flex;
+    flex-direction: column;
+  }
+  .page > * {
+    order: 3;
+  }
+  .page > .back,
+  .page > .head,
+  .page > mat-chip-set,
+  .page > mat-progress-bar,
+  .page > .error-box {
+    order: 0;
+  }
+  .page > .weights {
+    order: 1;
+  }
+  .page > .picker {
+    order: 2;
+  }
+  .page > .cad-files {
+    order: 8;
+  }
+  .page > .gallery {
+    order: 9;
+  }
+  .num-field {
+    width: 100%;
+  }
+  .head button {
+    flex: 1 1 auto;
+  }
+  .picker {
+    align-items: stretch;
+  }
+}
