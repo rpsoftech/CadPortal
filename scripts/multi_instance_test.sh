@@ -77,7 +77,7 @@ auth=(-H "Authorization: Bearer $token")
 m1=$(count_in_logs "$first" '"path":"/api/v1/auth/me"')
 m2=$(count_in_logs "$second" '"path":"/api/v1/auth/me"')
 for _ in $(seq 1 30); do
-  [ "$(curl -s -o "$tmp/out" -w '%{http_code}' "${auth[@]}" "$base/api/v1/auth/me")" = "200" ] || fail "token rejected"
+  [ "$(curl -s -w '%{http_code}' "${auth[@]}" "$base/api/v1/auth/me" | tail -c 3)" = "200" ] || fail "token rejected"
 done
 n1=$(($(count_in_logs "$first" '"path":"/api/v1/auth/me"') - m1))
 n2=$(($(count_in_logs "$second" '"path":"/api/v1/auth/me"') - m2))
@@ -89,7 +89,7 @@ sql "UPDATE categories SET code_prefix = 'MI' WHERE name = 'Rings'" >/dev/null
 cat_id=$(sql "SELECT id FROM categories WHERE name = 'Rings'")
 for i in $(seq 1 60); do
   (curl -s -o "$tmp/out" -w '%{http_code}\n' -X POST "$base/api/v1/designs" "${auth[@]}" \
-    -H 'Content-Type: application/json' -d "{\"category_id\":$cat_id,\"name\":\"parallel $i\"}" >"$tmp/create-$i") &
+    -H 'Content-Type: application/json' -d "{\"category_id\":$cat_id,\"name\":\"parallel $i\"}" | tail -n 1 >"$tmp/create-$i") &
 done
 wait
 bad=$(cat "$tmp"/create-* | grep -vc '^201$' || true)
@@ -100,8 +100,8 @@ echo "60 created, 60 distinct codes ($(sql "SELECT min(code) || '..' || max(code
 
 echo "== weight rebuilds queued back to back"
 for sg in 17.76 17.77 17.78 17.79 17.80 17.75; do
-  code=$(curl -s -o "$tmp/out" -w '%{http_code}' -X PUT "$base/api/v1/masters/metals/1" "${auth[@]}" \
-    -H 'Content-Type: application/json' -d "{\"specific_gravity\":$sg,\"is_default_input\":false,\"active\":true}")
+  code=$(curl -s -w '%{http_code}' -X PUT "$base/api/v1/masters/metals/1" "${auth[@]}" \
+    -H 'Content-Type: application/json' -d "{\"specific_gravity\":$sg,\"is_default_input\":false,\"active\":true}" | tail -c 3)
   [ "$code" = "200" ] || fail "metal edit answered $code"
 done
 for _ in $(seq 1 60); do
