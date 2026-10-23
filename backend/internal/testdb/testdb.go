@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -35,7 +34,7 @@ var nonName = regexp.MustCompile(`[^a-z0-9]+`)
 // Name returns the database name for the package whose directory is dir:
 // the last two path elements, e.g. .../internal/service -> cad_portal_internal_service_test.
 func Name(dir string) string {
-	dir = filepath.ToSlash(filepath.Clean(dir))
+	dir = strings.ReplaceAll(dir, "\\", "/") // both styles, whatever the OS
 	parts := strings.Split(dir, "/")
 	if len(parts) > 2 {
 		parts = parts[len(parts)-2:]
