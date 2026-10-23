@@ -529,7 +529,8 @@ CADPORTAL_VERSION=1.2.3 docker compose -f docker-compose.prod.yml -f docker-comp
 | Variations | `POST /designs/:id/variations`, `PUT /variations/:id/base-input`, `DELETE /variations/:id` |
 | Seats and BOM | `GET/PUT /variations/:id/seats`, `POST /variations/:id/clone-seats`, `GET /variations/:id/simulate-bom?code=2HD` |
 | CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl`, `DELETE /variations/:id/cad?kind=3dm\|stl` |
-| Exports | `POST /exports/job-bag-pdf`, `POST /exports/job-bags-pdf` (many bags in one PDF), `POST /exports/costing-csv`, `GET /exports/designs-csv` (any role) |
+| Exports | `POST /exports/job-bag-pdf`, `POST /exports/job-bags-pdf` (many bags in one PDF), `GET /exports/designs-csv` (any role); `POST /exports/costing-csv`, `POST /exports/costing-preview` (admin/designer) |
+| Costing sheets (admin/designer) | `POST/GET /costing-sheets`, `GET/DELETE /costing-sheets/:id`, `GET /costing-sheets/:id/csv`, `POST /costing-sheets/:id/recost` |
 
 All paths are under `/api/v1`. Alongside the routes above:
 
@@ -735,6 +736,35 @@ tags as `Group:Name`, one row per variation, name, category and tags on the firs
 design. It contains no wastage or rates. The file imports cleanly into an empty installation and
 rebuilds the same weights; variation numbers are assigned again in file order, so a gap left by a
 deleted variation closes. Deleted designs are not exported.
+
+### Costing several designs, and costing sheets
+
+Admins and designers can cost many designs in one go. In the **Catalog**, tick the cards (or *Select
+all on this page*; the selection survives paging and filtering), then **Cost selected** in the bar at
+the bottom. Pick the metal and stone code, give the gold rate and the setting rate, and **Preview**:
+one row per variation (design, code, variation, net, gross, stone, total) and a total. **Download
+CSV** gives one file with the same columns as the single-design costing CSV plus a `TOTAL` row; the
+variation code carries the design code. Up to 500 variations at a time (beyond that the API answers 400).
+
+Missing data is never costed as zero. If a variation has no wastage % for the metal, no price for a
+stone size, or no stone matrix row, nothing is costed (HTTP 422) and the message names the designs and
+variations and the missing metals and (size, code) pairs, grouped by design. With *Skip variations with
+missing data* (`skip_incomplete`), the complete ones are costed and the others are listed in a separate
+`NOT COSTED` section at the end of the CSV (and in the `X-Costing-Incomplete` response header); the
+screen shows the same list. `POST /exports/costing-csv` takes `{variation_ids?, design_ids?, metal_code,
+stone_code, gold_rate_per_g, setting_rate_per_pc, skip_incomplete?}` (`design_ids` means all the design's
+variations); the older `{items: […]}` request still works. `POST /exports/costing-preview` takes the
+same body and always answers 200 with the rows and the problems, for the screen.
+
+**Save as costing sheet** keeps a result for later (**Costing sheets** in the top bar). A sheet stores the
+inputs, every computed row, the totals, the wastage % per metal and the stone prices per matrix row that
+were used, and the exact CSV. It is a snapshot (jsonb columns of the `costing_sheets` table, not
+references to the masters), so changing the gold rate, wastage or a stone price afterwards never alters
+an old sheet or its CSV. A sheet opens read-only with its CSV download. **Re-cost** makes a *new* sheet
+from the same variations and metal with today's wastage and prices and a gold or setting rate you choose,
+and shows the difference per variation; the old sheet is untouched. An admin may delete any sheet, a
+designer their own. Creating, downloading, re-costing and deleting are in the audit log
+(`costing_sheet.*`). The production role cannot reach any of this.
 
 ### Audit log
 

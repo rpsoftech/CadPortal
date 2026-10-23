@@ -74,6 +74,54 @@ func WriteCostingCSV(w io.Writer, rows []service.CostRow) error {
 	return cw.Error()
 }
 
+// WriteCostingSheetCSV writes a multi-design costing: the same columns as WriteCostingCSV, one row per
+// variation, a TOTAL row when there is more than one, and, when some variations could not be costed
+// (skip_incomplete), a clearly separate NOT COSTED section listing them and why.
+func WriteCostingSheetCSV(w io.Writer, rows []service.SheetRow, totals service.SheetTotals, problems []service.DesignProblem) error {
+	cw := csv.NewWriter(w)
+	if err := cw.Write(CostingHeader); err != nil {
+		return err
+	}
+	for _, r := range rows {
+		rec := []string{
+			safeCell(r.VariationCode), safeCell(r.MetalCode), safeCell(r.StoneCode),
+			r.NetG.StringFixed(3), r.WastagePct.String(), r.GoldG.StringFixed(3),
+			r.GoldRatePerG.String(), r.GoldCost.StringFixed(2),
+			r.StoneCt.StringFixed(4), r.StoneG.StringFixed(4), r.StoneCost.StringFixed(2),
+			strconv.Itoa(r.SettingPcs), r.SettingRatePerPc.String(), r.SettingCost.StringFixed(2),
+			r.Total.StringFixed(2),
+		}
+		if err := cw.Write(rec); err != nil {
+			return err
+		}
+	}
+	if len(rows) > 1 {
+		rec := []string{
+			"TOTAL", "", "", totals.NetG.StringFixed(3), "", totals.GoldG.StringFixed(3), "", totals.GoldCost.StringFixed(2),
+			totals.StoneCt.StringFixed(4), totals.StoneG.StringFixed(4), totals.StoneCost.StringFixed(2),
+			strconv.Itoa(totals.SettingPcs), "", totals.SettingCost.StringFixed(2), totals.Total.StringFixed(2),
+		}
+		if err := cw.Write(rec); err != nil {
+			return err
+		}
+	}
+	if len(problems) > 0 {
+		_ = cw.Write([]string{})
+		_ = cw.Write([]string{"NOT COSTED - data missing; these are not in the totals above"})
+		_ = cw.Write([]string{"design", "variation", "problem"})
+		for _, d := range problems {
+			if len(d.Variations) == 0 {
+				_ = cw.Write([]string{safeCell(d.DesignCode), "", safeCell(d.Message)})
+			}
+			for _, v := range d.Variations {
+				_ = cw.Write([]string{safeCell(d.DesignCode), safeCell(v.VariationCode), safeCell(v.Message)})
+			}
+		}
+	}
+	cw.Flush()
+	return cw.Error()
+}
+
 // DesignsHeader is the column order of the designs export, which the design import reads.
 var DesignsHeader = []string{"code", "name", "category", "tags", "volume_mm3", "ref_weight_g", "ref_metal"}
 

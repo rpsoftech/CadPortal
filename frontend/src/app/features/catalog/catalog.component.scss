@@ -76,3 +76,25 @@ a {
   height: 100%;
   font-size: 0.85rem;
 }
+
+.select-page {
+  display: block;
+  margin-top: 8px;
+}
+
+mat-card {
+  position: relative;
+}
+
+mat-card.picked {
+  outline: 2px solid var(--mat-sys-primary);
+}
+
+.pick {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 2;
+  background: var(--mat-sys-surface);
+  border-radius: 8px;
+}

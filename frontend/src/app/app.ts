@@ -21,6 +21,7 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
       @if (auth.user(); as u) {
         <nav class="links" aria-label="Main">
           @if (auth.canEdit()) {
+            <a matButton routerLink="/costing-sheets">Costing sheets</a>
             <a matButton routerLink="/removed">Removed</a>
           }
           @if (auth.isAdmin()) {
@@ -34,6 +35,7 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
           <!-- On a phone the links do not fit beside the account button, so they live in a menu. -->
           <button matButton class="nav-menu" [matMenuTriggerFor]="nav" aria-label="Menu">Menu</button>
           <mat-menu #nav="matMenu">
+            <a mat-menu-item routerLink="/costing-sheets">Costing sheets</a>
             <a mat-menu-item routerLink="/removed">Removed</a>
             @if (auth.isAdmin()) {
               <a mat-menu-item routerLink="/master-data">Master data</a>

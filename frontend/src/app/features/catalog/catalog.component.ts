@@ -3,6 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -28,10 +29,13 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { toApiError } from '../../core/errors';
 import { fixed } from '../../core/format';
+import { CatalogSelection } from '../../core/catalog-selection';
 import { gramsToCarats } from '../../core/stone-units';
 import { saveBlob } from '../../shared/download';
 import { DesignFilter, DesignImportResult, DesignListItem, TAG_GROUPS } from '../../core/models';
 import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design-dialog.component';
+import { SelectionBarComponent } from '../../shared/selection-bar.component';
+import { CostSelectedData, CostSelectedDialogComponent } from './cost-selected-dialog.component';
 import { DesignImportDialogComponent } from './design-import-dialog.component';
 import { SetupChecklistComponent } from '../../shared/setup-checklist.component';
 import { positiveDecimal } from '../../shared/validators';
@@ -59,6 +63,7 @@ export function weightRange(min: string | null, max: string | null): string | nu
     RouterLink,
     MatButtonModule,
     MatCardModule,
+    MatCheckboxModule,
     MatChipsModule,
     MatFormFieldModule,
     MatInputModule,
@@ -66,6 +71,7 @@ export function weightRange(min: string | null, max: string | null): string | nu
     MatProgressBarModule,
     MatSelectModule,
     SetupChecklistComponent,
+    SelectionBarComponent,
   ],
   templateUrl: './catalog.component.html',
   styleUrl: './catalog.component.scss',
@@ -76,6 +82,7 @@ export class CatalogComponent {
   private readonly snack = inject(MatSnackBar);
   private readonly router = inject(Router);
   protected readonly auth = inject(AuthService);
+  protected readonly selection = inject(CatalogSelection);
 
   protected readonly categories = toSignal(this.api.categories().pipe(catchError(() => of([]))), {
     initialValue: [],
@@ -161,6 +168,39 @@ export class CatalogComponent {
     ),
     { initialValue: { loading: true, items: [], total: 0, error: '', metal: null } as ListState },
   );
+
+  /** Every design on the page is ticked (a partly ticked page counts as not all). */
+  protected readonly pageAllSelected = computed(() => {
+    const items = this.state().items;
+    return items.length > 0 && items.every((d) => this.selection.has(d.id));
+  });
+  protected readonly pageSomeSelected = computed(
+    () => !this.pageAllSelected() && this.state().items.some((d) => this.selection.has(d.id)),
+  );
+
+  protected togglePage(checked: boolean): void {
+    const items = this.state().items;
+    if (checked) this.selection.addMany(items);
+    else this.selection.removeMany(items.map((d) => d.id));
+  }
+
+  protected costSelected(): void {
+    const data: CostSelectedData = { designs: this.selection.items() };
+    this.dialog
+      .open<CostSelectedDialogComponent, CostSelectedData, number>(CostSelectedDialogComponent, {
+        data,
+        width: '860px',
+        maxWidth: '95vw',
+      })
+      .afterClosed()
+      .subscribe((sheetId) => {
+        if (!sheetId) return;
+        this.snack
+          .open('Saved as a costing sheet', 'Open', { duration: 8000 })
+          .onAction()
+          .subscribe(() => this.router.navigate(['/costing-sheets', sheetId]));
+      });
+  }
 
   protected onPage(e: PageEvent): void {
     this.pageIndex.set(e.pageIndex);

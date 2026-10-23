@@ -69,6 +69,11 @@ var auditRoutes = map[string]auditRoute{
 	"POST /api/v1/exports/job-bag-pdf":        {action: "export.job_bag", entity: "variation"},
 	"POST /api/v1/exports/job-bags-pdf":       {action: "export.job_bags", entity: "variation"},
 	"POST /api/v1/exports/costing-csv":        {action: "export.costing", entity: "variation"},
+	"POST /api/v1/exports/costing-preview":    {skip: true}, // computes only, nothing leaves the screen
+	"POST /api/v1/costing-sheets":             {action: "costing_sheet.create", entity: "costing_sheet"},
+	"DELETE /api/v1/costing-sheets/:id":       {action: "costing_sheet.delete", entity: "costing_sheet", idParam: "id"},
+	"POST /api/v1/costing-sheets/:id/recost":  {action: "costing_sheet.recost", entity: "costing_sheet", idParam: "id"},
+	"GET /api/v1/costing-sheets/:id/csv":      {action: "costing_sheet.download", entity: "costing_sheet", idParam: "id", reads: true},
 	"GET /api/v1/exports/designs-csv":         {action: "export.designs", entity: "design", reads: true},
 	"POST /api/v1/backups/run":                {action: "backup.request", entity: "backup"},
 	"GET /api/v1/backups/download":            {action: "backup.download_link", entity: "backup", reads: true},

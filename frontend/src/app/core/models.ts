@@ -270,6 +270,134 @@ export interface CostingItem {
   stone_code: string;
 }
 
+/** What to cost: whole designs and/or single variations, in one metal and one stone code. */
+export interface CostSheetRequest {
+  design_ids?: number[];
+  variation_ids?: number[];
+  metal_code: string;
+  stone_code: string;
+  gold_rate_per_g: string;
+  setting_rate_per_pc: string;
+  /** Cost the complete variations and list the others, instead of costing nothing. */
+  skip_incomplete: boolean;
+}
+
+/** One costed variation. Money and weights are decimal strings straight from the API. */
+export interface CostSheetRow {
+  design_id: number;
+  design_code: string;
+  design_name: string;
+  variation_id: number;
+  variation_code: string;
+  metal_code: string;
+  stone_code: string;
+  net_g: string;
+  gross_g: string;
+  wastage_pct: string;
+  gold_g: string;
+  gold_rate_per_g: string;
+  gold_cost: string;
+  stone_ct: string;
+  stone_g: string;
+  stone_cost: string;
+  setting_pcs: number;
+  setting_rate_per_pc: string;
+  setting_cost: string;
+  total: string;
+}
+
+export interface CostSheetTotals {
+  designs: number;
+  variations: number;
+  net_g: string;
+  gross_g: string;
+  gold_g: string;
+  gold_cost: string;
+  stone_ct: string;
+  stone_g: string;
+  stone_cost: string;
+  setting_pcs: number;
+  setting_cost: string;
+  total: string;
+}
+
+export interface CostVariationProblem {
+  variation_id: number;
+  variation_code: string;
+  message: string;
+  metals_missing_wastage?: string[];
+  stone_rates_missing?: { SizeMM: string; Code: string; Basis?: string }[];
+  matrix_missing?: { SizeMM: string; Code: string }[];
+}
+
+/** The problems of one design; a design with no variations has an empty list and a message. */
+export interface CostDesignProblem {
+  design_id: number;
+  design_code: string;
+  design_name: string;
+  message?: string;
+  variations: CostVariationProblem[];
+}
+
+export interface CostPreview {
+  rows: CostSheetRow[];
+  totals: CostSheetTotals;
+  problems: CostDesignProblem[];
+  complete: boolean;
+}
+
+export interface CostingSheetSummary {
+  id: number;
+  name: string;
+  created_at: string;
+  created_by: number | null;
+  created_by_name: string;
+  recost_of: number | null;
+  metal_code: string;
+  stone_code: string;
+  gold_rate_per_g: string;
+  setting_rate_per_pc: string;
+  design_count: number;
+  variation_count: number;
+  incomplete_count: number;
+  total: string;
+}
+
+/** A saved sheet: everything in it is as it was when it was saved. */
+export interface CostingSheet extends CostingSheetSummary {
+  inputs: CostSheetRequest & { resolved_variation_ids: number[] };
+  rows: CostSheetRow[];
+  totals: CostSheetTotals;
+  problems: CostDesignProblem[];
+  rates: {
+    gold_rate_per_g: string;
+    setting_rate_per_pc: string;
+    metals: { metal_code: string; specific_gravity: string; wastage_pct: string }[];
+    stone_rates: {
+      size_mm: string;
+      stone_code: string;
+      rate_basis: RateBasis;
+      price: string;
+      carats_per_stone: string;
+    }[];
+  };
+}
+
+export interface CostingSheetComparison {
+  previous_id: number;
+  previous_total: string;
+  total: string;
+  difference: string;
+  rows: {
+    variation_id: number;
+    variation_code: string;
+    design_code: string;
+    previous_total: string | null;
+    total: string | null;
+    difference: string | null;
+  }[];
+}
+
 /** Body of POST /exports/job-bags-pdf. A per-item metal or stone code overrides the shared one. */
 export interface JobBagsRequest {
   items?: { variation_id: number; metal_code?: string; stone_code?: string }[];
@@ -282,6 +410,8 @@ export interface JobBagsRequest {
 /** Error body shape returned by the API. Go structs without json tags use PascalCase keys. */
 export interface ApiErrorBody {
   error?: string;
+  /** Costing of several designs: what is missing, grouped by design and variation. */
+  problems?: CostDesignProblem[];
   missing?: { SizeMM: string; Code: string; Basis?: string }[];
   stone_rates_missing?: { SizeMM: string; Code: string; Basis?: string }[];
   metals_missing_wastage?: string[];
