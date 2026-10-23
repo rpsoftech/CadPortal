@@ -101,14 +101,27 @@ type DeletedDesign struct {
 	VariationCount int       `json:"variation_count"`
 }
 
+// DeletedVariation is a soft-deleted variation. It cannot be restored while its design is deleted.
+type DeletedVariation struct {
+	ID            int64      `json:"id"`
+	Code          string     `json:"code"`
+	DesignCode    string     `json:"design_code"`
+	DesignName    string     `json:"design_name"`
+	DeletedAt     time.Time  `json:"deleted_at"`
+	PurgeAfter    *time.Time `json:"purge_after"`
+	HasFiles      bool       `json:"has_files"`
+	DesignDeleted bool       `json:"design_deleted"`
+}
+
 // Trash is everything that can still be brought back.
 type Trash struct {
-	Designs []DeletedDesign `json:"designs"`
-	Files   []TrashedItem   `json:"files"`
+	Designs    []DeletedDesign    `json:"designs"`
+	Variations []DeletedVariation `json:"variations"`
+	Files      []TrashedItem      `json:"files"`
 }
 
 func (s *Service) ListTrash(ctx context.Context) (Trash, error) {
-	out := Trash{Designs: []DeletedDesign{}, Files: []TrashedItem{}}
+	out := Trash{Designs: []DeletedDesign{}, Variations: []DeletedVariation{}, Files: []TrashedItem{}}
 	ds, err := s.Q.ListDeletedDesigns(ctx)
 	if err != nil {
 		return out, mapErr(err)
@@ -118,6 +131,21 @@ func (s *Service) ListTrash(ctx context.Context) (Trash, error) {
 			ID: d.ID, Code: d.Code, Name: d.Name, CategoryName: d.CategoryName,
 			DeletedAt: d.DeletedAt.Time, VariationCount: int(d.VariationCount),
 		})
+	}
+	vs, err := s.Q.ListDeletedVariations(ctx)
+	if err != nil {
+		return out, mapErr(err)
+	}
+	for _, v := range vs {
+		dv := DeletedVariation{
+			ID: v.ID, Code: v.Code, DesignCode: v.DesignCode, DesignName: v.DesignName,
+			DeletedAt: v.DeletedAt.Time, HasFiles: v.HasFiles, DesignDeleted: v.DesignDeletedAt.Valid,
+		}
+		if v.PurgeAfter.Valid {
+			t := v.PurgeAfter.Time
+			dv.PurgeAfter = &t
+		}
+		out.Variations = append(out.Variations, dv)
 	}
 	fs, err := s.Q.ListTrashedFiles(ctx)
 	if err != nil {
@@ -171,7 +199,7 @@ func (s *Service) RestoreFile(ctx context.Context, id int64) (TrashedItem, error
 			}
 			cur, err := q.GetVariationForUpdate(ctx, r.VariationID)
 			if errors.Is(err, pgx.ErrNoRows) {
-				return invalid("its variation no longer exists")
+				return invalid("its variation is deleted or no longer exists")
 			}
 			if err != nil {
 				return err
@@ -200,15 +228,15 @@ func (s *Service) RestoreFile(ctx context.Context, id int64) (TrashedItem, error
 
 func (s *Service) restoreCAD(ctx context.Context, q *db.Queries, r cadRestore, key string) error {
 	if r.Kind == "3dm" {
-		if code, err := q.FindVariationCodeBySha3dm(ctx, pgText(r.SHA256)); err == nil {
-			return fmt.Errorf("%w: an identical .3dm file is now stored on variation %s", ErrConflict, code)
+		if v, err := q.FindVariationCodeBySha3dm(ctx, pgText(r.SHA256)); err == nil {
+			return fmt.Errorf("%w: an identical .3dm file is now stored on variation %s", ErrConflict, v.Code)
 		}
 		return q.SetVariationFile3dm(ctx, db.SetVariationFile3dmParams{
 			ID: r.VariationID, File3dmSha256: pgText(r.SHA256), File3dmKey: pgText(key),
 			File3dmName: pgText(r.Name), File3dmSizeBytes: pgtype.Int8{Int64: r.Size, Valid: true}})
 	}
-	if code, err := q.FindVariationCodeByShaStl(ctx, pgText(r.SHA256)); err == nil {
-		return fmt.Errorf("%w: an identical .stl file is now stored on variation %s", ErrConflict, code)
+	if v, err := q.FindVariationCodeByShaStl(ctx, pgText(r.SHA256)); err == nil {
+		return fmt.Errorf("%w: an identical .stl file is now stored on variation %s", ErrConflict, v.Code)
 	}
 	return q.SetVariationFileStl(ctx, db.SetVariationFileStlParams{
 		ID: r.VariationID, FileStlSha256: pgText(r.SHA256), FileStlKey: pgText(key),
@@ -261,10 +289,13 @@ func (s *Service) restoreMedia(ctx context.Context, q *db.Queries, r mediaRestor
 // PurgeTrash deletes, for good, the files whose time is up, and reports how many. An object that
 // cannot be deleted now keeps its record and is tried again on the next run.
 func (s *Service) PurgeTrash(ctx context.Context) (int, error) {
-	if s.Store == nil {
-		return 0, nil
+	total, err := s.purgeVariations(ctx)
+	if err != nil {
+		return total, err
 	}
-	total := 0
+	if s.Store == nil {
+		return total, nil
+	}
 	for {
 		n := 0
 		err := s.inTx(ctx, func(q *db.Queries) error {
@@ -290,6 +321,39 @@ func (s *Service) PurgeTrash(ctx context.Context) (int, error) {
 		if err != nil {
 			return total, err
 		}
+		total += n
+		if n == 0 {
+			return total, nil
+		}
+	}
+}
+
+// purgeVariations deletes, for good, the deleted variations whose time is up, with their stored
+// objects (rows first, then objects best effort, like every other deletion).
+func (s *Service) purgeVariations(ctx context.Context) (int, error) {
+	total := 0
+	for {
+		var keys []string
+		n := 0
+		err := s.inTx(ctx, func(q *db.Queries) error {
+			rows, err := q.ClaimExpiredVariations(ctx)
+			if err != nil {
+				return err
+			}
+			for _, v := range rows {
+				k, err := purgeVariationRow(ctx, q, v)
+				if err != nil {
+					return err
+				}
+				keys = append(keys, k...)
+				n++
+			}
+			return nil
+		})
+		if err != nil {
+			return total, err
+		}
+		s.deleteObjects(ctx, keys...)
 		total += n
 		if n == 0 {
 			return total, nil

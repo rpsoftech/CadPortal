@@ -62,6 +62,8 @@ type CadVariation struct {
 	FileStlKey           pgtype.Text         `json:"file_stl_key"`
 	FileStlName          pgtype.Text         `json:"file_stl_name"`
 	FileStlSizeBytes     pgtype.Int8         `json:"file_stl_size_bytes"`
+	DeletedAt            pgtype.Timestamptz  `json:"deleted_at"`
+	PurgeAfter           pgtype.Timestamptz  `json:"purge_after"`
 }
 
 type Category struct {

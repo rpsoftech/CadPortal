@@ -633,3 +633,51 @@ test('a stone priced per gram is costed from its weight in grams', async ({ page
   expect(cells[head.indexOf('stone_g')]).toBe('0.0336');
   expect(lines[1]).toContain('0.0336 g x 5000.00/g');
 });
+
+test('a design can be duplicated: next code, same weights, no files copied', async ({ page }) => {
+  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
+  await page.goto('/designs/LR0001');
+  await page.getByRole('button', { name: 'Duplicate' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('CAD files and photos are not copied')).toBeVisible();
+  await expect(dialog.getByLabel('Name')).toHaveValue(/\(copy\)$/);
+  await dialog.getByLabel('Name').fill('Smoke ring twin');
+  await dialog.getByRole('button', { name: 'Duplicate', exact: true }).click();
+
+  // On the new design, with its own code and the same weights as LR0001 (volume 200 mm3).
+  await expect(page).toHaveURL(/\/designs\/LR\d{4}$/);
+  await expect(page).not.toHaveURL(/\/designs\/LR0001$/);
+  await expect(page.getByText('Smoke ring twin')).toBeVisible();
+  const row = (metal: string) => page.getByRole('row').filter({ hasText: metal }).first();
+  await expect(row('22KY')).toContainText('Net 3.550');
+  await expect(row('18KR')).toContainText('Net 3.050');
+  await expect(page.getByRole('img', { name: /cover photo/ })).toHaveCount(0);
+});
+
+test('a deleted variation is listed in Removed and can be restored', async ({ page }) => {
+  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
+  await page.goto('/designs/LE0001');
+  await page.getByRole('button', { name: 'Add variation' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Volume (mm³)').fill('200');
+  await dialog.getByRole('button', { name: /Create|Add/ }).click();
+  await expect(page.getByRole('heading', { name: 'LE0001-V2' })).toBeVisible();
+
+  page.once('dialog', (d) => void d.accept());
+  await page.getByRole('button', { name: 'Delete variation' }).click();
+  await expect(page.getByRole('heading', { name: 'LE0001', exact: true })).toBeVisible();
+  await expect(page.getByText('LE0001-V2')).toHaveCount(0);
+
+  await page.getByRole('link', { name: 'Removed' }).click();
+  const row = page.getByRole('row').filter({ hasText: 'LE0001-V2' });
+  await expect(row).toContainText('LE0001');
+  await row.getByRole('button', { name: 'Restore variation LE0001-V2' }).click();
+  await expect(page.getByText('Restored LE0001-V2')).toBeVisible();
+  await expect(page.getByText('No deleted variations.')).toBeVisible();
+
+  await page.goto('/designs/LE0001');
+  await expect(page.getByText('LE0001-V2').first()).toBeVisible();
+  await expect(
+    page.getByRole('row').filter({ hasText: '18KR' }).first(),
+  ).toContainText('Net 3.050');
+});
