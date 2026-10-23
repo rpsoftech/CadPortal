@@ -121,8 +121,15 @@ func TestJobBagPDFShowsThePhotoWhenThereIsOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(without, []byte("/Subtype /Image")) {
-		t.Error("a job bag without a photo should hold no image")
+	// The company logo is a PNG; only a design photo is a JPEG (DCTDecode).
+	if !bytes.Contains(without, []byte("/Subtype /Image")) {
+		t.Error("the job bag should carry the company logo")
+	}
+	if !bytes.Contains(without, []byte(CompanyName)) {
+		t.Error("the job bag should carry the company name")
+	}
+	if bytes.Contains(without, []byte("/DCTDecode")) {
+		t.Error("a job bag without a photo should hold no JPEG")
 	}
 
 	for name, size := range map[string][2]int{"landscape": {480, 320}, "portrait": {240, 480}, "tiny": {16, 16}} {

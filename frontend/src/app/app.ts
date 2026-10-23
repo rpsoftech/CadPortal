@@ -13,19 +13,42 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
   imports: [RouterOutlet, RouterLink, MatToolbarModule, MatButtonModule, MatMenuModule],
   template: `
     <mat-toolbar>
-      <a routerLink="/" class="brand">CadPortal</a>
+      <a routerLink="/" class="brand" aria-label="Golden Oak Jewels LLP, home">
+        <img src="brand/mark-cream.png" alt="" class="brand-mark" />
+        <span>Golden Oak</span>
+      </a>
       @if (auth.user(); as u) {
+        <nav class="links" aria-label="Main">
+          @if (auth.canEdit()) {
+            <a matButton routerLink="/removed">Removed</a>
+          }
+          @if (auth.isAdmin()) {
+            <a matButton routerLink="/master-data">Master data</a>
+            <a matButton routerLink="/users">Users</a>
+            <a matButton routerLink="/audit">Audit</a>
+            <a matButton routerLink="/backups">Backups</a>
+          }
+        </nav>
         @if (auth.canEdit()) {
-          <a matButton routerLink="/removed">Removed</a>
-        }
-        @if (auth.isAdmin()) {
-          <a matButton routerLink="/master-data">Master data</a>
-          <a matButton routerLink="/users">Users</a>
-          <a matButton routerLink="/audit">Audit</a>
-          <a matButton routerLink="/backups">Backups</a>
+          <!-- On a phone the links do not fit beside the account button, so they live in a menu. -->
+          <button matButton class="nav-menu" [matMenuTriggerFor]="nav" aria-label="Menu">Menu</button>
+          <mat-menu #nav="matMenu">
+            <a mat-menu-item routerLink="/removed">Removed</a>
+            @if (auth.isAdmin()) {
+              <a mat-menu-item routerLink="/master-data">Master data</a>
+              <a mat-menu-item routerLink="/users">Users</a>
+              <a mat-menu-item routerLink="/audit">Audit</a>
+              <a mat-menu-item routerLink="/backups">Backups</a>
+            }
+          </mat-menu>
         }
         <span class="spacer"></span>
-        <button matButton="outlined" [matMenuTriggerFor]="menu" aria-label="Account menu">
+        <button
+          matButton="outlined"
+          class="account"
+          [matMenuTriggerFor]="menu"
+          aria-label="Account menu"
+        >
           {{ u.name || u.email }} · {{ u.role }}
         </button>
         <mat-menu #menu="matMenu">
@@ -39,14 +62,49 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
   `,
   styles: `
     .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
       color: inherit;
       text-decoration: none;
       font-weight: 600;
       font-size: 1.2rem;
       margin-right: 12px;
     }
+    .brand-mark {
+      height: 36px;
+      width: auto;
+    }
     .spacer {
       flex: 1;
+    }
+    .links {
+      display: flex;
+    }
+    .nav-menu {
+      display: none;
+    }
+    .account {
+      max-width: 55vw;
+    }
+    .account ::ng-deep .mdc-button__label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    @media (max-width: 760px) {
+      .links {
+        display: none;
+      }
+      .nav-menu {
+        display: inline-flex;
+      }
+      .brand {
+        font-size: 1.05rem;
+        margin-right: 0;
+      }
     }
     .menu-id {
       padding: 8px 16px;

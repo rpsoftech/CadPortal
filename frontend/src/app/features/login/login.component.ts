@@ -24,8 +24,9 @@ import { safeReturnUrl } from '../../core/guards';
   template: `
     <div class="wrap">
       <mat-card appearance="outlined">
+        <img src="brand/logo-maroon.png" alt="Golden Oak Jewels LLP" class="logo" />
         <mat-card-header>
-          <mat-card-title>Sign in to CadPortal</mat-card-title>
+          <mat-card-title>Sign in</mat-card-title>
         </mat-card-header>
         <form [formGroup]="form" (ngSubmit)="submit()">
           <mat-card-content>
@@ -80,6 +81,15 @@ import { safeReturnUrl } from '../../core/guards';
     mat-card {
       width: 100%;
       max-width: 400px;
+    }
+    .logo {
+      display: block;
+      width: 140px;
+      height: auto;
+      margin: 24px auto 8px;
+    }
+    mat-card-header {
+      justify-content: center;
     }
     mat-card-content {
       display: flex;
