@@ -87,7 +87,7 @@ func TestExportsOverHTTP(t *testing.T) {
 		t.Fatalf("csv: %d %s", w.Code, w.Body)
 	}
 	lines := strings.Split(strings.TrimSpace(w.Body.String()), "\n")
-	if len(lines) != 2 || !strings.HasSuffix(lines[1], ",38405.00") || !strings.HasPrefix(lines[1], "LR060-V1,18KR,2HD,3.050,10,3.355,") {
+	if len(lines) != 2 || !strings.Contains(lines[1], ",38405.00,") || !strings.HasPrefix(lines[1], "LR060-V1,18KR,2HD,3.050,10,3.355,") {
 		t.Errorf("csv = %q", lines)
 	}
 	if w := do(r, "POST", "/api/v1/exports/costing-csv", token(t, auth.Admin), "application/json",

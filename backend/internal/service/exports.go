@@ -15,7 +15,7 @@ import (
 const maxCostingItems = 200
 
 // MissingCostInputsError lists everything that blocks a costing export: metals
-// with no wastage % set and (size, code) pairs with no rate per carat. Missing
+// with no wastage % set and (size, code) pairs with no price (per piece, per carat or per gram, as each is set). Missing
 // values are never treated as zero.
 type MissingCostInputsError struct {
 	Wastage    []string           `json:"metals_missing_wastage"`
@@ -27,7 +27,7 @@ func (e *MissingCostInputsError) Error() string {
 	if len(e.Wastage) > 0 {
 		parts = append(parts, "wastage % not set for metals: "+strings.Join(e.Wastage, ", "))
 	}
-	for _, basis := range []struct{ code, what string }{{"pc", "price per piece"}, {"ct", "rate per carat"}} {
+	for _, basis := range []struct{ code, what string }{{"pc", "price per piece"}, {"ct", "rate per carat"}, {"g", "price per gram"}} {
 		var ps []string
 		for _, p := range e.StoneRates {
 			if p.Basis == basis.code || (p.Basis == "" && basis.code == "ct") {
@@ -85,13 +85,16 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 	type rateKey struct{ size, code string }
 	type stoneRate struct {
 		basis string
-		price decimal.NullDecimal // the one that applies: per piece or per carat
+		price decimal.NullDecimal // the one that applies: per piece, per carat or per gram
 	}
 	rates := map[rateKey]stoneRate{}
 	for _, m := range matrix {
 		sr := stoneRate{basis: m.RateBasis, price: m.RatePerPc}
-		if m.RateBasis == "ct" {
+		switch m.RateBasis {
+		case "ct":
 			sr.price = m.RatePerCt
+		case "g":
+			sr.price = m.RatePerG
 		}
 		rates[rateKey{m.SizeMm.StringFixed(2), m.StoneCode}] = sr
 	}
@@ -133,10 +136,13 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 				missingRates[calc.MissingPair{SizeMM: l.SizeMM.StringFixed(2), Code: l.StoneCode, Basis: r.basis}] = true
 				continue
 			}
-			line := calc.StoneCostLine{LineCarats: l.LineCarats, Pcs: l.StoneCount, Basis: r.basis}
-			if r.basis == "ct" {
+			line := calc.StoneCostLine{LineCarats: l.LineCarats, ExactCarats: l.ExactCarats, Pcs: l.StoneCount, Basis: r.basis}
+			switch r.basis {
+			case "ct":
 				line.RatePerCt = r.price.Decimal
-			} else {
+			case "g":
+				line.RatePerG = r.price.Decimal
+			default:
 				line.RatePerPc = r.price.Decimal
 			}
 			lines = append(lines, line)
@@ -179,6 +185,11 @@ func (s *Service) CostingRows(ctx context.Context, req CostingRequest) ([]CostRo
 
 // JobBag is the data printed on a job-bag PDF.
 type JobBag struct {
+	DesignID    int64
+	VariationID int64
+	// QR is the text the job-bag QR code holds: a link to the design page when the portal has a public
+	// address, otherwise the plain variation code. Never names, never prices.
+	QR            string
 	DesignCode    string
 	DesignName    string
 	Category      string
@@ -202,6 +213,16 @@ type JobBag struct {
 // JobBag assembles the spec sheet for one variation in one metal, with the
 // planner-chosen stone code resolved through the BOM rules.
 func (s *Service) JobBag(ctx context.Context, variationID int64, metalCode, stoneCode string) (JobBag, error) {
+	jb, err := s.JobBagData(ctx, variationID, metalCode, stoneCode)
+	if err != nil {
+		return JobBag{}, err
+	}
+	jb.Photo = s.jobBagPhoto(ctx, jb.DesignID, variationID)
+	return jb, nil
+}
+
+// JobBagData is JobBag without the photo, so many bags can be checked before any photo is read.
+func (s *Service) JobBagData(ctx context.Context, variationID int64, metalCode, stoneCode string) (JobBag, error) {
 	if metalCode == "" {
 		return JobBag{}, invalid("metal_code is required")
 	}
@@ -262,6 +283,7 @@ func (s *Service) JobBag(ctx context.Context, variationID int64, metalCode, ston
 	}
 	jb.File3dmName, jb.File3dmSHA256 = v.File3dmName.String, v.File3dmSha256.String
 	jb.FileStlName, jb.FileStlSHA256 = v.FileStlName.String, v.FileStlSha256.String
-	jb.Photo = s.jobBagPhoto(ctx, d.ID, variationID)
+	jb.DesignID, jb.VariationID = d.ID, variationID
+	jb.QR = s.jobBagQR(d.Code, bom.VariationCode)
 	return jb, nil
 }

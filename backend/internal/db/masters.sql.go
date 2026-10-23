@@ -542,7 +542,7 @@ func (q *Queries) ListStoneCodes(ctx context.Context) ([]StoneCode, error) {
 
 const listStoneMatrix = `-- name: ListStoneMatrix :many
 SELECT m.size_mm, m.stone_code_id, sc.code AS stone_code, m.sieve,
-       m.carats_per_stone, m.rate_per_ct, m.rate_per_pc, m.rate_basis
+       m.carats_per_stone, m.rate_per_ct, m.rate_per_pc, m.rate_basis, m.rate_per_g
 FROM stone_size_matrix m
 JOIN stone_codes sc ON sc.id = m.stone_code_id
 ORDER BY sc.code, m.size_mm
@@ -557,6 +557,7 @@ type ListStoneMatrixRow struct {
 	RatePerCt      decimal.NullDecimal `json:"rate_per_ct"`
 	RatePerPc      decimal.NullDecimal `json:"rate_per_pc"`
 	RateBasis      string              `json:"rate_basis"`
+	RatePerG       decimal.NullDecimal `json:"rate_per_g"`
 }
 
 func (q *Queries) ListStoneMatrix(ctx context.Context) ([]ListStoneMatrixRow, error) {
@@ -577,6 +578,7 @@ func (q *Queries) ListStoneMatrix(ctx context.Context) ([]ListStoneMatrixRow, er
 			&i.RatePerCt,
 			&i.RatePerPc,
 			&i.RateBasis,
+			&i.RatePerG,
 		); err != nil {
 			return nil, err
 		}
@@ -802,14 +804,15 @@ func (q *Queries) UpdateTag(ctx context.Context, arg UpdateTagParams) (Tag, erro
 }
 
 const upsertStoneMatrixRow = `-- name: UpsertStoneMatrixRow :one
-INSERT INTO stone_size_matrix (size_mm, stone_code_id, sieve, carats_per_stone, rate_per_ct, rate_per_pc, rate_basis)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO stone_size_matrix (size_mm, stone_code_id, sieve, carats_per_stone, rate_per_ct, rate_per_pc, rate_basis, rate_per_g)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (size_mm, stone_code_id) DO UPDATE
 SET sieve = EXCLUDED.sieve,
     carats_per_stone = EXCLUDED.carats_per_stone,
     rate_per_ct = EXCLUDED.rate_per_ct,
     rate_per_pc = EXCLUDED.rate_per_pc,
-    rate_basis = EXCLUDED.rate_basis
+    rate_basis = EXCLUDED.rate_basis,
+    rate_per_g = EXCLUDED.rate_per_g
 RETURNING (xmax = 0) AS inserted, size_mm, stone_code_id
 `
 
@@ -821,6 +824,7 @@ type UpsertStoneMatrixRowParams struct {
 	RatePerCt      decimal.NullDecimal `json:"rate_per_ct"`
 	RatePerPc      decimal.NullDecimal `json:"rate_per_pc"`
 	RateBasis      string              `json:"rate_basis"`
+	RatePerG       decimal.NullDecimal `json:"rate_per_g"`
 }
 
 type UpsertStoneMatrixRowRow struct {
@@ -838,6 +842,7 @@ func (q *Queries) UpsertStoneMatrixRow(ctx context.Context, arg UpsertStoneMatri
 		arg.RatePerCt,
 		arg.RatePerPc,
 		arg.RateBasis,
+		arg.RatePerG,
 	)
 	var i UpsertStoneMatrixRowRow
 	err := row.Scan(&i.Inserted, &i.SizeMm, &i.StoneCodeID)

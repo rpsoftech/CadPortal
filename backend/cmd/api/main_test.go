@@ -269,3 +269,17 @@ func TestStartHeartbeatChecksItsSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestAppBaseURL(t *testing.T) {
+	env := func(v string) func(string) string { return func(string) string { return v } }
+	for in, want := range map[string]string{"": "", "  ": "", "https://cad.example.com/": "https://cad.example.com", "http://localhost:4200": "http://localhost:4200"} {
+		if got, err := appBaseURL(env(in)); err != nil || got != want {
+			t.Errorf("%q: %q %v", in, got, err)
+		}
+	}
+	for _, in := range []string{"cad.example.com", "ftp://cad.example.com", "https://cad.example.com/portal", "https://cad.example.com/?x=1", "https://"} {
+		if _, err := appBaseURL(env(in)); err == nil {
+			t.Errorf("%q accepted", in)
+		}
+	}
+}

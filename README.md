@@ -482,7 +482,7 @@ CADPORTAL_VERSION=1.2.3 docker compose -f docker-compose.prod.yml -f docker-comp
 | Variations | `POST /designs/:id/variations`, `PUT /variations/:id/base-input`, `DELETE /variations/:id` |
 | Seats and BOM | `GET/PUT /variations/:id/seats`, `POST /variations/:id/clone-seats`, `GET /variations/:id/simulate-bom?code=2HD` |
 | CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl`, `DELETE /variations/:id/cad?kind=3dm\|stl` |
-| Exports | `POST /exports/job-bag-pdf`, `POST /exports/costing-csv`, `GET /exports/designs-csv` (any role) |
+| Exports | `POST /exports/job-bag-pdf`, `POST /exports/job-bags-pdf` (many bags in one PDF), `POST /exports/costing-csv`, `GET /exports/designs-csv` (any role) |
 
 All paths are under `/api/v1`. Alongside the routes above:
 
@@ -496,7 +496,7 @@ All paths are under `/api/v1`. Alongside the routes above:
 Admins maintain the reference data under **Master data** (no API calls needed):
 
 - **Alloys:** specific gravity, wastage % (needed for costing), and the default input alloy.
-- **Stone matrix:** weight per stone (entered in grams, or carats) and a price per piece (the default) or per carat for each (size, stone code), the baseline
+- **Stone matrix:** weight per stone (entered in grams, or carats) and a price per piece (the default), per carat or per gram for each (size, stone code), the baseline
   stone code, and stone codes themselves. A **Missing for the baseline code** panel lists sizes
   that seats use but the matrix lacks, with an Add shortcut.
 - **Categories and tags:** names, category code prefixes, and deactivating tags. Type a prefix
@@ -516,7 +516,7 @@ and shrinks as you fix them.
   (`LR0001`, `LR0002`, …; past 9999 the number simply grows). A category without a prefix cannot
   take new designs. Changing a prefix later restarts the count for new designs and never
   renames existing ones. Two categories cannot share a prefix.
-- **Stone matrix:** the stone sizes with weight per stone (grams or carats) and price (per piece, or per carat) (use **Import CSV
+- **Stone matrix:** the stone sizes with weight per stone (grams or carats) and price (per piece, per carat or per gram) (use **Import CSV
   / paste** for a long list), and a baseline stone code. Sizes your seats use but the matrix
   lacks are listed as gaps.
 
@@ -536,22 +536,28 @@ carats) and the screen shows the other unit beside it: 0.0014 g is 0.0070 ct, co
 (0.000000001 g is 0.000000005 ct) is refused with that reason instead of being rounded. Grams lead everywhere
 stone weight is shown: the matrix, the BOM, the weight matrix, the job bag, the catalog filter.
 
-**Stones are priced per piece by default, or per carat.** Each row has a price and a basis (*per
-piece* or *per carat*); costing multiplies the stone count by the price per piece, or the carats by the
-price per carat, line by line (so one design can mix both). A row remembers a price for each basis but
+**Stones are priced per piece by default, or per carat, or per gram.** Each row has a price and a basis
+(*per piece*, *per carat* or *per gram*); costing multiplies the stone count by the price per piece, the
+carats by the price per carat, or the line's grams by the price per gram, line by line (so one design
+can mix all three). Line grams are the line's carats (stone count × carats per stone, not yet rounded)
+× 0.200, so a per-gram line is priced from the exact weight, not the 4 dp figure on the BOM; money is
+rounded once, at the end. The costing CSV ends with a `stone_pricing` column saying how each stone line
+was priced and the quantity priced, e.g. `24 pcs x 100.00/pc; 0.0228 g x 5000.00/g`. A row remembers a price for each basis but
 only the one named by its basis is used, and the screens, the setup checklist and a costing error all say
 which one is missing ("price per piece not set for 1.10 mm × 2HD"). Rows that already had a per-carat
 price keep meaning per carat.
 
 To load a large stone matrix, use **Import CSV / paste** with a header row, for example
-`size_mm, stone_code, sieve, grams_per_stone, rate_per_pc, rate_per_ct, rate_basis`. Columns may come
-in any order; the weight is `grams_per_stone` or `carats_per_stone`, and the price is `rate_per_pc`
-and/or `rate_per_ct` with `rate_basis` (`pc` or `ct`; empty means per piece, or per carat when only a
-per-carat price is given). Without a header the older five columns (size, code, sieve, carats, rate per
-carat) and the eight columns of **Export CSV** are read by position; sieve and prices may be empty and
+`size_mm, stone_code, sieve, grams_per_stone, rate_per_pc, rate_per_ct, rate_per_g, rate_basis`. Columns
+may come in any order; the weight is `grams_per_stone` or `carats_per_stone`, and the price is
+`rate_per_pc`, `rate_per_ct` and/or `rate_per_g` with `rate_basis` (`pc`, `ct` or `g`; empty means per
+piece, or per carat when only a per-carat price is given). `rate_basis` `g` needs a `rate_per_g`. Files
+made before per-gram prices (no `rate_per_g` column) still import. Without a header the older five
+columns (size, code, sieve, carats, rate per carat), the eight columns of an older **Export CSV** and
+the nine columns of the current one are read by position; sieve and prices may be empty and
 tab-separated text pasted from a spreadsheet works. Sizes allow 2 decimals, carats 8, prices 2;
 over-precise values are rejected rather than rounded. An import is all-or-nothing, and **Export CSV**
-gives the same eight columns back for editing. Stone codes must exist before rows can use them.
+gives the same nine columns back for editing. Stone codes must exist before rows can use them.
 
 **A ready-made list: CZ stones.** `docs/imports/cz-stone-weights.csv` is the supplier's weight list
 (grams per 1000 pieces for STAR, MHD and HD stones, sizes 1 mm to 2/00) converted to grams per
@@ -596,7 +602,20 @@ each variation. Each group holds up to **5 files, photos and videos together**.
   design's first photo (the 480 px thumbnail, sharp enough at 50 mm). A design without photos, or
   storage that cannot be reached, gives the same sheet as before: the photo is never a reason for
   a job bag to fail.
-- Deleting a media file, or a variation, removes its stored objects. Uploads, deletions and cover
+- **Job bags carry a QR code:** top right, 30 mm with its quiet zone and the highest error
+  correction, with the variation code printed under it. With `APP_BASE_URL` set it holds
+  `<APP_BASE_URL>/designs/LR0001?v=LR0001-V1`: a phone scan opens the design page with that variation
+  selected. Without it, it holds the plain text `LR0001-V1`. Only codes go into it, never names,
+  weights or prices.
+- **Many job bags in one PDF:** on a design page, **Print all job bags** (every variation, with the
+  chosen metal and stone code) or tick variations and **Print selected**. The API is
+  `POST /exports/job-bags-pdf`: `items` (`variation_id`, optional `metal_code`/`stone_code`) and/or
+  `design_ids`, with shared `metal_code`/`stone_code`; at most 200 bags, in the order given, "Page n of N"
+  in the footer. If any bag lacks stone-weight rows the answer is 422 listing every such variation
+  and nothing is printed; with `skip_incomplete: true` the complete bags are printed, the skipped ones
+  are named in the `X-Skipped` header and on a last page. For a catalog selection bar,
+  `ApiService.jobBagsPdf()` is ready to call. Each print is audited as `export.job_bags` (the count).
+- Deleting a media file removes its stored object (after the retention period, see Undo below). A deleted variation keeps its photos until it is purged. Uploads, deletions and cover
   changes are in the audit log (`media.upload`, `media.delete`, `media.cover`).
 
 ### Undo: the Removed screen
@@ -612,14 +631,32 @@ Admins and designers have a **Removed** link in the top bar for taking back a mi
   (otherwise the screen says which variation has it), and a photo or video needs room (5 per design or
   variation) and a live design. A file that was **replaced** by a newer upload can be restored only
   after the newer one is removed.
-- **A deleted variation** cannot be restored from the app (its seats and weights are gone), but its
-  files are kept for the same period; whoever runs the server can recover them from the bucket by the
-  keys in the `trashed_files` table.
+- **Deleted variations** are listed too, with their design, when they were deleted and how many days
+  are left. **Restore** brings back the variation exactly as it was: base input, stone seats, CAD
+  files and photos, with its weights worked out again. While a variation is deleted it is invisible and
+  cannot be edited, downloaded or used in a job bag; its code (`LR0001-V2`) is never given to a new
+  variation, and its CAD checksums stay reserved, so uploading the same file to another variation is
+  refused with a message saying it is kept on a deleted variation. A variation whose design is
+  deleted says "Restore the design first". After `DELETED_FILE_RETENTION_DAYS` the hourly job deletes
+  the variation and its stored files for good (with `0`, deletion is immediate and the number is
+  free again, as it always was). Variations deleted before this existed have their files in the
+  list below, "Cannot be put back", as before.
 - Set `DELETED_FILE_RETENTION_DAYS=0` to delete files at once, as before. Storage is only freed when the
   period ends, so a busy catalog uses a little more space for 30 days.
-- Restores are in the audit log (`trash.restore_file`, `design.restore`).
+- Restores are in the audit log (`trash.restore_file`, `design.restore`, `variation.restore`).
 - This is a safety net, not a backup: after the period the file is gone from R2 unless you turned on
   R2 object versioning or keep your own copy.
+
+### Duplicating a design
+
+**Duplicate** (design page, admins and designers) makes a new design in the same category with the
+next automatic code (`LR0007` becomes `LR0008`). The dialog asks for a name (default
+"<name> (copy)"), which variations to copy (default all) and whether to copy the tags. Each copied
+variation is renumbered (`-V1`, `-V2`, ...) and keeps its base input and stone seats, sizes, counts and
+locks; its weights are worked out again in the same transaction, and the whole copy is all or nothing.
+**CAD files, photos and videos are not copied**: a CAD file can be stored only once (checksums are
+unique), so upload them to the new design yourself. A deleted design cannot be duplicated, and deleted
+variations are never copied. The audit log records `design.duplicate` ("from LR0007").
 
 ### Importing designs
 

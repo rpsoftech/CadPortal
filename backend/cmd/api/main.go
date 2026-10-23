@@ -141,6 +141,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if svc.AppBaseURL, err = appBaseURL(os.Getenv); err != nil {
+		return err
+	}
 	if sender != nil {
 		svc.Mail, svc.AppBaseURL = sender, baseURL
 		log.Printf("password reset by email is on (SMTP host %s)", os.Getenv("SMTP_HOST"))
@@ -317,6 +320,19 @@ func checkR2Env(getenv func(string) string) error {
 	return nil
 }
 
+// appBaseURL reads APP_BASE_URL, the public address of the portal (no path, no trailing slash). It is
+// empty when unset. Emailed reset links and the QR codes on job bags are built from it.
+func appBaseURL(getenv func(string) string) (string, error) {
+	base := strings.TrimRight(strings.TrimSpace(getenv("APP_BASE_URL")), "/")
+	if base == "" {
+		return "", nil
+	}
+	if u, err := url.Parse(base); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return "", errors.New("APP_BASE_URL must be the public address of the portal, like https://cad.example.com")
+	}
+	return base, nil
+}
+
 // mailConfig reads the SMTP settings that make "forgot password" send emails. With SMTP_HOST empty
 // nothing is configured and people are told to ask an admin for a reset link. APP_BASE_URL is the public
 // address the emailed link points to, so it is required whenever mail is on.
@@ -325,8 +341,8 @@ func mailConfig(getenv func(string) string) (mailer.Sender, string, error) {
 	if val("SMTP_HOST") == "" {
 		return nil, "", nil
 	}
-	base := strings.TrimRight(val("APP_BASE_URL"), "/")
-	if u, err := url.Parse(base); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.Path != "" {
+	base, err := appBaseURL(getenv)
+	if err != nil || base == "" {
 		return nil, "", errors.New("APP_BASE_URL must be the public address of the portal, like https://cad.example.com, when SMTP_HOST is set")
 	}
 	port := 587

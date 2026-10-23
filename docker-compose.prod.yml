@@ -66,7 +66,7 @@ services:
       # (0 = never warn). Left empty it is 36 with R2 and off otherwise.
       BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-}
       # "Forgot password" by email. Empty SMTP_HOST means off: people are told to ask an admin for a reset link
-      # (Users screen). APP_BASE_URL is the public address, used in the emailed link.
+      # (Users screen). APP_BASE_URL is the public address, used in the emailed link and in the job-bag QR code.
       APP_BASE_URL: ${APP_BASE_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}

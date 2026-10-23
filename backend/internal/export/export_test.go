@@ -42,7 +42,8 @@ func TestWriteCostingCSV(t *testing.T) {
 		t.Fatalf("records = %v", recs)
 	}
 	want := []string{"LR001-V1", "18KR", "2HD", "3.050", "10", "3.355", "6000", "20130.00",
-		"0.3470", "0.0694", "17350.00", "37", "25", "925.00", "38405.00"}
+		"0.3470", "0.0694", "17350.00", "37", "25", "925.00", "38405.00",
+		"0.3470 ct x 50000.00/ct"}
 	for i, w := range want {
 		if recs[1][i] != w {
 			t.Errorf("col %s = %q want %q", CostingHeader[i], recs[1][i], w)
@@ -160,5 +161,30 @@ func TestJobBagPDFSurvivesAPhotoThatCannotBeUsed(t *testing.T) {
 		if err != nil || !bytes.HasPrefix(pdf, []byte("%PDF-")) {
 			t.Errorf("%s: the sheet must still be made: %v", name, err)
 		}
+	}
+}
+
+func TestWriteCostingCSVShowsHowEachStoneLineWasPriced(t *testing.T) {
+	cost := calc.Compute(calc.CostInput{
+		NetG: d("3.050"), WastagePct: d("10"), GoldRatePerG: d("6000"),
+		StoneLines: []calc.StoneCostLine{
+			{LineCarats: d("0.1680"), ExactCarats: d("0.1680"), Pcs: 24, Basis: "pc", RatePerPc: d("100")},
+			{LineCarats: d("0.1140"), ExactCarats: d("0.1140"), Pcs: 12, Basis: "g", RatePerG: d("5000")},
+			{LineCarats: d("0.0650"), ExactCarats: d("0.0650"), Pcs: 1, Basis: "ct", RatePerCt: d("50000")},
+		},
+		SettingPcs: 37, SettingRatePerPc: d("25"),
+	})
+	var buf bytes.Buffer
+	if err := WriteCostingCSV(&buf, []service.CostRow{{VariationCode: "LR001-V1", MetalCode: "18KR", StoneCode: "2HD", Cost: cost}}); err != nil {
+		t.Fatal(err)
+	}
+	recs, _ := csv.NewReader(&buf).ReadAll()
+	last := recs[1][len(recs[1])-1]
+	if want := "24 pcs x 100.00/pc; 0.0228 g x 5000.00/g; 0.0650 ct x 50000.00/ct"; last != want {
+		t.Errorf("stone_pricing = %q want %q", last, want)
+	}
+	// 2400.00 + 0.0228 x 5000 = 114.00 + 3250.00
+	if got := recs[1][10]; got != "5764.00" {
+		t.Errorf("stone_cost = %s want 5764.00", got)
 	}
 }

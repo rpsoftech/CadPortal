@@ -144,7 +144,7 @@ func (q *Queries) InsertTrashedFile(ctx context.Context, arg InsertTrashedFilePa
 
 const listDeletedDesigns = `-- name: ListDeletedDesigns :many
 SELECT d.id, d.code, d.name, d.deleted_at, c.name AS category_name,
-       (SELECT count(*) FROM cad_variations v WHERE v.design_id = d.id)::int AS variation_count
+       (SELECT count(*) FROM cad_variations v WHERE v.design_id = d.id AND v.deleted_at IS NULL)::int AS variation_count
 FROM master_designs d JOIN categories c ON c.id = d.category_id
 WHERE d.deleted_at IS NOT NULL ORDER BY d.deleted_at DESC
 `
