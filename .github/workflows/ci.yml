@@ -215,12 +215,14 @@ jobs:
         run: |
           docker build --target backup -t cadportal-backup:test backend
           scripts/backup_service_test.sh
+      - name: Tear down the main stack (the next test starts its own, with two API instances)
+        if: always()
+        run: docker compose -f docker-compose.prod.yml down -v
+      - name: More than one API instance
+        run: scripts/multi_instance_test.sh
       - name: Show logs on failure
         if: failure()
         run: docker compose -f docker-compose.prod.yml logs --no-color --tail 80
-      - name: Tear down
-        if: always()
-        run: docker compose -f docker-compose.prod.yml down -v
 
   vulncheck:
     name: vulncheck

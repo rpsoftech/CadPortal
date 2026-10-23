@@ -3,14 +3,12 @@ package service
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
 	"github.com/rpsoftech/cad-portal/backend/internal/db"
-	"github.com/rpsoftech/cad-portal/backend/internal/migrate"
+	"github.com/rpsoftech/cad-portal/backend/internal/testdb"
 )
 
 func d(s string) decimal.Decimal { return decimal.RequireFromString(s) }
@@ -19,47 +17,10 @@ func dp(s string) *decimal.Decimal {
 	return &v
 }
 
-// dbUnavailable skips locally when there is no test database, but fails in CI (GitHub sets
-// CI=true): a Postgres service that failed to start must not turn into a green run that
-// tested nothing.
-func dbUnavailable(t *testing.T, err error) {
-	t.Helper()
-	if os.Getenv("CI") != "" {
-		t.Fatalf("test database unavailable in CI: %v", err)
-	}
-	t.Skipf("test database unavailable: %v", err)
-}
-
-// newTestService resets the local test database to freshly migrated state.
+// newTestService resets this package's own test database to freshly migrated state.
 func newTestService(t *testing.T) *Service {
 	t.Helper()
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		url = "postgres://cad:cad@localhost:5433/cad_portal_test?sslmode=disable"
-	}
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, url)
-	if err != nil {
-		dbUnavailable(t, err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		dbUnavailable(t, err)
-	}
-	t.Cleanup(pool.Close)
-	// Guard: only ever wipe a database whose name ends in _test.
-	var name string
-	if err := pool.QueryRow(ctx, "SELECT current_database()").Scan(&name); err != nil {
-		t.Fatal(err)
-	}
-	if len(name) < 5 || name[len(name)-5:] != "_test" {
-		t.Fatalf("refusing to reset non-test database %q", name)
-	}
-	if _, err := pool.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
-		t.Fatal(err)
-	}
-	if err := migrate.Up(url); err != nil {
-		t.Fatal(err)
-	}
+	pool, _ := testdb.Reset(t)
 	return New(pool)
 }
 

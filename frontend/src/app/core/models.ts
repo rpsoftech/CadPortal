@@ -55,7 +55,7 @@ export interface StoneCode {
   active: boolean;
 }
 
-export type RateBasis = 'pc' | 'ct';
+export type RateBasis = 'pc' | 'ct' | 'g';
 
 export interface StoneMatrixRow {
   size_mm: Dec;
@@ -65,7 +65,9 @@ export interface StoneMatrixRow {
   carats_per_stone: Dec;
   rate_per_ct: Dec | null;
   rate_per_pc: Dec | null;
-  /** Which price costing uses for this row: per piece (the default) or per carat. */
+  /** Price per gram of stone weight (carats x 0.200). */
+  rate_per_g: Dec | null;
+  /** Which price costing uses for this row: per piece (the default), per carat or per gram. */
   rate_basis: RateBasis;
 }
 
@@ -77,6 +79,7 @@ export interface MatrixRowInput {
   carats_per_stone: string;
   rate_per_pc: string | null;
   rate_per_ct: string | null;
+  rate_per_g: string | null;
   /** Empty lets the server decide: per piece, unless only a per-carat price is given. */
   rate_basis: RateBasis | '';
 }
@@ -373,7 +376,7 @@ export interface CostingSheet extends CostingSheetSummary {
     stone_rates: {
       size_mm: string;
       stone_code: string;
-      rate_basis: 'pc' | 'ct';
+      rate_basis: RateBasis;
       price: string;
       carats_per_stone: string;
     }[];
@@ -393,6 +396,15 @@ export interface CostingSheetComparison {
     total: string | null;
     difference: string | null;
   }[];
+}
+
+/** Body of POST /exports/job-bags-pdf. A per-item metal or stone code overrides the shared one. */
+export interface JobBagsRequest {
+  items?: { variation_id: number; metal_code?: string; stone_code?: string }[];
+  design_ids?: number[];
+  metal_code?: string;
+  stone_code?: string;
+  skip_incomplete?: boolean;
 }
 
 /** Error body shape returned by the API. Go structs without json tags use PascalCase keys. */
@@ -483,9 +495,30 @@ export interface TrashedFile {
   has_thumbnail: boolean;
 }
 
+/** A deleted variation: kept with its seats, files and photos until purge_after. */
+export interface DeletedVariation {
+  id: number;
+  code: string;
+  design_code: string;
+  design_name: string;
+  deleted_at: string;
+  /** Null when no retention period is set (nothing is purged automatically). */
+  purge_after: string | null;
+  has_files: boolean;
+  /** True while its design is deleted: restore the design first. */
+  design_deleted: boolean;
+}
+
 export interface Trash {
   designs: DeletedDesign[];
+  variations: DeletedVariation[];
   files: TrashedFile[];
+}
+
+export interface DuplicateDesignBody {
+  name?: string;
+  variation_ids?: number[];
+  copy_tags: boolean;
 }
 
 /** One run of the backup service. */
@@ -528,6 +561,8 @@ export interface Backups {
 export interface AuthConfig {
   /** "Forgot password" can send an email (a mail server is configured). */
   password_reset_email: boolean;
+  /** Minutes without activity before the app signs the user out; 0 = never. */
+  idle_timeout_minutes: number;
 }
 
 /** A one-hour reset link an admin hands to a user. `path` is relative to the portal's address. */

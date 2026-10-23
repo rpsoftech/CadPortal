@@ -140,6 +140,21 @@ Sign in with the account you created above. The session lives in `sessionStorage
 ends with the browser tab. The UI only uses the role to hide controls; the server checks
 the token and role on every request.
 
+**Sign-out and session length.** Two limits apply, both set on the server so they change with a restart
+and no rebuild:
+
+- `SESSION_HOURS` (default 8, 1 to 720) is the absolute life of a login. It is the expiry of the token the
+  server signs; activity does not extend it and there is no refresh token. After that, or on a `401`, the
+  app returns to the sign-in page.
+- `IDLE_TIMEOUT_MINUTES` (default 30, 0 to 1440, 0 = off) signs the user out after that long with no
+  activity: mouse, key, touch or scroll in *any* tab of the same browser (the last-activity time is shared
+  through `localStorage`; if that is unavailable each tab counts its own). About a minute before, a dialog
+  says "You will be signed out in N s" with a *Stay signed in* button; with a timeout of 1 minute the
+  warning is 30 s. Requests the app makes on its own do not count as activity. The app reads the value from
+  the public `GET /api/v1/auth/config` (`idle_timeout_minutes`) when someone signs in. The idle timeout
+  is enforced by the browser, not the server: it protects an unattended screen, not a stolen token (that is
+  what `SESSION_HOURS` and the per-request token check are for).
+
 ## Configuration
 
 See [.env.example](.env.example). Never commit real credentials: `.env` is gitignored.
@@ -173,8 +188,9 @@ What to know before going live:
   answered with 429). Without a proxy in front, clients are limited by their own address.
 - **Storage:** use R2 in production. `STORAGE=local` keeps files in a Docker volume with no
   replication or backups and is for development only.
-- **Migrations** run automatically when the API starts (`AUTO_MIGRATE=true`). Run one API
-  instance; the recalculation worker is safe against overlap, but there is no need to scale it.
+- **Migrations** run automatically when the API starts (`AUTO_MIGRATE=true`). Instances starting
+  together queue on a database lock, so running more than one API is safe: see
+  [Running more than one API instance](#running-more-than-one-api-instance).
 - **Health:** the API answers `/healthz` (process up) and `/readyz` (database reachable) on its
   own port, and both images define Docker health checks. `docker compose ps` shows them.
 - **Shutdown:** `docker compose stop` sends SIGTERM; the API lets in-flight requests, uploads
@@ -247,16 +263,33 @@ when you push a version tag).
 ### Backups
 
 The `backup` service (a separate small image, because the API image has no shell or `pg_dump`) does
-two things every night at `BACKUP_AT` (default 02:00 `BACKUP_TZ`, UTC), into a **second bucket**:
+two things at `BACKUP_AT` (default one run a night, 02:00 `BACKUP_TZ`, UTC; or several, see
+[How often](#how-often)), into a **second bucket**:
 
 | What | How it is stored | Kept |
 |---|---|---|
-| **Database** | `pg_dump -Fc` (already compressed), checked with `pg_restore --list` before it is kept, then **encrypted** to your public key (age) as `db/cad_portal-<time>.dump.age` | 7 daily, 4 weekly, 12 monthly, and **one per year for good** (`BACKUP_KEEP_*` change the first three) |
+| **Database** | `pg_dump -Fc` (already compressed), checked with `pg_restore --list` before it is kept, then **encrypted** to your public key (age) as `db/cad_portal-<time>.dump.age` | 7 daily, 4 weekly, 12 monthly, and **one per year for good** (`BACKUP_KEEP_*` change the first three); the newest dump of each period, plus every dump of the last 48 hours (`BACKUP_KEEP_RECENT_HOURS`) |
 | **CAD files, photos, video** | every object the vault has and the backup lacks, copied byte for byte (same type and `Content-Encoding`) to `files/<same key>`. Objects have random names and are never rewritten, so this is incremental: night two copies only what is new | nothing is ever deleted from the backup, so a file removed in the portal stays recoverable there |
 
 Both halves are independent (a failed file copy never stops the database dump), every run is recorded,
 and the setup checklist warns admins if no good backup is newer than 36 hours (`BACKUP_MAX_AGE_HOURS`).
-If the service was down, it takes a backup at start-up instead of waiting for the next night.
+If the service was down, it takes a backup at start-up instead of waiting for the next run (when the last
+good one is older than the longest gap in the schedule plus two hours: 26 hours for one run a night).
+
+#### How often
+
+`BACKUP_AT` is one time or a comma-separated list of 24-hour times in `BACKUP_TZ`, for example
+`BACKUP_AT=02:00,08:00,14:00,20:00`. Each entry is checked (a bad one stops the service with a message),
+duplicates are dropped, the list is sorted, and the next run is the soonest one after now. Dump names carry
+the time, so several a day are fine. Retention keeps, as before, the *newest* dump of each of the last 7 days /
+4 weeks / 12 months and of every year, and now also **every** dump taken in the last `BACKUP_KEEP_RECENT_HOURS`
+(default 48; 0 turns this off), so 02:00, 08:00, 14:00 and 20:00 of yesterday and today are all still there and
+older days thin out to the last dump of the day.
+
+If you run more than once a day, also change the two things that watch for stale backups, because their defaults
+assume a nightly run: `BACKUP_MAX_AGE_HOURS` (the setup-checklist warning, default 36; use a bit over twice the
+longest gap, for example 14 for every 6 hours) and the expected interval of the `BACKUP_HEARTBEAT_URL` monitor.
+The start-up catch-up adjusts itself.
 
 **What is compressed:** CAD files are gzipped by the portal before they reach R2 (flagged
 `Content-Encoding: gzip`, so browsers still receive the original file), and the database dump is
@@ -311,10 +344,62 @@ docker compose -f docker-compose.prod.yml run --rm backup restore-files        #
 runs this whole cycle in CI against a real database and an S3-compatible server, including a dump restored
 into a fresh database and a deleted CAD file coming back with its encoding.
 
-**Limits, honestly:** this is a nightly full dump, so a disaster can lose up to a day of changes (there is
-no point-in-time recovery). Files are copied as they appear in the vault, so a file uploaded and lost the
+**Limits, honestly:** the recovery point is the time of the last good dump: up to a day lost with the default
+single nightly run, up to the longest gap in `BACKUP_AT` (6 hours for the four-times-a-day example) otherwise.
+A full dump of this catalog is small, so running it every few hours costs little. True point-in-time recovery
+(restore to any second) is deliberately **not built**: it needs WAL archiving, meaning a base backup plus a
+continuous stream of WAL files shipped to the backup bucket (`archive_command`, or a tool such as pgBackRest or
+WAL-G), a restore procedure that replays them to a chosen time, and monitoring that the archive is not falling
+behind. That is more moving parts to run and to rehearse than this portal's size justifies today; if losing
+a few hours of work is not acceptable, that is the next step and it is a decision for the owner. Files are copied as they appear in the vault, so a file uploaded and lost the
 same day before the night run is not in the backup. The backup bucket is only as safe as its token: keep
 that token off the server's other services, and rotate it like any secret.
+
+### Running more than one API instance
+
+One API container is plenty for a workshop, but nothing in the portal assumes it: you can run several
+(for zero-downtime restarts, or more headroom) on the same Postgres.
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --scale api=2      # or any number
+```
+
+`scripts/multi_instance_test.sh` proves this in CI: it starts two API containers on an empty database and
+checks that requests really reach both, that a sign-in on one instance is accepted by the other, that 60
+parallel design creations get 60 different codes, and that weight rebuilds finish with no failure or deadlock.
+
+**Safe with several instances** (the database does the coordinating):
+
+| What | How |
+|---|---|
+| Migrations at start | instances queue on a Postgres advisory lock; one migrates, the rest find nothing to do |
+| Weight rebuild worker | each job is claimed with `FOR UPDATE SKIP LOCKED` and run under an advisory lock: one job at a time, never twice |
+| Design codes | the category row is locked while a number is handed out |
+| Sign-in lockout, password reset links | counters and one-time tokens live in the database |
+| Sign-in tokens | stateless (signed with `JWT_SECRET`, which every instance must share) |
+| Removed-file purge | rows are claimed with `SKIP LOCKED`, so no object is deleted twice |
+| Audit retention | one instance prunes at a time (a try-lock); the others skip |
+| Uptime heartbeat (`HEARTBEAT_URL`) | one instance pings per interval (a database claim); if it stops, another takes over within one interval |
+| Backups | a separate service, run it once |
+
+**Not shared between instances:**
+
+- **File storage.** `STORAGE=local` keeps files in a Docker volume. Two API containers on the *same host* share
+  that volume, so it works there (this is what the test does), but it can never span two hosts. With R2
+  (`S3_*`) every instance sees the same bucket: that is the multi-host mode.
+- **Sign-in rate limit.** It lives in the web (nginx) container, per client address. Run one web container, or accept that
+  each has its own budget.
+- Photo thumbnails are made by the instance that receives the upload (at most 2 at a time per instance); that is
+  per-instance load only, not state.
+
+**How requests are spread.** The web container resolves the `api` name for every request (Docker DNS, cached
+for 10 seconds) and nginx rotates over all the addresses it gets, so new instances start receiving traffic
+within seconds and a stopped one stops being used after the cache expires (nginx also retries the next address
+on a connection error). Put a TLS proxy in front of the *web* container only; the API containers publish no ports.
+
+**Scaling up and down.** `docker compose up -d --scale api=N` adds or removes API containers; the compose file
+has no fixed `container_name`, so any number works, and health checks gate the web container's start. The
+deploy script restarts the `api` service as a whole.
 
 ### Logs and uptime monitoring
 
@@ -335,9 +420,10 @@ Failed requests are `warn`, server errors are `error` (with the internal error t
 check at a monitoring service (Healthchecks.io, Uptime Kuma's push monitor, Better Stack...) that expects a
 ping every 5 minutes with a few minutes of grace, and put its URL in `HEARTBEAT_URL`. The API pings it while
 it can reach its database and stays silent when it cannot, so the monitor alerts you if the server, the API
-or the database goes down.
+or the database goes down. With several API instances only one of them pings per interval.
 
-Do the same for backups with a second check that expects a ping every 26 hours, and put its URL in
+Do the same for backups with a second check that expects a ping every 26 hours (a little over the longest
+gap in `BACKUP_AT` if you back up more than once a day), and put its URL in
 `BACKUP_HEARTBEAT_URL`. The backup service pings only after a *good* backup, so a backup that stops or fails
 alerts you even if the whole server is gone. These URLs are secret-like and are never written to the logs
 (only the host is).
@@ -443,7 +529,7 @@ CADPORTAL_VERSION=1.2.3 docker compose -f docker-compose.prod.yml -f docker-comp
 | Variations | `POST /designs/:id/variations`, `PUT /variations/:id/base-input`, `DELETE /variations/:id` |
 | Seats and BOM | `GET/PUT /variations/:id/seats`, `POST /variations/:id/clone-seats`, `GET /variations/:id/simulate-bom?code=2HD` |
 | CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl`, `DELETE /variations/:id/cad?kind=3dm\|stl` |
-| Exports | `POST /exports/job-bag-pdf`, `GET /exports/designs-csv` (any role); `POST /exports/costing-csv`, `POST /exports/costing-preview` (admin/designer) |
+| Exports | `POST /exports/job-bag-pdf`, `POST /exports/job-bags-pdf` (many bags in one PDF), `GET /exports/designs-csv` (any role); `POST /exports/costing-csv`, `POST /exports/costing-preview` (admin/designer) |
 | Costing sheets (admin/designer) | `POST/GET /costing-sheets`, `GET/DELETE /costing-sheets/:id`, `GET /costing-sheets/:id/csv`, `POST /costing-sheets/:id/recost` |
 
 All paths are under `/api/v1`. Alongside the routes above:
@@ -458,7 +544,7 @@ All paths are under `/api/v1`. Alongside the routes above:
 Admins maintain the reference data under **Master data** (no API calls needed):
 
 - **Alloys:** specific gravity, wastage % (needed for costing), and the default input alloy.
-- **Stone matrix:** weight per stone (entered in grams, or carats) and a price per piece (the default) or per carat for each (size, stone code), the baseline
+- **Stone matrix:** weight per stone (entered in grams, or carats) and a price per piece (the default), per carat or per gram for each (size, stone code), the baseline
   stone code, and stone codes themselves. A **Missing for the baseline code** panel lists sizes
   that seats use but the matrix lacks, with an Add shortcut.
 - **Categories and tags:** names, category code prefixes, and deactivating tags. Type a prefix
@@ -478,7 +564,7 @@ and shrinks as you fix them.
   (`LR0001`, `LR0002`, …; past 9999 the number simply grows). A category without a prefix cannot
   take new designs. Changing a prefix later restarts the count for new designs and never
   renames existing ones. Two categories cannot share a prefix.
-- **Stone matrix:** the stone sizes with weight per stone (grams or carats) and price (per piece, or per carat) (use **Import CSV
+- **Stone matrix:** the stone sizes with weight per stone (grams or carats) and price (per piece, per carat or per gram) (use **Import CSV
   / paste** for a long list), and a baseline stone code. Sizes your seats use but the matrix
   lacks are listed as gaps.
 
@@ -498,22 +584,28 @@ carats) and the screen shows the other unit beside it: 0.0014 g is 0.0070 ct, co
 (0.000000001 g is 0.000000005 ct) is refused with that reason instead of being rounded. Grams lead everywhere
 stone weight is shown: the matrix, the BOM, the weight matrix, the job bag, the catalog filter.
 
-**Stones are priced per piece by default, or per carat.** Each row has a price and a basis (*per
-piece* or *per carat*); costing multiplies the stone count by the price per piece, or the carats by the
-price per carat, line by line (so one design can mix both). A row remembers a price for each basis but
+**Stones are priced per piece by default, or per carat, or per gram.** Each row has a price and a basis
+(*per piece*, *per carat* or *per gram*); costing multiplies the stone count by the price per piece, the
+carats by the price per carat, or the line's grams by the price per gram, line by line (so one design
+can mix all three). Line grams are the line's carats (stone count × carats per stone, not yet rounded)
+× 0.200, so a per-gram line is priced from the exact weight, not the 4 dp figure on the BOM; money is
+rounded once, at the end. The costing CSV ends with a `stone_pricing` column saying how each stone line
+was priced and the quantity priced, e.g. `24 pcs x 100.00/pc; 0.0228 g x 5000.00/g`. A row remembers a price for each basis but
 only the one named by its basis is used, and the screens, the setup checklist and a costing error all say
 which one is missing ("price per piece not set for 1.10 mm × 2HD"). Rows that already had a per-carat
 price keep meaning per carat.
 
 To load a large stone matrix, use **Import CSV / paste** with a header row, for example
-`size_mm, stone_code, sieve, grams_per_stone, rate_per_pc, rate_per_ct, rate_basis`. Columns may come
-in any order; the weight is `grams_per_stone` or `carats_per_stone`, and the price is `rate_per_pc`
-and/or `rate_per_ct` with `rate_basis` (`pc` or `ct`; empty means per piece, or per carat when only a
-per-carat price is given). Without a header the older five columns (size, code, sieve, carats, rate per
-carat) and the eight columns of **Export CSV** are read by position; sieve and prices may be empty and
+`size_mm, stone_code, sieve, grams_per_stone, rate_per_pc, rate_per_ct, rate_per_g, rate_basis`. Columns
+may come in any order; the weight is `grams_per_stone` or `carats_per_stone`, and the price is
+`rate_per_pc`, `rate_per_ct` and/or `rate_per_g` with `rate_basis` (`pc`, `ct` or `g`; empty means per
+piece, or per carat when only a per-carat price is given). `rate_basis` `g` needs a `rate_per_g`. Files
+made before per-gram prices (no `rate_per_g` column) still import. Without a header the older five
+columns (size, code, sieve, carats, rate per carat), the eight columns of an older **Export CSV** and
+the nine columns of the current one are read by position; sieve and prices may be empty and
 tab-separated text pasted from a spreadsheet works. Sizes allow 2 decimals, carats 8, prices 2;
 over-precise values are rejected rather than rounded. An import is all-or-nothing, and **Export CSV**
-gives the same eight columns back for editing. Stone codes must exist before rows can use them.
+gives the same nine columns back for editing. Stone codes must exist before rows can use them.
 
 **A ready-made list: CZ stones.** `docs/imports/cz-stone-weights.csv` is the supplier's weight list
 (grams per 1000 pieces for STAR, MHD and HD stones, sizes 1 mm to 2/00) converted to grams per
@@ -558,7 +650,20 @@ each variation. Each group holds up to **5 files, photos and videos together**.
   design's first photo (the 480 px thumbnail, sharp enough at 50 mm). A design without photos, or
   storage that cannot be reached, gives the same sheet as before: the photo is never a reason for
   a job bag to fail.
-- Deleting a media file, or a variation, removes its stored objects. Uploads, deletions and cover
+- **Job bags carry a QR code:** top right, 30 mm with its quiet zone and the highest error
+  correction, with the variation code printed under it. With `APP_BASE_URL` set it holds
+  `<APP_BASE_URL>/designs/LR0001?v=LR0001-V1`: a phone scan opens the design page with that variation
+  selected. Without it, it holds the plain text `LR0001-V1`. Only codes go into it, never names,
+  weights or prices.
+- **Many job bags in one PDF:** on a design page, **Print all job bags** (every variation, with the
+  chosen metal and stone code) or tick variations and **Print selected**. The API is
+  `POST /exports/job-bags-pdf`: `items` (`variation_id`, optional `metal_code`/`stone_code`) and/or
+  `design_ids`, with shared `metal_code`/`stone_code`; at most 200 bags, in the order given, "Page n of N"
+  in the footer. If any bag lacks stone-weight rows the answer is 422 listing every such variation
+  and nothing is printed; with `skip_incomplete: true` the complete bags are printed, the skipped ones
+  are named in the `X-Skipped` header and on a last page. For a catalog selection bar,
+  `ApiService.jobBagsPdf()` is ready to call. Each print is audited as `export.job_bags` (the count).
+- Deleting a media file removes its stored object (after the retention period, see Undo below). A deleted variation keeps its photos until it is purged. Uploads, deletions and cover
   changes are in the audit log (`media.upload`, `media.delete`, `media.cover`).
 
 ### Undo: the Removed screen
@@ -574,14 +679,32 @@ Admins and designers have a **Removed** link in the top bar for taking back a mi
   (otherwise the screen says which variation has it), and a photo or video needs room (5 per design or
   variation) and a live design. A file that was **replaced** by a newer upload can be restored only
   after the newer one is removed.
-- **A deleted variation** cannot be restored from the app (its seats and weights are gone), but its
-  files are kept for the same period; whoever runs the server can recover them from the bucket by the
-  keys in the `trashed_files` table.
+- **Deleted variations** are listed too, with their design, when they were deleted and how many days
+  are left. **Restore** brings back the variation exactly as it was: base input, stone seats, CAD
+  files and photos, with its weights worked out again. While a variation is deleted it is invisible and
+  cannot be edited, downloaded or used in a job bag; its code (`LR0001-V2`) is never given to a new
+  variation, and its CAD checksums stay reserved, so uploading the same file to another variation is
+  refused with a message saying it is kept on a deleted variation. A variation whose design is
+  deleted says "Restore the design first". After `DELETED_FILE_RETENTION_DAYS` the hourly job deletes
+  the variation and its stored files for good (with `0`, deletion is immediate and the number is
+  free again, as it always was). Variations deleted before this existed have their files in the
+  list below, "Cannot be put back", as before.
 - Set `DELETED_FILE_RETENTION_DAYS=0` to delete files at once, as before. Storage is only freed when the
   period ends, so a busy catalog uses a little more space for 30 days.
-- Restores are in the audit log (`trash.restore_file`, `design.restore`).
+- Restores are in the audit log (`trash.restore_file`, `design.restore`, `variation.restore`).
 - This is a safety net, not a backup: after the period the file is gone from R2 unless you turned on
   R2 object versioning or keep your own copy.
+
+### Duplicating a design
+
+**Duplicate** (design page, admins and designers) makes a new design in the same category with the
+next automatic code (`LR0007` becomes `LR0008`). The dialog asks for a name (default
+"<name> (copy)"), which variations to copy (default all) and whether to copy the tags. Each copied
+variation is renumbered (`-V1`, `-V2`, ...) and keeps its base input and stone seats, sizes, counts and
+locks; its weights are worked out again in the same transaction, and the whole copy is all or nothing.
+**CAD files, photos and videos are not copied**: a CAD file can be stored only once (checksums are
+unique), so upload them to the new design yourself. A deleted design cannot be duplicated, and deleted
+variations are never copied. The audit log records `design.duplicate` ("from LR0007").
 
 ### Importing designs
 
@@ -701,8 +824,30 @@ yarn ng build
 yarn ng test --watch=false
 ```
 
-The tests wipe databases whose names end in `_test`, and refuse to touch any other
-database.
+`TEST_DATABASE_URL` is only the *admin* connection. Every Go test package that uses the database gets
+its own, made on demand by `internal/testdb` (`cad_portal_internal_service_test`,
+`cad_portal_internal_handlers_test`, ...; the name comes from the package directory), so `go test ./...`
+can run packages in parallel (`-p 8` included) without one package wiping the schema under another. A
+database is only ever wiped if its name ends in `_test`. A missing database server fails the run when
+`CI` is set and skips the database tests otherwise. A new package that needs the database calls
+`testdb.Reset(t)` (or `testdb.DSN(t)`); do not hard-code a database name. The one thing this cannot
+protect against is running `go test` twice at once against the same server: use separate servers
+for that.
+
+**Scale benchmark** (not part of the normal run). It seeds 5,000 designs / 15,000 variations / 60,000 seats, times a
+full weight rebuild (as queued by a metal edit) and the catalog list queries:
+
+```bash
+cd backend
+SCALE_TEST=1 SCALE_DESIGNS=5000 go test ./internal/service -run TestScaleRecalc -v -count=1
+```
+
+The rebuild is set-based: it locks the variations, reads them and all their seats in two queries, calculates in
+Go with exactly the single-variation math, and writes the cache with three statements that skip unchanged rows.
+At 15,000 variations that is about 3 seconds (it was about 100 seconds when done one variation at a time). A test
+(`TestBulkRecalcMatchesPerVariation`) checks the two methods store identical values under several master-data
+changes. The whole rebuild is one transaction: readers keep seeing the old complete weights until it commits,
+and a failure leaves nothing half-written.
 
 ### Browser smoke tests
 

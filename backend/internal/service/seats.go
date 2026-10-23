@@ -110,6 +110,8 @@ type BOMLineOut struct {
 	CaratsPerStone decimal.Decimal `json:"carats_per_stone"`
 	LineCarats     decimal.Decimal `json:"line_carats"`
 	LineWeightG    decimal.Decimal `json:"line_weight_g"` // line_carats x 0.200, 4 dp
+	// ExactCarats is stone_count x carats_per_stone before rounding; per-gram costing is priced from it.
+	ExactCarats decimal.Decimal `json:"-"`
 }
 
 type MetalTotals struct {
@@ -174,6 +176,7 @@ func (s *Service) SimulateBOM(ctx context.Context, variationID int64, code strin
 			SizeMM: l.SizeMM, StoneCount: l.Count, StoneCode: l.Code, Locked: l.Locked,
 			CaratsPerStone: l.CaratsPerStone, LineCarats: calc.RoundCarats(l.LineCarats),
 			LineWeightG: calc.RoundLineGrams(calc.StoneWeight(l.LineCarats)),
+			ExactCarats: l.LineCarats,
 		})
 	}
 	for _, m := range in.metals {

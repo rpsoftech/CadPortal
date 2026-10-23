@@ -305,8 +305,8 @@ export class VariationEditorComponent {
     if (!v) return;
     const files = [v.file_3dm_sha256, v.file_stl_sha256].filter(Boolean).length;
     const warning =
-      `Delete ${v.code}? Its seats, weights and ${files} stored CAD file${files === 1 ? '' : 's'} ` +
-      'are removed. This cannot be undone.';
+      `Delete ${v.code}? It disappears from the design, with its seats and ${files} stored CAD file${files === 1 ? '' : 's'}. ` +
+      'It can be restored from Removed for a limited time; its code stays reserved.';
     if (!confirm(warning)) return;
     this.api.deleteVariation(v.id).subscribe({
       next: () => {

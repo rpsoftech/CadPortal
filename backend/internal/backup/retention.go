@@ -17,13 +17,16 @@ const (
 )
 
 // Policy says how many dumps to keep. Of each period the newest dump is the one kept. Yearly dumps are
-// never deleted.
+// never deleted. On top of that, every dump younger than KeepRecent is kept, so a schedule with several
+// runs a day keeps its intraday dumps for a while instead of thinning them to one a day at once.
 type Policy struct {
 	Daily, Weekly, Monthly int
+	KeepRecent             time.Duration // 0 = off
 }
 
-// DefaultPolicy is 7 daily, 4 weekly and 12 monthly dumps, plus one for every year, forever.
-var DefaultPolicy = Policy{Daily: 7, Weekly: 4, Monthly: 12}
+// DefaultPolicy is 7 daily, 4 weekly and 12 monthly dumps, plus one for every year, forever, and every
+// dump of the last 48 hours.
+var DefaultPolicy = Policy{Daily: 7, Weekly: 4, Monthly: 12, KeepRecent: 48 * time.Hour}
 
 // Dump is a database dump found in the backup bucket.
 type Dump struct {
@@ -58,8 +61,8 @@ func ParseDump(key string) (Dump, bool) {
 
 // Prune decides which of dumps to delete. A dump survives if it is the newest of one of the last
 // Daily days, Weekly ISO weeks or Monthly months that have a dump, or the newest of its year. The newest
-// dump of all is always kept, whatever the policy says.
-func (p Policy) Prune(dumps []Dump) (keep, drop []Dump) {
+// dump of all is always kept, whatever the policy says, and so is every dump taken within KeepRecent of now.
+func (p Policy) Prune(now time.Time, dumps []Dump) (keep, drop []Dump) {
 	sorted := append([]Dump(nil), dumps...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Time.After(sorted[j].Time) })
 
@@ -84,6 +87,13 @@ func (p Policy) Prune(dumps []Dump) (keep, drop []Dump) {
 	pick(-1, func(t time.Time) string { return t.Format("2006") })
 	if len(sorted) > 0 {
 		kept[sorted[0].Key] = true
+	}
+	if p.KeepRecent > 0 {
+		for _, d := range sorted {
+			if now.Sub(d.Time) < p.KeepRecent {
+				kept[d.Key] = true
+			}
+		}
 	}
 	for _, d := range sorted {
 		if kept[d.Key] {

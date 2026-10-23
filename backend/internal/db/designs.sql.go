@@ -26,6 +26,55 @@ func (q *Queries) AddDesignTag(ctx context.Context, arg AddDesignTagParams) erro
 	return err
 }
 
+const claimExpiredVariations = `-- name: ClaimExpiredVariations :many
+SELECT id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes, deleted_at, purge_after FROM cad_variations
+WHERE deleted_at IS NOT NULL AND purge_after IS NOT NULL AND purge_after <= now()
+ORDER BY purge_after LIMIT 50 FOR UPDATE SKIP LOCKED
+`
+
+// Deleted variations whose time is up. SKIP LOCKED keeps a purge from colliding with a restore.
+func (q *Queries) ClaimExpiredVariations(ctx context.Context) ([]CadVariation, error) {
+	rows, err := q.db.Query(ctx, claimExpiredVariations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CadVariation
+	for rows.Next() {
+		var i CadVariation
+		if err := rows.Scan(
+			&i.ID,
+			&i.DesignID,
+			&i.Seq,
+			&i.Code,
+			&i.BaseVolumeMm3,
+			&i.BaseRefWeightG,
+			&i.BaseRefMetalID,
+			&i.File3dmSha256,
+			&i.FileStlSha256,
+			&i.BaselineStoneCarats,
+			&i.BaselineGrossWeightG,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.File3dmKey,
+			&i.File3dmName,
+			&i.File3dmSizeBytes,
+			&i.FileStlKey,
+			&i.FileStlName,
+			&i.FileStlSizeBytes,
+			&i.DeletedAt,
+			&i.PurgeAfter,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const clearDesignTags = `-- name: ClearDesignTags :exec
 DELETE FROM design_tags WHERE design_id = $1
 `
@@ -101,7 +150,7 @@ func (q *Queries) CreateDesign(ctx context.Context, arg CreateDesignParams) (Mas
 const createVariation = `-- name: CreateVariation :one
 INSERT INTO cad_variations (design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes
+RETURNING id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes, deleted_at, purge_after
 `
 
 type CreateVariationParams struct {
@@ -143,39 +192,8 @@ func (q *Queries) CreateVariation(ctx context.Context, arg CreateVariationParams
 		&i.FileStlKey,
 		&i.FileStlName,
 		&i.FileStlSizeBytes,
-	)
-	return i, err
-}
-
-const deleteVariation = `-- name: DeleteVariation :one
-DELETE FROM cad_variations WHERE id = $1 RETURNING id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes
-`
-
-// Seats, weights and file metadata go with the row (ON DELETE CASCADE); the caller
-// removes the stored objects using the returned keys.
-func (q *Queries) DeleteVariation(ctx context.Context, id int64) (CadVariation, error) {
-	row := q.db.QueryRow(ctx, deleteVariation, id)
-	var i CadVariation
-	err := row.Scan(
-		&i.ID,
-		&i.DesignID,
-		&i.Seq,
-		&i.Code,
-		&i.BaseVolumeMm3,
-		&i.BaseRefWeightG,
-		&i.BaseRefMetalID,
-		&i.File3dmSha256,
-		&i.FileStlSha256,
-		&i.BaselineStoneCarats,
-		&i.BaselineGrossWeightG,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.File3dmKey,
-		&i.File3dmName,
-		&i.File3dmSizeBytes,
-		&i.FileStlKey,
-		&i.FileStlName,
-		&i.FileStlSizeBytes,
+		&i.DeletedAt,
+		&i.PurgeAfter,
 	)
 	return i, err
 }
@@ -199,25 +217,68 @@ func (q *Queries) DeleteVariationWeights(ctx context.Context, variationID int64)
 }
 
 const findVariationCodeBySha3dm = `-- name: FindVariationCodeBySha3dm :one
-SELECT code FROM cad_variations WHERE file_3dm_sha256 = $1
+SELECT code, (deleted_at IS NOT NULL)::bool AS deleted FROM cad_variations WHERE file_3dm_sha256 = $1
 `
 
-func (q *Queries) FindVariationCodeBySha3dm(ctx context.Context, file3dmSha256 pgtype.Text) (string, error) {
+type FindVariationCodeBySha3dmRow struct {
+	Code    string `json:"code"`
+	Deleted bool   `json:"deleted"`
+}
+
+func (q *Queries) FindVariationCodeBySha3dm(ctx context.Context, file3dmSha256 pgtype.Text) (FindVariationCodeBySha3dmRow, error) {
 	row := q.db.QueryRow(ctx, findVariationCodeBySha3dm, file3dmSha256)
-	var code string
-	err := row.Scan(&code)
-	return code, err
+	var i FindVariationCodeBySha3dmRow
+	err := row.Scan(&i.Code, &i.Deleted)
+	return i, err
 }
 
 const findVariationCodeByShaStl = `-- name: FindVariationCodeByShaStl :one
-SELECT code FROM cad_variations WHERE file_stl_sha256 = $1
+SELECT code, (deleted_at IS NOT NULL)::bool AS deleted FROM cad_variations WHERE file_stl_sha256 = $1
 `
 
-func (q *Queries) FindVariationCodeByShaStl(ctx context.Context, fileStlSha256 pgtype.Text) (string, error) {
+type FindVariationCodeByShaStlRow struct {
+	Code    string `json:"code"`
+	Deleted bool   `json:"deleted"`
+}
+
+func (q *Queries) FindVariationCodeByShaStl(ctx context.Context, fileStlSha256 pgtype.Text) (FindVariationCodeByShaStlRow, error) {
 	row := q.db.QueryRow(ctx, findVariationCodeByShaStl, fileStlSha256)
-	var code string
-	err := row.Scan(&code)
-	return code, err
+	var i FindVariationCodeByShaStlRow
+	err := row.Scan(&i.Code, &i.Deleted)
+	return i, err
+}
+
+const getDeletedVariationForUpdate = `-- name: GetDeletedVariationForUpdate :one
+SELECT id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes, deleted_at, purge_after FROM cad_variations WHERE id = $1 AND deleted_at IS NOT NULL FOR UPDATE
+`
+
+func (q *Queries) GetDeletedVariationForUpdate(ctx context.Context, id int64) (CadVariation, error) {
+	row := q.db.QueryRow(ctx, getDeletedVariationForUpdate, id)
+	var i CadVariation
+	err := row.Scan(
+		&i.ID,
+		&i.DesignID,
+		&i.Seq,
+		&i.Code,
+		&i.BaseVolumeMm3,
+		&i.BaseRefWeightG,
+		&i.BaseRefMetalID,
+		&i.File3dmSha256,
+		&i.FileStlSha256,
+		&i.BaselineStoneCarats,
+		&i.BaselineGrossWeightG,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.File3dmKey,
+		&i.File3dmName,
+		&i.File3dmSizeBytes,
+		&i.FileStlKey,
+		&i.FileStlName,
+		&i.FileStlSizeBytes,
+		&i.DeletedAt,
+		&i.PurgeAfter,
+	)
+	return i, err
 }
 
 const getDesignByCode = `-- name: GetDesignByCode :one
@@ -259,7 +320,7 @@ func (q *Queries) GetDesignByID(ctx context.Context, id int64) (MasterDesign, er
 }
 
 const getVariation = `-- name: GetVariation :one
-SELECT id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes FROM cad_variations WHERE id = $1
+SELECT id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes, deleted_at, purge_after FROM cad_variations WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetVariation(ctx context.Context, id int64) (CadVariation, error) {
@@ -285,12 +346,14 @@ func (q *Queries) GetVariation(ctx context.Context, id int64) (CadVariation, err
 		&i.FileStlKey,
 		&i.FileStlName,
 		&i.FileStlSizeBytes,
+		&i.DeletedAt,
+		&i.PurgeAfter,
 	)
 	return i, err
 }
 
 const getVariationForUpdate = `-- name: GetVariationForUpdate :one
-SELECT id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes FROM cad_variations WHERE id = $1 FOR UPDATE
+SELECT id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes, deleted_at, purge_after FROM cad_variations WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
 `
 
 func (q *Queries) GetVariationForUpdate(ctx context.Context, id int64) (CadVariation, error) {
@@ -316,8 +379,20 @@ func (q *Queries) GetVariationForUpdate(ctx context.Context, id int64) (CadVaria
 		&i.FileStlKey,
 		&i.FileStlName,
 		&i.FileStlSizeBytes,
+		&i.DeletedAt,
+		&i.PurgeAfter,
 	)
 	return i, err
+}
+
+const hardDeleteVariation = `-- name: HardDeleteVariation :exec
+DELETE FROM cad_variations WHERE id = $1 AND deleted_at IS NOT NULL
+`
+
+// Seats, weights and photo rows go with the row (ON DELETE CASCADE).
+func (q *Queries) HardDeleteVariation(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, hardDeleteVariation, id)
+	return err
 }
 
 const insertSeat = `-- name: InsertSeat :exec
@@ -344,8 +419,47 @@ func (q *Queries) InsertSeat(ctx context.Context, arg InsertSeatParams) error {
 	return err
 }
 
+const listAllSeatsForRecalc = `-- name: ListAllSeatsForRecalc :many
+SELECT s.variation_id, s.size_mm, s.stone_count, sc.code AS locked_code
+FROM variation_stone_seats s
+LEFT JOIN stone_codes sc ON sc.id = s.locked_stone_code_id
+ORDER BY s.variation_id, s.position
+`
+
+type ListAllSeatsForRecalcRow struct {
+	VariationID int64           `json:"variation_id"`
+	SizeMm      decimal.Decimal `json:"size_mm"`
+	StoneCount  int32           `json:"stone_count"`
+	LockedCode  pgtype.Text     `json:"locked_code"`
+}
+
+func (q *Queries) ListAllSeatsForRecalc(ctx context.Context) ([]ListAllSeatsForRecalcRow, error) {
+	rows, err := q.db.Query(ctx, listAllSeatsForRecalc)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllSeatsForRecalcRow
+	for rows.Next() {
+		var i ListAllSeatsForRecalcRow
+		if err := rows.Scan(
+			&i.VariationID,
+			&i.SizeMm,
+			&i.StoneCount,
+			&i.LockedCode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAllVariationIDs = `-- name: ListAllVariationIDs :many
-SELECT id FROM cad_variations ORDER BY id
+SELECT id FROM cad_variations WHERE deleted_at IS NULL ORDER BY id
 `
 
 func (q *Queries) ListAllVariationIDs(ctx context.Context) ([]int64, error) {
@@ -368,6 +482,104 @@ func (q *Queries) ListAllVariationIDs(ctx context.Context) ([]int64, error) {
 	return items, nil
 }
 
+const listAllVariationsForRecalc = `-- name: ListAllVariationsForRecalc :many
+SELECT id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes, deleted_at, purge_after FROM cad_variations ORDER BY id FOR NO KEY UPDATE
+`
+
+// Locks every variation (NO KEY UPDATE: edits of a variation wait, foreign-key checks do not) in id order,
+// so the full rebuild and a seat edit take the variation row before its weight rows, always.
+func (q *Queries) ListAllVariationsForRecalc(ctx context.Context) ([]CadVariation, error) {
+	rows, err := q.db.Query(ctx, listAllVariationsForRecalc)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CadVariation
+	for rows.Next() {
+		var i CadVariation
+		if err := rows.Scan(
+			&i.ID,
+			&i.DesignID,
+			&i.Seq,
+			&i.Code,
+			&i.BaseVolumeMm3,
+			&i.BaseRefWeightG,
+			&i.BaseRefMetalID,
+			&i.File3dmSha256,
+			&i.FileStlSha256,
+			&i.BaselineStoneCarats,
+			&i.BaselineGrossWeightG,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.File3dmKey,
+			&i.File3dmName,
+			&i.File3dmSizeBytes,
+			&i.FileStlKey,
+			&i.FileStlName,
+			&i.FileStlSizeBytes,
+			&i.DeletedAt,
+			&i.PurgeAfter,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDeletedVariations = `-- name: ListDeletedVariations :many
+SELECT v.id, v.code, v.deleted_at, v.purge_after, d.id AS design_id, d.code AS design_code,
+       d.name AS design_name, d.deleted_at AS design_deleted_at,
+       (v.file_3dm_key IS NOT NULL OR v.file_stl_key IS NOT NULL)::bool AS has_files
+FROM cad_variations v JOIN master_designs d ON d.id = v.design_id
+WHERE v.deleted_at IS NOT NULL ORDER BY v.deleted_at DESC, v.id DESC
+`
+
+type ListDeletedVariationsRow struct {
+	ID              int64              `json:"id"`
+	Code            string             `json:"code"`
+	DeletedAt       pgtype.Timestamptz `json:"deleted_at"`
+	PurgeAfter      pgtype.Timestamptz `json:"purge_after"`
+	DesignID        int64              `json:"design_id"`
+	DesignCode      string             `json:"design_code"`
+	DesignName      string             `json:"design_name"`
+	DesignDeletedAt pgtype.Timestamptz `json:"design_deleted_at"`
+	HasFiles        bool               `json:"has_files"`
+}
+
+func (q *Queries) ListDeletedVariations(ctx context.Context) ([]ListDeletedVariationsRow, error) {
+	rows, err := q.db.Query(ctx, listDeletedVariations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDeletedVariationsRow
+	for rows.Next() {
+		var i ListDeletedVariationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.DeletedAt,
+			&i.PurgeAfter,
+			&i.DesignID,
+			&i.DesignCode,
+			&i.DesignName,
+			&i.DesignDeletedAt,
+			&i.HasFiles,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDesignExportRows = `-- name: ListDesignExportRows :many
 SELECT d.code, d.name, c.name AS category_name,
     COALESCE((SELECT string_agg(t.tag_group || ':' || t.name, ';' ORDER BY t.tag_group, t.name)
@@ -378,7 +590,7 @@ SELECT d.code, d.name, c.name AS category_name,
     COALESCE(m.code, '')::text AS ref_metal
 FROM master_designs d
 JOIN categories c ON c.id = d.category_id
-LEFT JOIN cad_variations v ON v.design_id = d.id
+LEFT JOIN cad_variations v ON v.design_id = d.id AND v.deleted_at IS NULL
 LEFT JOIN metals m ON m.id = v.base_ref_metal_id
 WHERE d.deleted_at IS NULL
 ORDER BY d.code, v.seq NULLS FIRST
@@ -463,7 +675,7 @@ SELECT sv.design_id, w.net_weight_g, w.gross_weight_g
 FROM cad_variations sv
 JOIN variation_metal_weights w ON w.variation_id = sv.id
 JOIN metals m ON m.id = w.metal_id
-WHERE m.code = $1 AND sv.design_id = ANY($2::bigint[])
+WHERE m.code = $1 AND sv.design_id = ANY($2::bigint[]) AND sv.deleted_at IS NULL
 `
 
 type ListDesignWeightsForMetalParams struct {
@@ -503,9 +715,10 @@ const listDesigns = `-- name: ListDesigns :many
 SELECT d.id, d.code, d.name, d.category_id, d.deleted_at, d.created_at, d.updated_at, c.name AS category_name,
     ARRAY(SELECT t.name FROM design_tags dt JOIN tags t ON t.id = dt.tag_id
           WHERE dt.design_id = d.id ORDER BY t.tag_group, t.name)::text[] AS tag_names,
-    (SELECT count(*) FROM cad_variations cv WHERE cv.design_id = d.id)::int AS variation_count,
+    (SELECT count(*) FROM cad_variations cv WHERE cv.design_id = d.id AND cv.deleted_at IS NULL)::int AS variation_count,
     -- the cover photo (or, failing that, the first photo) for the catalog card
     (SELECT m.thumb_key FROM design_media m WHERE m.design_id = d.id AND m.kind = 'image'
+       AND (m.variation_id IS NULL OR EXISTS (SELECT 1 FROM cad_variations mv WHERE mv.id = m.variation_id AND mv.deleted_at IS NULL))
      ORDER BY m.is_cover DESC, m.variation_id NULLS FIRST, m.position, m.id LIMIT 1) AS cover_thumb_key,
     count(*) OVER ()::bigint AS total_count   -- matches before LIMIT/OFFSET, for pagination
 FROM master_designs d
@@ -528,7 +741,7 @@ WHERE d.deleted_at IS NULL
         SELECT 1 FROM cad_variations v
         JOIN variation_metal_weights w ON w.variation_id = v.id
         JOIN metals m ON m.id = w.metal_id
-        WHERE v.design_id = d.id
+        WHERE v.design_id = d.id AND v.deleted_at IS NULL
           AND ($4::text IS NULL OR m.code = $4)
           AND ($5::numeric IS NULL OR w.net_weight_g >= $5)
           AND ($6::numeric IS NULL OR w.net_weight_g <= $6)
@@ -672,6 +885,46 @@ func (q *Queries) ListMatrixAll(ctx context.Context) ([]ListMatrixAllRow, error)
 	return items, nil
 }
 
+const listMediaForPurgedVariation = `-- name: ListMediaForPurgedVariation :many
+SELECT id, design_id, variation_id, kind, content_type, filename, size_bytes, object_key, thumb_key, width, height, position, is_cover, created_by, created_at FROM design_media WHERE variation_id = $1
+`
+
+func (q *Queries) ListMediaForPurgedVariation(ctx context.Context, variationID pgtype.Int8) ([]DesignMedium, error) {
+	rows, err := q.db.Query(ctx, listMediaForPurgedVariation, variationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DesignMedium
+	for rows.Next() {
+		var i DesignMedium
+		if err := rows.Scan(
+			&i.ID,
+			&i.DesignID,
+			&i.VariationID,
+			&i.Kind,
+			&i.ContentType,
+			&i.Filename,
+			&i.SizeBytes,
+			&i.ObjectKey,
+			&i.ThumbKey,
+			&i.Width,
+			&i.Height,
+			&i.Position,
+			&i.IsCover,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listVariationSeats = `-- name: ListVariationSeats :many
 SELECT s.id, s.variation_id, s.position, s.size_mm, s.stone_count,
        s.locked_stone_code_id, sc.code AS locked_code
@@ -761,7 +1014,7 @@ func (q *Queries) ListVariationWeights(ctx context.Context, variationID int64) (
 }
 
 const listVariationsByDesign = `-- name: ListVariationsByDesign :many
-SELECT id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes FROM cad_variations WHERE design_id = $1 ORDER BY seq
+SELECT id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes, deleted_at, purge_after FROM cad_variations WHERE design_id = $1 AND deleted_at IS NULL ORDER BY seq
 `
 
 func (q *Queries) ListVariationsByDesign(ctx context.Context, designID int64) ([]CadVariation, error) {
@@ -793,6 +1046,8 @@ func (q *Queries) ListVariationsByDesign(ctx context.Context, designID int64) ([
 			&i.FileStlKey,
 			&i.FileStlName,
 			&i.FileStlSizeBytes,
+			&i.DeletedAt,
+			&i.PurgeAfter,
 		); err != nil {
 			return nil, err
 		}
@@ -829,6 +1084,40 @@ func (q *Queries) NextVariationSeq(ctx context.Context, designID int64) (int32, 
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const restoreVariation = `-- name: RestoreVariation :one
+UPDATE cad_variations SET deleted_at = NULL, purge_after = NULL
+WHERE id = $1 AND deleted_at IS NOT NULL RETURNING id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes, deleted_at, purge_after
+`
+
+func (q *Queries) RestoreVariation(ctx context.Context, id int64) (CadVariation, error) {
+	row := q.db.QueryRow(ctx, restoreVariation, id)
+	var i CadVariation
+	err := row.Scan(
+		&i.ID,
+		&i.DesignID,
+		&i.Seq,
+		&i.Code,
+		&i.BaseVolumeMm3,
+		&i.BaseRefWeightG,
+		&i.BaseRefMetalID,
+		&i.File3dmSha256,
+		&i.FileStlSha256,
+		&i.BaselineStoneCarats,
+		&i.BaselineGrossWeightG,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.File3dmKey,
+		&i.File3dmName,
+		&i.File3dmSizeBytes,
+		&i.FileStlKey,
+		&i.FileStlName,
+		&i.FileStlSizeBytes,
+		&i.DeletedAt,
+		&i.PurgeAfter,
+	)
+	return i, err
 }
 
 const setVariationFile3dm = `-- name: SetVariationFile3dm :exec
@@ -893,6 +1182,47 @@ func (q *Queries) SoftDeleteDesign(ctx context.Context, id int64) (int64, error)
 	return result.RowsAffected(), nil
 }
 
+const softDeleteVariation = `-- name: SoftDeleteVariation :one
+UPDATE cad_variations SET deleted_at = now(), purge_after = $2
+WHERE id = $1 AND deleted_at IS NULL RETURNING id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes, deleted_at, purge_after
+`
+
+type SoftDeleteVariationParams struct {
+	ID         int64              `json:"id"`
+	PurgeAfter pgtype.Timestamptz `json:"purge_after"`
+}
+
+// The row keeps its seats, base input and file references so it can be restored; it is hidden
+// everywhere by deleted_at. Its code and seq stay taken (NextVariationSeq counts it).
+func (q *Queries) SoftDeleteVariation(ctx context.Context, arg SoftDeleteVariationParams) (CadVariation, error) {
+	row := q.db.QueryRow(ctx, softDeleteVariation, arg.ID, arg.PurgeAfter)
+	var i CadVariation
+	err := row.Scan(
+		&i.ID,
+		&i.DesignID,
+		&i.Seq,
+		&i.Code,
+		&i.BaseVolumeMm3,
+		&i.BaseRefWeightG,
+		&i.BaseRefMetalID,
+		&i.File3dmSha256,
+		&i.FileStlSha256,
+		&i.BaselineStoneCarats,
+		&i.BaselineGrossWeightG,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.File3dmKey,
+		&i.File3dmName,
+		&i.File3dmSizeBytes,
+		&i.FileStlKey,
+		&i.FileStlName,
+		&i.FileStlSizeBytes,
+		&i.DeletedAt,
+		&i.PurgeAfter,
+	)
+	return i, err
+}
+
 const updateDesign = `-- name: UpdateDesign :one
 UPDATE master_designs SET name = $2, category_id = $3
 WHERE id = $1 AND deleted_at IS NULL
@@ -923,8 +1253,8 @@ func (q *Queries) UpdateDesign(ctx context.Context, arg UpdateDesignParams) (Mas
 const updateVariationBaseInput = `-- name: UpdateVariationBaseInput :one
 UPDATE cad_variations
 SET base_volume_mm3 = $2, base_ref_weight_g = $3, base_ref_metal_id = $4
-WHERE id = $1
-RETURNING id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, design_id, seq, code, base_volume_mm3, base_ref_weight_g, base_ref_metal_id, file_3dm_sha256, file_stl_sha256, baseline_stone_carats, baseline_gross_weight_g, created_at, updated_at, file_3dm_key, file_3dm_name, file_3dm_size_bytes, file_stl_key, file_stl_name, file_stl_size_bytes, deleted_at, purge_after
 `
 
 type UpdateVariationBaseInputParams struct {
@@ -962,6 +1292,8 @@ func (q *Queries) UpdateVariationBaseInput(ctx context.Context, arg UpdateVariat
 		&i.FileStlKey,
 		&i.FileStlName,
 		&i.FileStlSizeBytes,
+		&i.DeletedAt,
+		&i.PurgeAfter,
 	)
 	return i, err
 }

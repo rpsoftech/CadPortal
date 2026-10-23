@@ -24,7 +24,7 @@ export function daysLeft(iso: string, now: Date = new Date()): number {
 }
 
 /**
- * The way back from a mistake: deleted designs, and CAD files, photos and videos that were removed or
+ * The way back from a mistake: deleted designs, deleted variations, and CAD files, photos and videos that were removed or
  * replaced. Designs stay here until someone restores them; files are kept for a set number of days
  * and then deleted for good.
  */
@@ -35,7 +35,7 @@ export function daysLeft(iso: string, now: Date = new Date()): number {
     <div class="page">
       <h1>Removed</h1>
       <p class="muted">
-        Deleted designs and removed files can be brought back. Removed and replaced files are kept
+        Deleted designs, deleted variations and removed files can be brought back. Removed and replaced files are kept
         for a limited time and then deleted for good.
       </p>
       @if (trash.isLoading()) {
@@ -79,6 +79,64 @@ export function daysLeft(iso: string, now: Date = new Date()): number {
                       >
                         Restore
                       </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        </section>
+
+        <section aria-label="Deleted variations">
+          <h2>Deleted variations</h2>
+          @if (t.variations.length === 0) {
+            <p class="muted">No deleted variations.</p>
+          } @else {
+            <table class="plain">
+              <thead>
+                <tr>
+                  <th>Variation</th>
+                  <th>Design</th>
+                  <th>Deleted</th>
+                  <th>Kept for</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (v of t.variations; track v.id) {
+                  <tr>
+                    <td>
+                      <span class="mono">{{ v.code }}</span>
+                      @if (v.has_files) {
+                        <span class="muted small">(with CAD files)</span>
+                      }
+                    </td>
+                    <td>
+                      <span class="mono">{{ v.design_code }}</span> {{ v.design_name }}
+                    </td>
+                    <td>{{ v.deleted_at | date: 'medium' }}</td>
+                    <td>
+                      @if (v.purge_after) {
+                        {{ daysFor(v.purge_after) }} more day{{
+                          daysFor(v.purge_after) === 1 ? '' : 's'
+                        }}
+                      } @else {
+                        <span class="muted small">Not purged automatically</span>
+                      }
+                    </td>
+                    <td>
+                      @if (v.design_deleted) {
+                        <span class="muted small">Restore the design first</span>
+                      } @else {
+                        <button
+                          matButton
+                          [disabled]="busy()"
+                          (click)="run(api.restoreVariation(v.id), 'Restored ' + v.code)"
+                          [attr.aria-label]="'Restore variation ' + v.code"
+                        >
+                          Restore
+                        </button>
+                      }
                     </td>
                   </tr>
                 }
@@ -164,6 +222,9 @@ export class RemovedComponent {
 
   protected reason(f: TrashedFile): string {
     return reasonText(f.reason);
+  }
+  protected daysFor(iso: string): number {
+    return daysLeft(iso);
   }
   protected days(f: TrashedFile): number {
     return daysLeft(f.purge_after);

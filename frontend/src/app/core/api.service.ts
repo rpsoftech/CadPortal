@@ -1,4 +1,4 @@
-import { HttpClient, HttpEvent, HttpParams, HttpRequest } from '@angular/common/http';
+import { HttpClient, HttpEvent, HttpParams, HttpRequest, HttpResponse } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { MonoTypeOperatorFunction, Observable, catchError, map, of, tap, throwError } from 'rxjs';
 import {
@@ -16,7 +16,9 @@ import {
   CostingSheetSummary,
   CostPreview,
   CostSheetRequest,
+  JobBagsRequest,
   DesignDetail,
+  DuplicateDesignBody,
   DesignFilter,
   DesignImportResult,
   DesignImportRow,
@@ -291,6 +293,14 @@ export class ApiService {
   restoreDesign(id: number): Observable<void> {
     return this.http.post<void>(`${BASE}/designs/${id}/restore`, null);
   }
+  restoreVariation(id: number): Observable<void> {
+    return this.http.post<void>(`${BASE}/variations/${id}/restore`, null);
+  }
+
+  /** A new design (next automatic code) with copies of the chosen variations' base input and seats. */
+  duplicateDesign(id: number, body: DuplicateDesignBody): Observable<DesignDetail> {
+    return this.http.post<DesignDetail>(`${BASE}/designs/${id}/duplicate`, body);
+  }
 
   // ----- photos and video -----
   /**
@@ -327,6 +337,18 @@ export class ApiService {
     stone_code: string;
   }): Observable<Blob> {
     return this.http.post(`${BASE}/exports/job-bag-pdf`, body, { responseType: 'blob' });
+  }
+  /**
+   * Several job bags in one PDF, in the given order (at most 200). Give `items`, or `design_ids` for
+   * every variation of those designs, with a shared `metal_code` and `stone_code` as defaults.
+   * With `skip_incomplete` the complete bags are printed and the `X-Skipped` response header lists the
+   * variation codes left out; otherwise a bag with missing stone data fails the whole request (422).
+   */
+  jobBagsPdf(body: JobBagsRequest): Observable<HttpResponse<Blob>> {
+    return this.http.post(`${BASE}/exports/job-bags-pdf`, body, {
+      responseType: 'blob',
+      observe: 'response',
+    });
   }
   /** Every master-data table as CSV files in one zip (admin only). */
   masterDataZip(): Observable<Blob> {

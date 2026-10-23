@@ -62,6 +62,8 @@ type CadVariation struct {
 	FileStlKey           pgtype.Text         `json:"file_stl_key"`
 	FileStlName          pgtype.Text         `json:"file_stl_name"`
 	FileStlSizeBytes     pgtype.Int8         `json:"file_stl_size_bytes"`
+	DeletedAt            pgtype.Timestamptz  `json:"deleted_at"`
+	PurgeAfter           pgtype.Timestamptz  `json:"purge_after"`
 }
 
 type Category struct {
@@ -118,6 +120,11 @@ type DesignTag struct {
 	TagID    int64 `json:"tag_id"`
 }
 
+type MaintenanceClaim struct {
+	Name      string             `json:"name"`
+	ClaimedAt pgtype.Timestamptz `json:"claimed_at"`
+}
+
 type MasterDesign struct {
 	ID         int64              `json:"id"`
 	Code       string             `json:"code"`
@@ -169,6 +176,7 @@ type StoneSizeMatrix struct {
 	UpdatedAt      pgtype.Timestamptz  `json:"updated_at"`
 	RatePerPc      decimal.NullDecimal `json:"rate_per_pc"`
 	RateBasis      string              `json:"rate_basis"`
+	RatePerG       decimal.NullDecimal `json:"rate_per_g"`
 }
 
 type Tag struct {

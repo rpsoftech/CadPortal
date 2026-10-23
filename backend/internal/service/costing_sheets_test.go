@@ -401,3 +401,39 @@ func TestSaveSheetRulesAndListing(t *testing.T) {
 		t.Errorf("second delete: %v", err)
 	}
 }
+
+// Per gram is the third basis: 250000 per gram on the fixture's 0.0694 g of stone is the same
+// 17350.00 as 50000 per carat on its 0.3470 ct, so the whole fixture still totals 38405.00, whether
+// the rows are priced per carat or per gram, in a one-off costing and in a saved sheet.
+func TestCostSelectionPricesAPerGramMatrixRow(t *testing.T) {
+	e := newSheetEnv(t)
+	ctx := context.Background()
+	perG := decimal.NullDecimal{Decimal: d("250000"), Valid: true}
+	if err := e.s.UpdateStoneMatrix(ctx, []MatrixRowInput{
+		{SizeMM: d("1.10"), StoneCode: "2HD", CaratsPerStone: d("0.0070"), RateBasis: "g", RatePerG: perG},
+		{SizeMM: d("1.20"), StoneCode: "2HD", CaratsPerStone: d("0.0095"), RateBasis: "g", RatePerG: perG},
+		{SizeMM: d("2.50"), StoneCode: "2HD", CaratsPerStone: d("0.0650"), RateBasis: "g", RatePerG: perG},
+	}, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := e.s.CostSelection(ctx, e.req(func(r *SheetRequest) { r.DesignIDs = []int64{e.d1} }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := out.Rows[0]
+	if r.StoneG.StringFixed(4) != "0.0694" || r.StoneCost.StringFixed(2) != "17350.00" || r.Total.StringFixed(2) != "38405.00" {
+		t.Fatalf("per-gram costing: stone %s g cost %s total %s", r.StoneG.StringFixed(4), r.StoneCost.StringFixed(2), r.Total.StringFixed(2))
+	}
+
+	// A row with no price at all is a missing price, never zero.
+	if err := e.s.UpdateStoneMatrix(ctx, []MatrixRowInput{
+		{SizeMM: d("1.10"), StoneCode: "2HD", CaratsPerStone: d("0.0070"), RateBasis: "pc"},
+	}, ""); err != nil {
+		t.Fatal(err)
+	}
+	missing, err := e.s.CostSelection(ctx, e.req(func(r *SheetRequest) { r.DesignIDs = []int64{e.d1} }))
+	if err == nil && (len(missing.Problems) == 0 || len(missing.Rows) != 0) {
+		t.Fatalf("a row without a price must be reported as missing, not costed as zero: rows=%d problems=%d", len(missing.Rows), len(missing.Problems))
+	}
+}

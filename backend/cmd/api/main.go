@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rpsoftech/cad-portal/backend/internal/backup"
+	"github.com/rpsoftech/cad-portal/backend/internal/db"
 	"github.com/rpsoftech/cad-portal/backend/internal/handlers"
 	"github.com/rpsoftech/cad-portal/backend/internal/heartbeat"
 	"github.com/rpsoftech/cad-portal/backend/internal/logx"
@@ -129,8 +130,19 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	idleMinutes, err := idleTimeoutMinutes(os.Getenv("IDLE_TIMEOUT_MINUTES"))
+	if err != nil {
+		return err
+	}
+	sessionTTL, err := sessionDuration(os.Getenv("SESSION_HOURS"))
+	if err != nil {
+		return err
+	}
 	sender, baseURL, err := mailConfig(os.Getenv)
 	if err != nil {
+		return err
+	}
+	if svc.AppBaseURL, err = appBaseURL(os.Getenv); err != nil {
 		return err
 	}
 	if sender != nil {
@@ -168,6 +180,7 @@ func run() error {
 	r.Use(logx.Middleware(logger), logx.Recovery(logger))
 	(&handlers.H{
 		S: svc, JWTSecret: []byte(jwtSecret), Validate: svc.ValidateToken, LocalFiles: localStore,
+		TokenTTL: sessionTTL, IdleTimeoutMinutes: idleMinutes,
 	}).Register(r)
 
 	srv := &http.Server{
@@ -308,6 +321,19 @@ func checkR2Env(getenv func(string) string) error {
 	return nil
 }
 
+// appBaseURL reads APP_BASE_URL, the public address of the portal (no path, no trailing slash). It is
+// empty when unset. Emailed reset links and the QR codes on job bags are built from it.
+func appBaseURL(getenv func(string) string) (string, error) {
+	base := strings.TrimRight(strings.TrimSpace(getenv("APP_BASE_URL")), "/")
+	if base == "" {
+		return "", nil
+	}
+	if u, err := url.Parse(base); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return "", errors.New("APP_BASE_URL must be the public address of the portal, like https://cad.example.com")
+	}
+	return base, nil
+}
+
 // mailConfig reads the SMTP settings that make "forgot password" send emails. With SMTP_HOST empty
 // nothing is configured and people are told to ask an admin for a reset link. APP_BASE_URL is the public
 // address the emailed link points to, so it is required whenever mail is on.
@@ -316,8 +342,8 @@ func mailConfig(getenv func(string) string) (mailer.Sender, string, error) {
 	if val("SMTP_HOST") == "" {
 		return nil, "", nil
 	}
-	base := strings.TrimRight(val("APP_BASE_URL"), "/")
-	if u, err := url.Parse(base); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.Path != "" {
+	base, err := appBaseURL(getenv)
+	if err != nil || base == "" {
 		return nil, "", errors.New("APP_BASE_URL must be the public address of the portal, like https://cad.example.com, when SMTP_HOST is set")
 	}
 	port := 587
@@ -369,7 +395,16 @@ func startHeartbeat(ctx context.Context, pool *pgxpool.Pool, getenv func(string)
 	slog.Info("heartbeat on", "host", heartbeat.Host(url), "every_minutes", mins)
 	go func() {
 		defer close(done)
-		heartbeat.Run(ctx, url, time.Duration(mins)*time.Minute, pool.Ping,
+		interval := time.Duration(mins) * time.Minute
+		// With several API instances only one pings per interval: each tick it claims the slot in the
+		// database (an atomic upsert), and the others skip. If the pinging instance stops, another takes
+		// over within one interval.
+		gate := func(ctx context.Context) (bool, error) {
+			n, err := db.New(pool).ClaimMaintenanceSlot(ctx, db.ClaimMaintenanceSlotParams{
+				Name: "heartbeat", MinGapSeconds: (interval * 9 / 10).Seconds()})
+			return n == 1, err
+		}
+		heartbeat.RunGated(ctx, url, interval, pool.Ping, gate,
 			func(format string, a ...any) { slog.Warn(fmt.Sprintf(format, a...)) })
 	}()
 	return done, nil
@@ -422,6 +457,32 @@ func backupMaxAge(v, storageEnv, bucket string) (time.Duration, error) {
 	n, err := strconv.Atoi(v)
 	if err != nil || n < 0 || n > 8760 {
 		return 0, fmt.Errorf("BACKUP_MAX_AGE_HOURS must be a whole number of hours (0 turns the warning off), got %q", v)
+	}
+	return time.Duration(n) * time.Hour, nil
+}
+
+// idleTimeoutMinutes parses IDLE_TIMEOUT_MINUTES: how long the web app may sit without activity before it
+// signs the user out. Empty means 30, and 0 turns it off.
+func idleTimeoutMinutes(v string) (int, error) {
+	if strings.TrimSpace(v) == "" {
+		return 30, nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 || n > 1440 {
+		return 0, fmt.Errorf("IDLE_TIMEOUT_MINUTES must be a whole number of minutes from 0 (off) to 1440, got %q", v)
+	}
+	return n, nil
+}
+
+// sessionDuration parses SESSION_HOURS: the absolute lifetime of a login, however active the user is.
+// Empty means handlers.DefaultTokenTTL (8 hours).
+func sessionDuration(v string) (time.Duration, error) {
+	if strings.TrimSpace(v) == "" {
+		return handlers.DefaultTokenTTL, nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 1 || n > 720 {
+		return 0, fmt.Errorf("SESSION_HOURS must be a whole number of hours from 1 to 720, got %q", v)
 	}
 	return time.Duration(n) * time.Hour, nil
 }

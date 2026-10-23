@@ -143,14 +143,22 @@ func (s *Service) UploadCAD(ctx context.Context, variationID int64, filename str
 // duplicateError names the variation that already holds this hash.
 func (s *Service) duplicateError(ctx context.Context, kind, sum string, orig error) error {
 	var code string
-	var err error
+	var deleted bool
 	if kind == "3dm" {
-		code, err = s.Q.FindVariationCodeBySha3dm(ctx, pgText(sum))
+		r, err := s.Q.FindVariationCodeBySha3dm(ctx, pgText(sum))
+		if err != nil {
+			return orig // not found (nil) or lookup failure: fall back to the original error
+		}
+		code, deleted = r.Code, r.Deleted
 	} else {
-		code, err = s.Q.FindVariationCodeByShaStl(ctx, pgText(sum))
+		r, err := s.Q.FindVariationCodeByShaStl(ctx, pgText(sum))
+		if err != nil {
+			return orig
+		}
+		code, deleted = r.Code, r.Deleted
 	}
-	if err != nil {
-		return orig // not found (nil) or lookup failure: fall back to the original error
+	if deleted {
+		return fmt.Errorf("%w: identical %s file is kept on deleted variation %s (see Removed: restore that variation, or wait until it is purged)", ErrConflict, kind, code)
 	}
 	return fmt.Errorf("%w: identical %s file already stored on variation %s", ErrConflict, kind, code)
 }

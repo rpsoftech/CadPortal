@@ -61,3 +61,66 @@ func TestStonePriceBasisOverHTTP(t *testing.T) {
 		t.Errorf("unknown basis: %d %s", bad.Code, bad.Body)
 	}
 }
+
+func TestPerGramPriceOverHTTP(t *testing.T) {
+	r, _, _ := newHTTPEnv(t)
+	put := func(body string) (int, string) {
+		w := do(r, "PUT", "/api/v1/masters/stone-matrix", token(t, auth.Admin), "application/json", []byte(body))
+		return w.Code, w.Body.String()
+	}
+	if c, b := put(`{"rows":[{"size_mm":"1.10","stone_code":"2HD","carats_per_stone":"0.0070","rate_per_g":"5000.50","rate_basis":"g"}]}`); c != 202 {
+		t.Fatalf("put: %d %s", c, b)
+	}
+	type row struct {
+		Size      string  `json:"size_mm"`
+		Code      string  `json:"stone_code"`
+		Basis     string  `json:"rate_basis"`
+		RatePerPc *string `json:"rate_per_pc"`
+		RatePerCt *string `json:"rate_per_ct"`
+		RatePerG  *string `json:"rate_per_g"`
+	}
+	list := func(role auth.Role) []row {
+		w := do(r, "GET", "/api/v1/masters/stone-matrix", token(t, role), "", nil)
+		var rows []row
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &rows) != nil {
+			t.Fatalf("list: %d %s", w.Code, w.Body)
+		}
+		return rows
+	}
+	found := false
+	for _, x := range list(auth.Admin) {
+		if x.Code == "2HD" && x.Size == "1.1" {
+			found = true
+			if x.Basis != "g" || x.RatePerG == nil || *x.RatePerG != "5000.5" {
+				t.Errorf("per gram row = %+v", x)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("per gram row not listed")
+	}
+	// The designer may read prices; production never sees any, but still sees the basis.
+	for _, x := range list(auth.Production) {
+		if x.RatePerG != nil || x.RatePerPc != nil || x.RatePerCt != nil {
+			t.Errorf("production sees a price: %+v", x)
+		}
+		if x.Code == "2HD" && x.Size == "1.1" && x.Basis != "g" {
+			t.Errorf("production should still see the basis: %+v", x)
+		}
+	}
+	// Per gram without its price, a negative or over-precise price, and a production write are refused.
+	for name, body := range map[string]string{
+		"no price":       `{"rows":[{"size_mm":"1.10","stone_code":"2HD","carats_per_stone":"0.007","rate_basis":"g"}]}`,
+		"other price":    `{"rows":[{"size_mm":"1.10","stone_code":"2HD","carats_per_stone":"0.007","rate_basis":"g","rate_per_pc":"10"}]}`,
+		"negative":       `{"rows":[{"size_mm":"1.10","stone_code":"2HD","carats_per_stone":"0.007","rate_basis":"g","rate_per_g":"-1"}]}`,
+		"three decimals": `{"rows":[{"size_mm":"1.10","stone_code":"2HD","carats_per_stone":"0.007","rate_basis":"g","rate_per_g":"1.005"}]}`,
+	} {
+		if c, b := put(body); c != 400 || !strings.Contains(b, "rate_") {
+			t.Errorf("%s: %d %s", name, c, b)
+		}
+	}
+	if w := do(r, "PUT", "/api/v1/masters/stone-matrix", token(t, auth.Production), "application/json",
+		[]byte(`{"rows":[{"size_mm":"1.10","stone_code":"2HD","carats_per_stone":"0.007","rate_basis":"g","rate_per_g":"1"}]}`)); w.Code != 403 {
+		t.Errorf("production write: %d", w.Code)
+	}
+}

@@ -121,6 +121,32 @@ func TestCheckR2EnvNamesWhatIsWrong(t *testing.T) {
 	}
 }
 
+func TestIdleTimeoutMinutes(t *testing.T) {
+	for in, want := range map[string]int{"": 30, " ": 30, "0": 0, "1": 1, "30": 30, "1440": 1440} {
+		if got, err := idleTimeoutMinutes(in); err != nil || got != want {
+			t.Errorf("idleTimeoutMinutes(%q) = %v, %v; want %v", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"-1", "abc", "1.5", "1441", "30m"} {
+		if _, err := idleTimeoutMinutes(in); err == nil {
+			t.Errorf("idleTimeoutMinutes(%q) accepted", in)
+		}
+	}
+}
+
+func TestSessionDuration(t *testing.T) {
+	for in, want := range map[string]time.Duration{"": 8 * time.Hour, "1": time.Hour, "12": 12 * time.Hour, "720": 720 * time.Hour} {
+		if got, err := sessionDuration(in); err != nil || got != want {
+			t.Errorf("sessionDuration(%q) = %v, %v; want %v", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"0", "-1", "abc", "721", "1.5"} {
+		if _, err := sessionDuration(in); err == nil {
+			t.Errorf("sessionDuration(%q) accepted", in)
+		}
+	}
+}
+
 func TestFileRetention(t *testing.T) {
 	for in, want := range map[string]time.Duration{"": service.DefaultRetention, "0": 0, "7": 7 * 24 * time.Hour, "3650": 3650 * 24 * time.Hour} {
 		if got, err := fileRetention(in); err != nil || got != want {
@@ -240,6 +266,20 @@ func TestStartHeartbeatChecksItsSettings(t *testing.T) {
 		_, err := startHeartbeat(ctx, nil, env(map[string]string{"HEARTBEAT_URL": "https://hc-ping.com/abc", "HEARTBEAT_INTERVAL_MINUTES": bad}))
 		if err == nil || !strings.Contains(err.Error(), "HEARTBEAT_INTERVAL_MINUTES") {
 			t.Errorf("interval %q accepted: %v", bad, err)
+		}
+	}
+}
+
+func TestAppBaseURL(t *testing.T) {
+	env := func(v string) func(string) string { return func(string) string { return v } }
+	for in, want := range map[string]string{"": "", "  ": "", "https://cad.example.com/": "https://cad.example.com", "http://localhost:4200": "http://localhost:4200"} {
+		if got, err := appBaseURL(env(in)); err != nil || got != want {
+			t.Errorf("%q: %q %v", in, got, err)
+		}
+	}
+	for _, in := range []string{"cad.example.com", "ftp://cad.example.com", "https://cad.example.com/portal", "https://cad.example.com/?x=1", "https://"} {
+		if _, err := appBaseURL(env(in)); err == nil {
+			t.Errorf("%q accepted", in)
 		}
 	}
 }

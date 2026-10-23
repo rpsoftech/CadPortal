@@ -11,7 +11,8 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { ApiError, toApiError } from '../../core/errors';
 import { fixed } from '../../core/format';
-import { CostingSheetComparison } from '../../core/models';
+import { BASIS_LABELS } from '../../core/matrix-price';
+import { CostingSheetComparison, RateBasis } from '../../core/models';
 import { CostProblemsComponent } from '../../shared/cost-problems.component';
 import { saveBlob } from '../../shared/download';
 import { positiveDecimal } from '../../shared/validators';
@@ -215,7 +216,7 @@ export function signed(v: string | null, dp = 2): string {
                 <tr>
                   <td>{{ fx(p.size_mm, 2) }}</td>
                   <td>{{ p.stone_code }}</td>
-                  <td>{{ p.rate_basis === 'pc' ? 'per piece' : 'per carat' }}</td>
+                  <td>{{ basisLabel(p.rate_basis) }}</td>
                   <td class="num">{{ fx(p.price, 2) }}</td>
                   <td class="num">{{ fx(p.carats_per_stone, 4) }}</td>
                 </tr>
@@ -282,6 +283,8 @@ export function signed(v: string | null, dp = 2): string {
   `,
 })
 export class CostingSheetDetailComponent {
+  protected readonly basisLabel = (b: RateBasis): string => BASIS_LABELS[b].long;
+
   /** The route parameter, bound by withComponentInputBinding. */
   readonly id = input.required<string>();
 
