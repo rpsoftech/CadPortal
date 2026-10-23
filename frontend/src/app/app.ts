@@ -96,12 +96,23 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
       display: none;
     }
     .account {
+      flex: 0 1 auto;
+      min-width: 0;
       max-width: 55vw;
     }
     .account ::ng-deep .mdc-button__label {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    /* The smallest phones: the name would push the bar past the screen, so the brand shows only its mark. */
+    @media (max-width: 400px) {
+      .brand span {
+        display: none;
+      }
+      .account {
+        max-width: 48vw;
+      }
     }
     @media (max-width: 760px) {
       .links {
