@@ -40,3 +40,17 @@ func (h *H) restoreDesign(c *gin.Context) {
 	auditNote(c, "design", idStr(id), fmt.Sprintf("restored %s", d.Code))
 	c.Status(http.StatusNoContent)
 }
+
+func (h *H) restoreVariation(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	v, err := h.S.RestoreVariation(c, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	auditNote(c, "variation", idStr(id), fmt.Sprintf("restored %s", v.Code))
+	c.Status(http.StatusNoContent)
+}

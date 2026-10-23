@@ -174,8 +174,9 @@ func (q *Queries) JobBagPhotoKey(ctx context.Context, arg JobBagPhotoKeyParams) 
 }
 
 const listMediaByDesign = `-- name: ListMediaByDesign :many
-SELECT id, design_id, variation_id, kind, content_type, filename, size_bytes, object_key, thumb_key, width, height, position, is_cover, created_by, created_at FROM design_media WHERE design_id = $1
-ORDER BY variation_id NULLS FIRST, position, id
+SELECT m.id, m.design_id, m.variation_id, m.kind, m.content_type, m.filename, m.size_bytes, m.object_key, m.thumb_key, m.width, m.height, m.position, m.is_cover, m.created_by, m.created_at FROM design_media m WHERE m.design_id = $1
+  AND (m.variation_id IS NULL OR EXISTS (SELECT 1 FROM cad_variations v WHERE v.id = m.variation_id AND v.deleted_at IS NULL))
+ORDER BY m.variation_id NULLS FIRST, m.position, m.id
 `
 
 func (q *Queries) ListMediaByDesign(ctx context.Context, designID int64) ([]DesignMedium, error) {
