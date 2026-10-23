@@ -188,8 +188,9 @@ What to know before going live:
   answered with 429). Without a proxy in front, clients are limited by their own address.
 - **Storage:** use R2 in production. `STORAGE=local` keeps files in a Docker volume with no
   replication or backups and is for development only.
-- **Migrations** run automatically when the API starts (`AUTO_MIGRATE=true`). Run one API
-  instance; the recalculation worker is safe against overlap, but there is no need to scale it.
+- **Migrations** run automatically when the API starts (`AUTO_MIGRATE=true`). Instances starting
+  together queue on a database lock, so running more than one API is safe: see
+  [Running more than one API instance](#running-more-than-one-api-instance).
 - **Health:** the API answers `/healthz` (process up) and `/readyz` (database reachable) on its
   own port, and both images define Docker health checks. `docker compose ps` shows them.
 - **Shutdown:** `docker compose stop` sends SIGTERM; the API lets in-flight requests, uploads
@@ -354,6 +355,52 @@ a few hours of work is not acceptable, that is the next step and it is a decisio
 same day before the night run is not in the backup. The backup bucket is only as safe as its token: keep
 that token off the server's other services, and rotate it like any secret.
 
+### Running more than one API instance
+
+One API container is plenty for a workshop, but nothing in the portal assumes it: you can run several
+(for zero-downtime restarts, or more headroom) on the same Postgres.
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --scale api=2      # or any number
+```
+
+`scripts/multi_instance_test.sh` proves this in CI: it starts two API containers on an empty database and
+checks that requests really reach both, that a sign-in on one instance is accepted by the other, that 60
+parallel design creations get 60 different codes, and that weight rebuilds finish with no failure or deadlock.
+
+**Safe with several instances** (the database does the coordinating):
+
+| What | How |
+|---|---|
+| Migrations at start | instances queue on a Postgres advisory lock; one migrates, the rest find nothing to do |
+| Weight rebuild worker | each job is claimed with `FOR UPDATE SKIP LOCKED` and run under an advisory lock: one job at a time, never twice |
+| Design codes | the category row is locked while a number is handed out |
+| Sign-in lockout, password reset links | counters and one-time tokens live in the database |
+| Sign-in tokens | stateless (signed with `JWT_SECRET`, which every instance must share) |
+| Removed-file purge | rows are claimed with `SKIP LOCKED`, so no object is deleted twice |
+| Audit retention | one instance prunes at a time (a try-lock); the others skip |
+| Uptime heartbeat (`HEARTBEAT_URL`) | one instance pings per interval (a database claim); if it stops, another takes over within one interval |
+| Backups | a separate service, run it once |
+
+**Not shared between instances:**
+
+- **File storage.** `STORAGE=local` keeps files in a Docker volume. Two API containers on the *same host* share
+  that volume, so it works there (this is what the test does), but it can never span two hosts. With R2
+  (`S3_*`) every instance sees the same bucket: that is the multi-host mode.
+- **Sign-in rate limit.** It lives in the web (nginx) container, per client address. Run one web container, or accept that
+  each has its own budget.
+- Photo thumbnails are made by the instance that receives the upload (at most 2 at a time per instance); that is
+  per-instance load only, not state.
+
+**How requests are spread.** The web container resolves the `api` name for every request (Docker DNS, cached
+for 10 seconds) and nginx rotates over all the addresses it gets, so new instances start receiving traffic
+within seconds and a stopped one stops being used after the cache expires (nginx also retries the next address
+on a connection error). Put a TLS proxy in front of the *web* container only; the API containers publish no ports.
+
+**Scaling up and down.** `docker compose up -d --scale api=N` adds or removes API containers; the compose file
+has no fixed `container_name`, so any number works, and health checks gate the web container's start. The
+deploy script restarts the `api` service as a whole.
+
 ### Logs and uptime monitoring
 
 **Logs.** The API writes one JSON object per line (`LOG_FORMAT=text` for a terminal, `LOG_LEVEL` to change
@@ -373,7 +420,7 @@ Failed requests are `warn`, server errors are `error` (with the internal error t
 check at a monitoring service (Healthchecks.io, Uptime Kuma's push monitor, Better Stack...) that expects a
 ping every 5 minutes with a few minutes of grace, and put its URL in `HEARTBEAT_URL`. The API pings it while
 it can reach its database and stays silent when it cannot, so the monitor alerts you if the server, the API
-or the database goes down.
+or the database goes down. With several API instances only one of them pings per interval.
 
 Do the same for backups with a second check that expects a ping every 26 hours (a little over the longest
 gap in `BACKUP_AT` if you back up more than once a day), and put its URL in
@@ -756,6 +803,21 @@ database is only ever wiped if its name ends in `_test`. A missing database serv
 `testdb.Reset(t)` (or `testdb.DSN(t)`); do not hard-code a database name. The one thing this cannot
 protect against is running `go test` twice at once against the same server: use separate servers
 for that.
+
+**Scale benchmark** (not part of the normal run). It seeds 5,000 designs / 15,000 variations / 60,000 seats, times a
+full weight rebuild (as queued by a metal edit) and the catalog list queries:
+
+```bash
+cd backend
+SCALE_TEST=1 SCALE_DESIGNS=5000 go test ./internal/service -run TestScaleRecalc -v -count=1
+```
+
+The rebuild is set-based: it locks the variations, reads them and all their seats in two queries, calculates in
+Go with exactly the single-variation math, and writes the cache with three statements that skip unchanged rows.
+At 15,000 variations that is about 3 seconds (it was about 100 seconds when done one variation at a time). A test
+(`TestBulkRecalcMatchesPerVariation`) checks the two methods store identical values under several master-data
+changes. The whole rebuild is one transaction: readers keep seeing the old complete weights until it commits,
+and a failure leaves nothing half-written.
 
 ### Browser smoke tests
 

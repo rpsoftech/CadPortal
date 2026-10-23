@@ -62,17 +62,31 @@ func Ping(ctx context.Context, raw string) error {
 // sends nothing, so the monitor raises the alarm by itself. The first ping is sent at once. logf gets
 // every state change (first failure, recovery), not every ping.
 func Run(ctx context.Context, raw string, interval time.Duration, check func(context.Context) error, logf func(format string, a ...any)) {
+	RunGated(ctx, raw, interval, check, nil, logf)
+}
+
+// RunGated is Run for several instances that share one monitor. Each tick it first asks gate whether this
+// instance is the one that pings now (false: another instance has it, so nothing is sent and the state
+// does not change; an error counts as unhealthy, like a failed check). A nil gate always pings.
+func RunGated(ctx context.Context, raw string, interval time.Duration, check func(context.Context) error,
+	gate func(context.Context) (bool, error), logf func(format string, a ...any)) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	healthy := true
 	for {
 		cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		err := check(cctx)
-		if err == nil {
+		mine := true
+		if err == nil && gate != nil {
+			mine, err = gate(cctx)
+		}
+		if err == nil && mine {
 			err = Ping(cctx, raw)
 		}
 		cancel()
 		switch {
+		case err == nil && !mine:
+			// another instance pings this round
 		case err != nil && healthy:
 			healthy = false
 			logf("heartbeat stopped: %v", err)

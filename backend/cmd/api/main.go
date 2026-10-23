@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rpsoftech/cad-portal/backend/internal/backup"
+	"github.com/rpsoftech/cad-portal/backend/internal/db"
 	"github.com/rpsoftech/cad-portal/backend/internal/handlers"
 	"github.com/rpsoftech/cad-portal/backend/internal/heartbeat"
 	"github.com/rpsoftech/cad-portal/backend/internal/logx"
@@ -394,7 +395,16 @@ func startHeartbeat(ctx context.Context, pool *pgxpool.Pool, getenv func(string)
 	slog.Info("heartbeat on", "host", heartbeat.Host(url), "every_minutes", mins)
 	go func() {
 		defer close(done)
-		heartbeat.Run(ctx, url, time.Duration(mins)*time.Minute, pool.Ping,
+		interval := time.Duration(mins) * time.Minute
+		// With several API instances only one pings per interval: each tick it claims the slot in the
+		// database (an atomic upsert), and the others skip. If the pinging instance stops, another takes
+		// over within one interval.
+		gate := func(ctx context.Context) (bool, error) {
+			n, err := db.New(pool).ClaimMaintenanceSlot(ctx, db.ClaimMaintenanceSlotParams{
+				Name: "heartbeat", MinGapSeconds: (interval * 9 / 10).Seconds()})
+			return n == 1, err
+		}
+		heartbeat.RunGated(ctx, url, interval, pool.Ping, gate,
 			func(format string, a ...any) { slog.Warn(fmt.Sprintf(format, a...)) })
 	}()
 	return done, nil
