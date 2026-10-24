@@ -531,6 +531,7 @@ CADPORTAL_VERSION=1.2.3 docker compose -f docker-compose.prod.yml -f docker-comp
 | CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl`, `DELETE /variations/:id/cad?kind=3dm\|stl` |
 | Exports | `POST /exports/job-bag-pdf`, `POST /exports/job-bags-pdf` (many bags in one PDF), `GET /exports/designs-csv` (any role); `POST /exports/costing-csv`, `POST /exports/costing-preview` (admin/designer) |
 | Costing sheets (admin/designer) | `POST/GET /costing-sheets`, `GET/DELETE /costing-sheets/:id`, `GET /costing-sheets/:id/csv`, `POST /costing-sheets/:id/recost` |
+| Orders (read: any role; write: admin/designer) | `POST/GET /orders`, `GET/PUT /orders/:id`, `PUT /orders/:id/lines` (draft only), `POST /orders/:id/status`, `POST /orders/:id/clone` |
 
 All paths are under `/api/v1`. Alongside the routes above:
 
@@ -766,6 +767,43 @@ and shows the difference per variation; the old sheet is untouched. An admin may
 designer their own. Creating, downloading, re-costing and deleting are in the audit log
 (`costing_sheet.*`). The production role cannot reach any of this.
 
+### Orders
+
+An order is a selection of catalog variations (a quantity each) in one metal and one stone code, sent
+to production. Not a customer order: no prices, payments or invoicing are stored. The API is built;
+the screens come later.
+
+`POST /orders` takes `{metal_code, stone_code, items: [{variation_id, quantity}], name?, notes?, due_date?,
+criteria?, place?}`. The selection is explicit; `criteria` (the filter the selection came from) is optional
+and informational, and an order is created without it. Numbers are `ORD-0001`, `ORD-0002` … allocated in
+the creating transaction from one locked counter row, so concurrent creates never repeat or skip one and a
+failed create gives its number back. Up to 500 lines, quantity 1 to 100000, a variation once per order.
+
+- **Snapshot.** Each line stores, when it is added, a copy of the design code / name / category / tags, the
+  variation code, metal, stone code and specific gravity, the base input, net / stone / gross weight, stone %
+  (stone weight as a percentage of gross weight), the full stone BOM, the CAD file names, SHA-256 hashes and sizes
+  (3dm and stl) and the cover photo reference. The numbers come from the same code as `simulate-bom`, so they
+  agree with it exactly. An order is read from its own tables only: editing the design, seats, a metal's SG or
+  the stone matrix, soft-deleting or purging the design or variation never changes it (`design_id` /
+  `variation_id` on a line become `null` after a purge; the snapshot stays whole). Storage keys are kept in a
+  separate server-only column and are never sent to a client.
+- **Missing data is never zero.** A variation whose stone data is missing for the chosen code (or that is
+  deleted) makes the whole request fail with 422 and a `problems` list naming every such variation and the
+  missing (size, code) pairs; nothing is created and no number is used.
+- **Status.** `draft` → `placed` → `in_production` → `done`; `cancelled` from draft, placed or in production;
+  `done` and `cancelled` are final. `POST /orders/:id/status {status, note?}` validates the move (409 if not
+  allowed) and records who and when in the order's `history`. Orders are cancelled, never deleted (no delete
+  route). Lines change only while the order is a draft (`PUT /orders/:id/lines`: a variation already on the
+  order keeps its snapshot, a new one is snapshotted now); name, notes and due date change until the order is
+  done or cancelled (`PUT /orders/:id`).
+- **Clone / reorder.** `POST /orders/:id/clone {name?, metal_code?, stone_code?, skip_unavailable?}` makes a
+  new draft from the old lines, re-snapshotted from the current designs, and returns `{order, diff}`; the diff
+  lists per line `unchanged`, `changed` (field, old, new) or `unavailable`. Lines that can no longer be
+  ordered fail the clone (422, listed) unless `skip_unavailable` is set, which drops and reports them.
+- **Roles.** Everyone signed in may read (`GET /orders` with `status`, `q`, `from`, `to`, `limit`, `offset`,
+  total in `X-Total-Count`; `GET /orders/:id`); admin and designer write. Creating, editing, changing lines,
+  status changes and clones are in the audit log (`order.*`).
+
 ### Audit log
 
 Every state-changing request is recorded in an append-only `audit_log` table: who (a snapshot of
@@ -787,8 +825,8 @@ Every route except login needs `Authorization: Bearer <token>`.
 | Role | Can do |
 |---|---|
 | `admin` | Everything, including master data and users |
-| `designer` | Create and edit designs, variations, seats and CAD files; costing export |
-| `production` | Read designs, simulate the BOM, job-bag PDF, CAD downloads. Never sees wastage % or stone rates |
+| `designer` | Create and edit designs, variations, seats and CAD files; costing export; create and change orders |
+| `production` | Read designs, simulate the BOM, job-bag PDF, CAD downloads, read orders. Never sees wastage % or stone rates |
 
 Security behaviour worth knowing:
 

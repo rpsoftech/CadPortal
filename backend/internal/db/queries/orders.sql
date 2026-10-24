@@ -4,8 +4,8 @@
 UPDATE order_numbering SET next_seq = next_seq + 1 RETURNING next_seq;
 
 -- name: InsertOrder :one
-INSERT INTO orders (seq, number, name, notes, status, metal_code, stone_code, criteria, cloned_from, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, sqlc.narg('criteria'), sqlc.narg('cloned_from'), sqlc.narg('created_by'))
+INSERT INTO orders (seq, number, name, notes, due_date, status, metal_code, stone_code, criteria, cloned_from, created_by)
+VALUES ($1, $2, $3, $4, sqlc.narg('due_date'), $5, $6, $7, sqlc.narg('criteria'), sqlc.narg('cloned_from'), sqlc.narg('created_by'))
 RETURNING *;
 
 -- name: InsertOrderLine :exec
@@ -27,7 +27,7 @@ FROM orders o LEFT JOIN users u ON u.id = o.created_by
 WHERE o.id = $1;
 
 -- name: ListOrders :many
-SELECT o.id, o.number, o.name, o.status, o.metal_code, o.stone_code, o.cloned_from, o.created_by,
+SELECT o.id, o.number, o.name, o.due_date, o.status, o.metal_code, o.stone_code, o.cloned_from, o.created_by,
        COALESCE(NULLIF(u.name, ''), u.email, '')::text AS created_by_name,
        o.created_at, o.updated_at,
        (SELECT count(*) FROM order_lines l WHERE l.order_id = o.id)::int AS line_count,
@@ -36,11 +36,13 @@ SELECT o.id, o.number, o.name, o.status, o.metal_code, o.stone_code, o.cloned_fr
 FROM orders o LEFT JOIN users u ON u.id = o.created_by
 WHERE (sqlc.arg('status')::text = '' OR o.status = sqlc.arg('status')::text)
   AND (sqlc.arg('q')::text = '' OR o.number ILIKE '%' || sqlc.arg('q')::text || '%' OR o.name ILIKE '%' || sqlc.arg('q')::text || '%')
+  AND (sqlc.narg('from_ts')::timestamptz IS NULL OR o.created_at >= sqlc.narg('from_ts'))
+  AND (sqlc.narg('to_ts')::timestamptz IS NULL OR o.created_at < sqlc.narg('to_ts'))
 ORDER BY o.created_at DESC, o.id DESC
 LIMIT sqlc.arg('lim') OFFSET sqlc.arg('off');
 
 -- name: UpdateOrderHeader :exec
-UPDATE orders SET name = $2, notes = $3 WHERE id = $1;
+UPDATE orders SET name = $2, notes = $3, due_date = sqlc.narg('due_date') WHERE id = $1;
 
 -- name: TouchOrder :exec
 UPDATE orders SET updated_at = now() WHERE id = $1;

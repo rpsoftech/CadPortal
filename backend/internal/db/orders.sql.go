@@ -32,7 +32,7 @@ func (q *Queries) GetCategoryName(ctx context.Context, id int64) (string, error)
 }
 
 const getOrderForUpdate = `-- name: GetOrderForUpdate :one
-SELECT id, seq, number, name, notes, status, metal_code, stone_code, criteria, cloned_from, created_by, created_at, updated_at FROM orders WHERE id = $1 FOR UPDATE
+SELECT id, seq, number, name, notes, due_date, status, metal_code, stone_code, criteria, cloned_from, created_by, created_at, updated_at FROM orders WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetOrderForUpdate(ctx context.Context, id int64) (Order, error) {
@@ -44,6 +44,7 @@ func (q *Queries) GetOrderForUpdate(ctx context.Context, id int64) (Order, error
 		&i.Number,
 		&i.Name,
 		&i.Notes,
+		&i.DueDate,
 		&i.Status,
 		&i.MetalCode,
 		&i.StoneCode,
@@ -57,7 +58,7 @@ func (q *Queries) GetOrderForUpdate(ctx context.Context, id int64) (Order, error
 }
 
 const getOrderRow = `-- name: GetOrderRow :one
-SELECT o.id, o.seq, o.number, o.name, o.notes, o.status, o.metal_code, o.stone_code, o.criteria, o.cloned_from, o.created_by, o.created_at, o.updated_at, COALESCE(NULLIF(u.name, ''), u.email, '')::text AS created_by_name
+SELECT o.id, o.seq, o.number, o.name, o.notes, o.due_date, o.status, o.metal_code, o.stone_code, o.criteria, o.cloned_from, o.created_by, o.created_at, o.updated_at, COALESCE(NULLIF(u.name, ''), u.email, '')::text AS created_by_name
 FROM orders o LEFT JOIN users u ON u.id = o.created_by
 WHERE o.id = $1
 `
@@ -68,6 +69,7 @@ type GetOrderRowRow struct {
 	Number        string             `json:"number"`
 	Name          string             `json:"name"`
 	Notes         string             `json:"notes"`
+	DueDate       pgtype.Date        `json:"due_date"`
 	Status        string             `json:"status"`
 	MetalCode     string             `json:"metal_code"`
 	StoneCode     string             `json:"stone_code"`
@@ -88,6 +90,7 @@ func (q *Queries) GetOrderRow(ctx context.Context, id int64) (GetOrderRowRow, er
 		&i.Number,
 		&i.Name,
 		&i.Notes,
+		&i.DueDate,
 		&i.Status,
 		&i.MetalCode,
 		&i.StoneCode,
@@ -102,9 +105,9 @@ func (q *Queries) GetOrderRow(ctx context.Context, id int64) (GetOrderRowRow, er
 }
 
 const insertOrder = `-- name: InsertOrder :one
-INSERT INTO orders (seq, number, name, notes, status, metal_code, stone_code, criteria, cloned_from, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, seq, number, name, notes, status, metal_code, stone_code, criteria, cloned_from, created_by, created_at, updated_at
+INSERT INTO orders (seq, number, name, notes, due_date, status, metal_code, stone_code, criteria, cloned_from, created_by)
+VALUES ($1, $2, $3, $4, $8, $5, $6, $7, $9, $10, $11)
+RETURNING id, seq, number, name, notes, due_date, status, metal_code, stone_code, criteria, cloned_from, created_by, created_at, updated_at
 `
 
 type InsertOrderParams struct {
@@ -115,6 +118,7 @@ type InsertOrderParams struct {
 	Status     string      `json:"status"`
 	MetalCode  string      `json:"metal_code"`
 	StoneCode  string      `json:"stone_code"`
+	DueDate    pgtype.Date `json:"due_date"`
 	Criteria   []byte      `json:"criteria"`
 	ClonedFrom pgtype.Int8 `json:"cloned_from"`
 	CreatedBy  pgtype.Int8 `json:"created_by"`
@@ -129,6 +133,7 @@ func (q *Queries) InsertOrder(ctx context.Context, arg InsertOrderParams) (Order
 		arg.Status,
 		arg.MetalCode,
 		arg.StoneCode,
+		arg.DueDate,
 		arg.Criteria,
 		arg.ClonedFrom,
 		arg.CreatedBy,
@@ -140,6 +145,7 @@ func (q *Queries) InsertOrder(ctx context.Context, arg InsertOrderParams) (Order
 		&i.Number,
 		&i.Name,
 		&i.Notes,
+		&i.DueDate,
 		&i.Status,
 		&i.MetalCode,
 		&i.StoneCode,
@@ -284,7 +290,7 @@ func (q *Queries) ListOrderStatusHistory(ctx context.Context, orderID int64) ([]
 }
 
 const listOrders = `-- name: ListOrders :many
-SELECT o.id, o.number, o.name, o.status, o.metal_code, o.stone_code, o.cloned_from, o.created_by,
+SELECT o.id, o.number, o.name, o.due_date, o.status, o.metal_code, o.stone_code, o.cloned_from, o.created_by,
        COALESCE(NULLIF(u.name, ''), u.email, '')::text AS created_by_name,
        o.created_at, o.updated_at,
        (SELECT count(*) FROM order_lines l WHERE l.order_id = o.id)::int AS line_count,
@@ -293,21 +299,26 @@ SELECT o.id, o.number, o.name, o.status, o.metal_code, o.stone_code, o.cloned_fr
 FROM orders o LEFT JOIN users u ON u.id = o.created_by
 WHERE ($1::text = '' OR o.status = $1::text)
   AND ($2::text = '' OR o.number ILIKE '%' || $2::text || '%' OR o.name ILIKE '%' || $2::text || '%')
+  AND ($3::timestamptz IS NULL OR o.created_at >= $3)
+  AND ($4::timestamptz IS NULL OR o.created_at < $4)
 ORDER BY o.created_at DESC, o.id DESC
-LIMIT $4 OFFSET $3
+LIMIT $6 OFFSET $5
 `
 
 type ListOrdersParams struct {
-	Status string `json:"status"`
-	Q      string `json:"q"`
-	Off    int32  `json:"off"`
-	Lim    int32  `json:"lim"`
+	Status string             `json:"status"`
+	Q      string             `json:"q"`
+	FromTs pgtype.Timestamptz `json:"from_ts"`
+	ToTs   pgtype.Timestamptz `json:"to_ts"`
+	Off    int32              `json:"off"`
+	Lim    int32              `json:"lim"`
 }
 
 type ListOrdersRow struct {
 	ID            int64              `json:"id"`
 	Number        string             `json:"number"`
 	Name          string             `json:"name"`
+	DueDate       pgtype.Date        `json:"due_date"`
 	Status        string             `json:"status"`
 	MetalCode     string             `json:"metal_code"`
 	StoneCode     string             `json:"stone_code"`
@@ -325,6 +336,8 @@ func (q *Queries) ListOrders(ctx context.Context, arg ListOrdersParams) ([]ListO
 	rows, err := q.db.Query(ctx, listOrders,
 		arg.Status,
 		arg.Q,
+		arg.FromTs,
+		arg.ToTs,
 		arg.Off,
 		arg.Lim,
 	)
@@ -339,6 +352,7 @@ func (q *Queries) ListOrders(ctx context.Context, arg ListOrdersParams) ([]ListO
 			&i.ID,
 			&i.Number,
 			&i.Name,
+			&i.DueDate,
 			&i.Status,
 			&i.MetalCode,
 			&i.StoneCode,
@@ -432,16 +446,22 @@ func (q *Queries) TouchOrder(ctx context.Context, id int64) error {
 }
 
 const updateOrderHeader = `-- name: UpdateOrderHeader :exec
-UPDATE orders SET name = $2, notes = $3 WHERE id = $1
+UPDATE orders SET name = $2, notes = $3, due_date = $4 WHERE id = $1
 `
 
 type UpdateOrderHeaderParams struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name"`
-	Notes string `json:"notes"`
+	ID      int64       `json:"id"`
+	Name    string      `json:"name"`
+	Notes   string      `json:"notes"`
+	DueDate pgtype.Date `json:"due_date"`
 }
 
 func (q *Queries) UpdateOrderHeader(ctx context.Context, arg UpdateOrderHeaderParams) error {
-	_, err := q.db.Exec(ctx, updateOrderHeader, arg.ID, arg.Name, arg.Notes)
+	_, err := q.db.Exec(ctx, updateOrderHeader,
+		arg.ID,
+		arg.Name,
+		arg.Notes,
+		arg.DueDate,
+	)
 	return err
 }

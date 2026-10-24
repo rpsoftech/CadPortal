@@ -19,6 +19,7 @@ CREATE TABLE orders (
     number        text NOT NULL UNIQUE,
     name          text NOT NULL DEFAULT '' CHECK (length(name) <= 120),
     notes         text NOT NULL DEFAULT '' CHECK (length(notes) <= 2000),
+    due_date      date,
     status        text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'placed', 'in_production', 'done', 'cancelled')),
     metal_code    text NOT NULL,
     stone_code    text NOT NULL,

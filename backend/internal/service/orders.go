@@ -323,6 +323,7 @@ func insertLines(ctx context.Context, q *db.Queries, orderID int64, lines []buil
 type CreateOrderParams struct {
 	Name      string          `json:"name"`
 	Notes     string          `json:"notes"`
+	DueDate   string          `json:"due_date"` // YYYY-MM-DD, optional
 	MetalCode string          `json:"metal_code"`
 	StoneCode string          `json:"stone_code"`
 	Items     []OrderItem     `json:"items"`
@@ -368,6 +369,9 @@ func (s *Service) CreateOrder(ctx context.Context, p CreateOrderParams) (OrderDe
 	if err != nil {
 		return OrderDetail{}, err
 	}
+	if _, err := parseDueDate(p.DueDate); err != nil {
+		return OrderDetail{}, err
+	}
 	if err := checkItems(p.Items); err != nil {
 		return OrderDetail{}, err
 	}
@@ -382,12 +386,16 @@ func (s *Service) CreateOrder(ctx context.Context, p CreateOrderParams) (OrderDe
 }
 
 func (s *Service) storeOrder(ctx context.Context, p CreateOrderParams, criteria []byte, lines []builtLine) (OrderDetail, error) {
+	due, err := parseDueDate(p.DueDate)
+	if err != nil {
+		return OrderDetail{}, err
+	}
 	status := OrderDraft
 	if p.Place {
 		status = OrderPlaced
 	}
 	var id int64
-	err := s.inTx(ctx, func(q *db.Queries) error {
+	err = s.inTx(ctx, func(q *db.Queries) error {
 		// The counter row stays locked until commit: concurrent creators queue, and a failure below
 		// rolls the number back, so there are no gaps.
 		seq, err := q.NextOrderNumber(ctx)
@@ -395,7 +403,7 @@ func (s *Service) storeOrder(ctx context.Context, p CreateOrderParams, criteria 
 			return err
 		}
 		arg := db.InsertOrderParams{
-			Seq: seq, Number: FormatOrderNumber(seq), Name: p.Name, Notes: p.Notes, Status: status,
+			Seq: seq, Number: FormatOrderNumber(seq), Name: p.Name, Notes: p.Notes, DueDate: due, Status: status,
 			MetalCode: p.MetalCode, StoneCode: p.StoneCode, Criteria: criteria,
 		}
 		if p.UserID != 0 {
@@ -425,12 +433,16 @@ func (s *Service) storeOrder(ctx context.Context, p CreateOrderParams, criteria 
 }
 
 // UpdateOrderHeader changes the name and notes of an order that is not finished.
-func (s *Service) UpdateOrderHeader(ctx context.Context, id int64, name, notes string) (OrderDetail, error) {
+func (s *Service) UpdateOrderHeader(ctx context.Context, id int64, name, notes, dueDate string) (OrderDetail, error) {
+	due, err := parseDueDate(dueDate)
+	if err != nil {
+		return OrderDetail{}, err
+	}
 	name, notes = strings.TrimSpace(name), strings.TrimSpace(notes)
 	if err := checkHeader(name, notes); err != nil {
 		return OrderDetail{}, err
 	}
-	err := s.inTx(ctx, func(q *db.Queries) error {
+	err = s.inTx(ctx, func(q *db.Queries) error {
 		o, err := q.GetOrderForUpdate(ctx, id)
 		if err != nil {
 			return err
@@ -438,7 +450,7 @@ func (s *Service) UpdateOrderHeader(ctx context.Context, id int64, name, notes s
 		if o.Status == OrderDone || o.Status == OrderCancelled {
 			return fmt.Errorf("%w: a %s order cannot be edited", ErrConflict, strings.ReplaceAll(o.Status, "_", " "))
 		}
-		return q.UpdateOrderHeader(ctx, db.UpdateOrderHeaderParams{ID: id, Name: name, Notes: notes})
+		return q.UpdateOrderHeader(ctx, db.UpdateOrderHeaderParams{ID: id, Name: name, Notes: notes, DueDate: due})
 	})
 	if err != nil {
 		return OrderDetail{}, err
@@ -596,6 +608,7 @@ type OrderSummary struct {
 	ID            int64     `json:"id"`
 	Number        string    `json:"number"`
 	Name          string    `json:"name"`
+	DueDate       *string   `json:"due_date"`
 	Status        string    `json:"status"`
 	MetalCode     string    `json:"metal_code"`
 	StoneCode     string    `json:"stone_code"`
@@ -616,7 +629,7 @@ type OrderDetail struct {
 	History  []OrderHistoryEntry `json:"history"`
 }
 
-func (s *Service) ListOrders(ctx context.Context, status, q string, limit, offset int32) ([]OrderSummary, int64, error) {
+func (s *Service) ListOrders(ctx context.Context, status, q string, from, to *time.Time, limit, offset int32) ([]OrderSummary, int64, error) {
 	if status != "" && !validOrderStatus(status) {
 		return nil, 0, invalid("unknown status %q", status)
 	}
@@ -626,7 +639,14 @@ func (s *Service) ListOrders(ctx context.Context, status, q string, limit, offse
 	if offset < 0 {
 		offset = 0
 	}
-	rows, err := s.Q.ListOrders(ctx, db.ListOrdersParams{Status: status, Q: strings.TrimSpace(q), Lim: limit, Off: offset})
+	arg := db.ListOrdersParams{Status: status, Q: strings.TrimSpace(q), Lim: limit, Off: offset}
+	if from != nil {
+		arg.FromTs = pgtype.Timestamptz{Time: *from, Valid: true}
+	}
+	if to != nil {
+		arg.ToTs = pgtype.Timestamptz{Time: *to, Valid: true}
+	}
+	rows, err := s.Q.ListOrders(ctx, arg)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -635,7 +655,7 @@ func (s *Service) ListOrders(ctx context.Context, status, q string, limit, offse
 	for _, r := range rows {
 		total = r.TotalCount
 		out = append(out, OrderSummary{
-			ID: r.ID, Number: r.Number, Name: r.Name, Status: r.Status, MetalCode: r.MetalCode, StoneCode: r.StoneCode,
+			ID: r.ID, Number: r.Number, Name: r.Name, DueDate: dateStr(r.DueDate), Status: r.Status, MetalCode: r.MetalCode, StoneCode: r.StoneCode,
 			ClonedFrom: int8Ptr(r.ClonedFrom), CreatedBy: int8Ptr(r.CreatedBy), CreatedByName: r.CreatedByName,
 			CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time, LineCount: int(r.LineCount), TotalQuantity: r.TotalQuantity,
 		})
@@ -651,7 +671,7 @@ func (s *Service) GetOrder(ctx context.Context, id int64) (OrderDetail, error) {
 	}
 	d := OrderDetail{
 		OrderSummary: OrderSummary{
-			ID: r.ID, Number: r.Number, Name: r.Name, Status: r.Status, MetalCode: r.MetalCode, StoneCode: r.StoneCode,
+			ID: r.ID, Number: r.Number, Name: r.Name, DueDate: dateStr(r.DueDate), Status: r.Status, MetalCode: r.MetalCode, StoneCode: r.StoneCode,
 			ClonedFrom: int8Ptr(r.ClonedFrom), CreatedBy: int8Ptr(r.CreatedBy), CreatedByName: r.CreatedByName,
 			CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time,
 		},
@@ -903,4 +923,27 @@ func diffSnapshots(a, b LineSnapshot) []LineChange {
 	add("file_3dm", fileText(a.File3dm), fileText(b.File3dm))
 	add("file_stl", fileText(a.FileStl), fileText(b.FileStl))
 	return out
+}
+
+const dateLayout = "2006-01-02"
+
+// parseDueDate reads the optional due date; empty means none.
+func parseDueDate(s string) (pgtype.Date, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return pgtype.Date{}, nil
+	}
+	t, err := time.Parse(dateLayout, s)
+	if err != nil {
+		return pgtype.Date{}, invalid("due_date must be a date like 2026-12-31")
+	}
+	return pgtype.Date{Time: t, Valid: true}, nil
+}
+
+func dateStr(d pgtype.Date) *string {
+	if !d.Valid {
+		return nil
+	}
+	s := d.Time.Format(dateLayout)
+	return &s
 }

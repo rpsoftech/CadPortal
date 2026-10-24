@@ -57,7 +57,17 @@ func (h *H) listOrders(c *gin.Context) {
 			*dst = int32(*v)
 		}
 	}
-	rows, total, err := h.S.ListOrders(c, c.Query("status"), c.Query("q"), limit, offset)
+	from, err := optTime(c, "from", false)
+	if err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	to, err := optTime(c, "to", true)
+	if err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+	rows, total, err := h.S.ListOrders(c, c.Query("status"), c.Query("q"), from, to, limit, offset)
 	if err != nil {
 		fail(c, err)
 		return
@@ -81,14 +91,15 @@ func (h *H) updateOrder(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Name  string `json:"name"`
-		Notes string `json:"notes"`
+		Name    string `json:"name"`
+		Notes   string `json:"notes"`
+		DueDate string `json:"due_date"`
 	}
 	if c.ShouldBindJSON(&in) != nil {
 		badRequest(c, "invalid JSON body")
 		return
 	}
-	o, err := h.S.UpdateOrderHeader(c, id, in.Name, in.Notes)
+	o, err := h.S.UpdateOrderHeader(c, id, in.Name, in.Notes, in.DueDate)
 	if err == nil {
 		auditNote(c, "order", idStr(id), o.Number)
 	}

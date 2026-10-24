@@ -152,6 +152,7 @@ type Order struct {
 	Number     string             `json:"number"`
 	Name       string             `json:"name"`
 	Notes      string             `json:"notes"`
+	DueDate    pgtype.Date        `json:"due_date"`
 	Status     string             `json:"status"`
 	MetalCode  string             `json:"metal_code"`
 	StoneCode  string             `json:"stone_code"`
