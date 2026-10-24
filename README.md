@@ -871,6 +871,15 @@ attached to the run as the `playwright-report` artifact.
 The same run includes an accessibility pass (axe over every screen and dialog, light and dark, desktop
 and 375 px) and the phone-layout checks; see [docs/accessibility.md](docs/accessibility.md).
 
+## API documentation
+
+`docs/api/openapi.yaml` (OpenAPI 3.0) describes every route, with request bodies, responses and the role
+each needs. `docs/api/CadPortal.postman_collection.json` and `CadPortal.postman_environment.json` are
+generated from it: import both into Postman, run **Auth > Sign in** once (it stores the token), then use any
+request. After changing a route, update `openapi.yaml` and run `python3 docs/api/gen_postman.py` (needs
+PyYAML). View the spec with any Swagger UI, for example
+`docker run -p 8081:8080 -e SWAGGER_JSON=/api/openapi.yaml -v "$PWD/docs/api:/api" swaggerapi/swagger-ui`.
+
 ## Regenerating sqlc code
 
 sqlc is run through its official Docker image:
