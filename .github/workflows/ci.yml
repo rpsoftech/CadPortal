@@ -336,7 +336,7 @@ jobs:
 
   # The one status for "the docker checks": it always runs, and it fails when any part failed, was
   # cancelled or was skipped although this change needed it. A change that needs no docker checks
-  # passes. Keep requiring this job by its name, `docker`; the parts above need not be listed.
+  # passes. Branch protection requires this job by its name, `docker`; the parts above need not be listed.
   docker:
     name: docker
     needs: [changes, docker-stack, docker-backup, docker-multi]
