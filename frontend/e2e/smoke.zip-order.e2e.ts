@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { signIn } from './auth';
 import { readZip } from './zip';
 
 // The ZIP and the package of an order, through the real production stack. API level: the order-detail
@@ -11,11 +12,7 @@ const env = (name: string): string => {
 };
 
 test('an order downloads as a ZIP of the files it recorded, and as a package', async ({ page }) => {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(env('E2E_ADMIN_EMAIL'));
-  await page.getByLabel('Password').fill(env('E2E_ADMIN_PASSWORD'));
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible();
+  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
 
   const result = await page.evaluate(async () => {
     const s = JSON.parse(sessionStorage.getItem('cadportal.session') ?? '{}');

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { Page, expect, test } from '@playwright/test';
+import { signIn } from './auth';
 
 // Costing several designs at once, and saved costing sheets. Runs after smoke.e2e.ts (it needs the
 // category prefixes that test enters) and sets up its own stone prices, wastage and designs.
@@ -9,14 +10,6 @@ const env = (name: string): string => {
   if (!v) throw new Error(`${name} must be set (scripts/e2e.sh does this)`);
   return v;
 };
-
-async function signIn(page: Page, email: string, password: string): Promise<void> {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible();
-}
 
 /** A call to the API with the signed-in user's token, as the app itself makes them. */
 async function api(page: Page, method: string, path: string, body?: unknown) {
