@@ -465,6 +465,29 @@ export interface CadZipLink {
   kinds: CadZipKind[];
 }
 
+/**
+ * What an order download holds and a signed link to fetch it (GET /orders/:id/download/link and
+ * /orders/:id/package/link). The files are the ones the order recorded, not the variations as they are now.
+ */
+export interface OrderZipLink {
+  url: string;
+  expires_in_seconds: number;
+  filename: string;
+  order: string;
+  lines: number;
+  /** Files that will be in the ZIP. */
+  files: number;
+  /** Requested files the order recorded none of; listed in MANIFEST.csv. */
+  missing: number;
+  /** Files whose variation has a different file now, no file, or is gone; the recorded copy is shipped. */
+  changed: number;
+  /** Total size of the original files. */
+  bytes: number;
+  kinds: CadZipKind[];
+  /** True for the package (CAD files plus job-bag PDF and summary CSV). */
+  package: boolean;
+}
+
 /** Error body shape returned by the API. Go structs without json tags use PascalCase keys. */
 export interface ApiErrorBody {
   error?: string;

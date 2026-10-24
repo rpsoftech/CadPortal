@@ -122,7 +122,7 @@ func (s *Service) PlanOrderZip(ctx context.Context, orderID int64, files string,
 				plan.Files++
 				plan.Bytes += snapFile.SizeBytes
 				cur, e.Note = currentFileState(live, kind, snapFile)
-				if cur == CurrentChanged || cur == CurrentVarGone {
+				if cur != CurrentSame {
 					plan.Changed++
 				}
 			}
