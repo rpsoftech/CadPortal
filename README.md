@@ -696,6 +696,29 @@ Admins and designers have a **Removed** link in the top bar for taking back a mi
 - This is a safety net, not a backup: after the period the file is gone from R2 unless you turned on
   R2 object versioning or keep your own copy.
 
+### Catalog filters, stone code and stone %
+
+The catalog filters by category, text (code or name), tags, **target purity** (the metal), net and gross weight
+ranges, **stone code** (1HD, 2HD, 3HD, ...) and a **stone %** range, and sorts by design code, net weight, gross
+weight or stone %. The stone figures are worked out **on the fly** for the chosen metal and stone code from the
+seats and the stone size matrix (the weight cache only holds the baseline code): flexible seats use the chosen
+code, locked seats keep their own, with the same rounding as the job bag (carats to 4 dp, stone grams and gross to
+3 dp). Stone % is stone weight / **gross** weight x 100, rounded to 2 dp (e.g. the fixture in 18KR with 2HD: 0.0694 g
+over 3.119 g is 2.23 %); the min and max are inclusive and compare the rounded value. A variation with a missing
+matrix row for the chosen code has no stone figure: it is excluded by any gross or stone % filter, never treated as
+0, and its card says "no data for 2HD". A design matches when one of its variations does; the card shows that
+variation's net, stone g, gross and stone %. Stone % and sorting need a target purity. All filters, the sort and the
+page are in the address (shareable; coming back from a design restores them), and the ticked designs stay ticked.
+
+`GET /api/v1/designs` adds `stone_code` (default: the baseline code), `min_stone_pct`, `max_stone_pct` (0 to 100, at
+most 2 decimals) and `sort` (`net_asc|net_desc|gross_asc|gross_desc|stone_pct_asc|stone_pct_desc`). Any role may
+use them; no price or wastage is involved. The gross range now uses the gross for the chosen stone code.
+
+Benchmark (`TestScaleRecalc`, 5,000 designs / 15,000 variations / 60,000 seats, one Postgres 18 container on a
+laptop): list with a metal and no stone filter about 0.1 s; with a stone % range, gross range or a stone % sort
+about 0.6 s (every variation's seats are summed); text search, plain paging under 50 ms. No index was needed:
+`variation_stone_seats (variation_id, position)` already serves the per-variation seat lookup.
+
 ### Duplicating a design
 
 **Duplicate** (design page, admins and designers) makes a new design in the same category with the

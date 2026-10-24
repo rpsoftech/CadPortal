@@ -26,8 +26,17 @@ SELECT t.* FROM tags t JOIN design_tags dt ON dt.tag_id = t.id
 WHERE dt.design_id = $1 ORDER BY t.tag_group, t.name;
 
 -- name: ListDesigns :many
--- Weight filters apply to the selected metal (metal_code). A design matches if
--- at least one of its variations satisfies every weight filter.
+-- Weight and stone filters apply to the selected metal (metal_code) and stone code (stone_code_id) and are
+-- computed here, on the fly, from the seats and the stone size matrix (the cache only holds the baseline
+-- code): carats = round(sum(count x carats_per_stone), 4); stone_g = round(carats x 0.200, 3);
+-- gross = round(net + carats x 0.200, 3); stone % = round(carats x 0.200 / gross x 100, 2).
+-- Flexible seats use the chosen code, locked seats their own; a missing matrix row makes carats, stone_g,
+-- gross and stone % NULL (never 0). A design matches if at least one of its variations satisfies every
+-- filter; the card shows the first such variation (one with stone data preferred).
+-- calc_needed is true when any metal, weight or stone filter or sort is requested; stone_needed when the
+-- stone figures are needed to filter or order (gross range, stone %, sort by gross or stone %): otherwise
+-- the stone sums are only computed for the page rows (ListDesignVariationFigures), which keeps a plain
+-- metal selection cheap. Without stone_needed the shown variation is the first one passing the net filters.
 SELECT d.*, c.name AS category_name,
     ARRAY(SELECT t.name FROM design_tags dt JOIN tags t ON t.id = dt.tag_id
           WHERE dt.design_id = d.id ORDER BY t.tag_group, t.name)::text[] AS tag_names,
@@ -36,9 +45,44 @@ SELECT d.*, c.name AS category_name,
     (SELECT m.thumb_key FROM design_media m WHERE m.design_id = d.id AND m.kind = 'image'
        AND (m.variation_id IS NULL OR EXISTS (SELECT 1 FROM cad_variations mv WHERE mv.id = m.variation_id AND mv.deleted_at IS NULL))
      ORDER BY m.is_cover DESC, m.variation_id NULLS FIRST, m.position, m.id LIMIT 1) AS cover_thumb_key,
+    to_jsonb(rep) AS shown,   -- the shown variation's figures as JSON; NULL when no variation qualifies
     count(*) OVER ()::bigint AS total_count   -- matches before LIMIT/OFFSET, for pagination
 FROM master_designs d
 JOIN categories c ON c.id = d.category_id
+LEFT JOIN LATERAL (
+    SELECT v.id AS variation_id, v.code AS variation_code, w.net_weight_g AS net_g,
+           st.carats, g.stone_g, g.gross_g, p.stone_pct
+    FROM cad_variations v
+    JOIN variation_metal_weights w ON w.variation_id = v.id
+    JOIN metals m ON m.id = w.metal_id
+    CROSS JOIN LATERAL (
+        SELECT CASE WHEN NOT sqlc.arg('stone_needed')::bool OR sqlc.narg('stone_code_id')::bigint IS NULL THEN NULL
+                    WHEN bool_or(sm.size_mm IS NULL) THEN NULL
+                    ELSE round(COALESCE(sum(s.stone_count * sm.carats_per_stone), 0), 4) END AS carats
+        FROM variation_stone_seats s
+        LEFT JOIN stone_size_matrix sm ON sm.size_mm = s.size_mm
+             AND sm.stone_code_id = COALESCE(s.locked_stone_code_id, sqlc.narg('stone_code_id')::bigint)
+        WHERE sqlc.arg('stone_needed')::bool AND s.variation_id = v.id
+    ) st
+    CROSS JOIN LATERAL (
+        SELECT round(st.carats * 0.200, 3) AS stone_g, round(w.net_weight_g + st.carats * 0.200, 3) AS gross_g
+    ) g
+    CROSS JOIN LATERAL (
+        SELECT CASE WHEN g.gross_g > 0 THEN round(st.carats * 0.200 / g.gross_g * 100, 2) END AS stone_pct
+    ) p
+    WHERE sqlc.arg('calc_needed')::bool
+      AND v.design_id = d.id AND v.deleted_at IS NULL
+      AND (sqlc.narg('metal_code')::text IS NULL OR m.code = sqlc.narg('metal_code'))
+      AND (sqlc.narg('min_net_wt')::numeric IS NULL OR w.net_weight_g >= sqlc.narg('min_net_wt'))
+      AND (sqlc.narg('max_net_wt')::numeric IS NULL OR w.net_weight_g <= sqlc.narg('max_net_wt'))
+      AND (sqlc.narg('min_gross_wt')::numeric IS NULL OR g.gross_g >= sqlc.narg('min_gross_wt'))
+      AND (sqlc.narg('max_gross_wt')::numeric IS NULL OR g.gross_g <= sqlc.narg('max_gross_wt'))
+      AND (sqlc.narg('min_stone_pct')::numeric IS NULL OR p.stone_pct >= sqlc.narg('min_stone_pct'))
+      AND (sqlc.narg('max_stone_pct')::numeric IS NULL OR p.stone_pct <= sqlc.narg('max_stone_pct'))
+      AND (sqlc.narg('max_stone_cts')::numeric IS NULL OR v.baseline_stone_carats <= sqlc.narg('max_stone_cts'))
+    ORDER BY (st.carats IS NOT NULL) DESC, v.seq, m.id
+    LIMIT 1
+) rep ON true
 WHERE d.deleted_at IS NULL
   -- q is pre-escaped by the service with '!' as the LIKE escape character
   AND (sqlc.narg('q')::text IS NULL
@@ -48,24 +92,15 @@ WHERE d.deleted_at IS NULL
   AND (cardinality(sqlc.arg('tag_ids')::bigint[]) = 0 OR NOT EXISTS (
         SELECT 1 FROM unnest(sqlc.arg('tag_ids')::bigint[]) AS want(id)
         WHERE NOT EXISTS (SELECT 1 FROM design_tags dt WHERE dt.design_id = d.id AND dt.tag_id = want.id)))
-  AND (
-    (sqlc.narg('metal_code')::text IS NULL
-        AND sqlc.narg('min_net_wt')::numeric IS NULL AND sqlc.narg('max_net_wt')::numeric IS NULL
-        AND sqlc.narg('min_gross_wt')::numeric IS NULL AND sqlc.narg('max_gross_wt')::numeric IS NULL
-        AND sqlc.narg('max_stone_cts')::numeric IS NULL)
-    OR EXISTS (
-        SELECT 1 FROM cad_variations v
-        JOIN variation_metal_weights w ON w.variation_id = v.id
-        JOIN metals m ON m.id = w.metal_id
-        WHERE v.design_id = d.id AND v.deleted_at IS NULL
-          AND (sqlc.narg('metal_code')::text IS NULL OR m.code = sqlc.narg('metal_code'))
-          AND (sqlc.narg('min_net_wt')::numeric IS NULL OR w.net_weight_g >= sqlc.narg('min_net_wt'))
-          AND (sqlc.narg('max_net_wt')::numeric IS NULL OR w.net_weight_g <= sqlc.narg('max_net_wt'))
-          AND (sqlc.narg('min_gross_wt')::numeric IS NULL OR w.gross_weight_g >= sqlc.narg('min_gross_wt'))
-          AND (sqlc.narg('max_gross_wt')::numeric IS NULL OR w.gross_weight_g <= sqlc.narg('max_gross_wt'))
-          AND (sqlc.narg('max_stone_cts')::numeric IS NULL OR v.baseline_stone_carats <= sqlc.narg('max_stone_cts'))
-    ))
-ORDER BY d.code
+  AND (NOT sqlc.arg('calc_needed')::bool OR rep.variation_id IS NOT NULL)
+ORDER BY
+  (CASE WHEN sqlc.arg('sort')::text = 'net_asc' THEN rep.net_g END) ASC NULLS LAST,
+  (CASE WHEN sqlc.arg('sort')::text = 'net_desc' THEN rep.net_g END) DESC NULLS LAST,
+  (CASE WHEN sqlc.arg('sort')::text = 'gross_asc' THEN rep.gross_g END) ASC NULLS LAST,
+  (CASE WHEN sqlc.arg('sort')::text = 'gross_desc' THEN rep.gross_g END) DESC NULLS LAST,
+  (CASE WHEN sqlc.arg('sort')::text = 'stone_pct_asc' THEN rep.stone_pct END) ASC NULLS LAST,
+  (CASE WHEN sqlc.arg('sort')::text = 'stone_pct_desc' THEN rep.stone_pct END) DESC NULLS LAST,
+  d.code
 LIMIT sqlc.arg('lim') OFFSET sqlc.arg('off');
 
 -- name: NextVariationSeq :one
@@ -188,14 +223,33 @@ SELECT code, (deleted_at IS NOT NULL)::bool AS deleted FROM cad_variations WHERE
 -- name: FindVariationCodeByShaStl :one
 SELECT code, (deleted_at IS NOT NULL)::bool AS deleted FROM cad_variations WHERE file_stl_sha256 = $1;
 
--- name: ListDesignWeightsForMetal :many
--- Per-variation weights of one metal for the given designs; the service folds
--- them into min/max ranges for the catalog cards.
-SELECT sv.design_id, w.net_weight_g, w.gross_weight_g
+-- name: ListDesignVariationFigures :many
+-- Per-variation figures of one metal for the given designs, with the stone weight of the chosen stone code
+-- computed as in ListDesigns (stone figures null when a matrix row is missing, or no code is chosen). The
+-- service folds them into the card figures and min/max ranges.
+SELECT sv.design_id,
+       jsonb_build_object('variation_id', sv.id, 'variation_code', sv.code, 'net_g', w.net_weight_g,
+           'carats', st.carats, 'stone_g', g.stone_g, 'gross_g', g.gross_g, 'stone_pct', p.stone_pct) AS figures
 FROM cad_variations sv
 JOIN variation_metal_weights w ON w.variation_id = sv.id
 JOIN metals m ON m.id = w.metal_id
-WHERE m.code = $1 AND sv.design_id = ANY($2::bigint[]) AND sv.deleted_at IS NULL;
+CROSS JOIN LATERAL (
+    SELECT CASE WHEN sqlc.narg('stone_code_id')::bigint IS NULL THEN NULL::numeric
+                WHEN bool_or(sm.size_mm IS NULL) THEN NULL
+                ELSE round(COALESCE(sum(s.stone_count * sm.carats_per_stone), 0), 4) END AS carats
+    FROM variation_stone_seats s
+    LEFT JOIN stone_size_matrix sm ON sm.size_mm = s.size_mm
+         AND sm.stone_code_id = COALESCE(s.locked_stone_code_id, sqlc.narg('stone_code_id')::bigint)
+    WHERE s.variation_id = sv.id
+) st
+CROSS JOIN LATERAL (
+    SELECT round(st.carats * 0.200, 3) AS stone_g, round(w.net_weight_g + st.carats * 0.200, 3) AS gross_g
+) g
+CROSS JOIN LATERAL (
+    SELECT CASE WHEN g.gross_g > 0 THEN round(st.carats * 0.200 / g.gross_g * 100, 2) ELSE NULL::numeric END AS stone_pct
+) p
+WHERE m.code = sqlc.arg('code')::text AND sv.design_id = ANY(sqlc.arg('design_ids')::bigint[]) AND sv.deleted_at IS NULL
+ORDER BY sv.design_id, sv.seq;
 
 -- name: ClearVariationFile3dm :exec
 UPDATE cad_variations
