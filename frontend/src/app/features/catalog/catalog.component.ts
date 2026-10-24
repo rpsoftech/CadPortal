@@ -281,6 +281,20 @@ export class CatalogComponent {
       });
   }
 
+  /**
+   * Starts an order from the ticked designs. The catalog's current metal and stone code become the
+   * order's defaults, and the filter in use travels along as an informational note.
+   */
+  protected createOrder(): void {
+    const v = this.form.getRawValue();
+    const queryParams: Record<string, string> = {};
+    if (v.metalCode) queryParams['metal'] = v.metalCode;
+    const stone = v.stoneCode ?? this.baselineCode();
+    if (stone) queryParams['stone'] = stone;
+    const criteria = filtersToParams(v, 0, 24);
+    void this.router.navigate(['/orders/new'], { queryParams, state: { criteria } });
+  }
+
   /** Opens the download dialog for the STL or 3dm files of the selected designs. */
   protected downloadCad(kind: CadZipKind): void {
     const data: DownloadCadData = { kind, designs: this.selection.items() };

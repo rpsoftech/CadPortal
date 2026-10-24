@@ -85,6 +85,16 @@ func (h *H) getOrder(c *gin.Context) {
 	respond(c, http.StatusOK, o, err)
 }
 
+// orderLive compares each line with the catalog today (changed since / design deleted markers).
+func (h *H) orderLive(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	lines, err := h.S.OrderLiveStatus(c, id)
+	respond(c, http.StatusOK, gin.H{"lines": lines}, err)
+}
+
 func (h *H) updateOrder(c *gin.Context) {
 	id, ok := idParam(c)
 	if !ok {

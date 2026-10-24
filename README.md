@@ -792,8 +792,7 @@ designer their own. Creating, downloading, re-costing and deleting are in the au
 
 ### Orders
 
-An order is a selection of catalog variations (a quantity each) in one metal and one stone code, sent
-to production. Not a customer order: no prices, payments or invoicing are stored. The API is built;
+to production. Not a customer order: no prices, payments or invoicing are stored. The screens are described under "Order screens" below.
 the screens come later.
 
 `POST /orders` takes `{metal_code, stone_code, items: [{variation_id, quantity}], name?, notes?, due_date?,
@@ -826,6 +825,29 @@ failed create gives its number back. Up to 500 lines, quantity 1 to 100000, a va
 - **Roles.** Everyone signed in may read (`GET /orders` with `status`, `q`, `from`, `to`, `limit`, `offset`,
   total in `X-Total-Count`; `GET /orders/:id`); admin and designer write. Creating, editing, changing lines,
   status changes and clones are in the audit log (`order.*`).
+- **Live check.** `GET /orders/:id/live` (any role) compares every line's stored snapshot with a fresh one from
+  the catalog today, in the line's own metal and stone code: `{lines: [{line_id, status, reason?, changes}]}` with
+  `status` `unchanged`, `changed` (the fields, old and new) or `unavailable` (design or variation deleted or purged,
+  stone data missing; `reason` says which). It only reads; the order is never touched.
+
+#### Order screens
+
+- **Make one.** In the **Catalog**, filter (category, tags, weights, metal, stone code, stone %), tick designs (the
+  selection survives filter changes and paging; the bar shows the count) and choose **Create order**. The review
+  step (`/orders/new`) lists every variation of the ticked designs as a line with a quantity (default 1) and a
+  Remove button, starts with the catalog's current metal and stone code, and takes a title / buyer (free text), a
+  due date and notes. **Save as draft** or **Create and place**. If the server refuses lines (missing stone data,
+  a deleted design) it names them in its own words and **Leave out** moves them to a "Left out" list with the
+  reasons. The catalog filter in use is stored with the order as an informational note.
+- **Orders list** (`/orders`, everyone): number, title, status, metal · stone, lines, pieces, due date, creator;
+  filter by status and text; cards on a phone.
+- **One order** (`/orders/:id`): the lines as saved (net, stone, gross, stone %, stones, file names; the stone list
+  folds open), the history of status changes with who and when, and, for admin and designer, the status buttons
+  (each asks for an optional note; cancel says it cannot be reopened), **Order again** (a new draft from today's
+  designs, then a list of what differs), and editing of title, due date and notes (until the order is done or
+  cancelled) and of quantities and lines (draft only). A line whose design was edited since is marked **Changed
+  since this order was made** with the fields; a deleted or purged one is marked **No longer in the catalog as
+  ordered** with the reason; the snapshot is shown either way. Production sees all of it and none of the buttons.
 
 #### What an order produces (stage 41)
 
@@ -879,8 +901,41 @@ download that streams straight to disk (nothing is held in the page, so it works
 - API: `POST /api/v1/downloads/cad-zip` streams the ZIP for a script; the web app calls
   `POST /api/v1/downloads/cad-zip/link` (estimate plus a 2-minute signed link) because a browser cannot
   send the sign-in token with a plain download. Every download is audited as `download.cad_zip`.
-- The package `backend/internal/ziparchive` is the reusable core. The planned order download will call
-  it with the file hashes and sizes recorded when the order was made.
+- The package `backend/internal/ziparchive` is the reusable core; the order downloads below use it.
+
+#### Order download and order package
+
+On an order (any role may download):
+
+- `GET /api/v1/orders/:id/download?files=stl|3dm|stl,3dm` streams one ZIP; `GET /api/v1/orders/:id/package?files=...`
+  streams the same ZIP plus `ORD-0001-job-bags.pdf` (one job bag per line) and `ORD-0001-summary.csv`
+  (one row per line: quantity, pcs, net/stone/gross g, stone %, file names and hashes; no prices exist on
+  an order). Browsers use `.../download/link?files=...` or `.../package/link?files=...`, which return
+  `files`, `missing`, `changed`, `bytes`, a `filename` and a 2-minute signed `url`
+  (`/api/v1/downloads/order-zip/file?ticket=`, no bearer token) that saves the ZIP straight to disk.
+- **The order's own copy ships.** The files come from the order snapshot (storage key, SHA-256 and size
+  recorded when the order was made), not from the variation as it is now, and are verified against that
+  hash while streaming. The job bags are drawn from the snapshot too (weights, BOM and stone code as
+  agreed), so they cannot fail on a stone-weight row that changed later.
+- `MANIFEST.csv` columns: `order, design, variation, metal, stone_code, quantity, kind, current_file`, then
+  the usual `file_in_zip, original_name, expected_sha256, actual_sha256, expected_bytes, bytes_written,
+  status, detail`. `current_file` says what the catalog holds now: `same`, `changed` (a different file,
+  named in `detail`), `removed` (the variation has no file of that kind now), `variation-gone` (deleted or
+  purged) or `none-when-ordered`. Anything but `same` is also counted in the ZIP comment and in `changed`
+  of the link answer, so the shop floor knows the catalog moved on. Missing data is `status=missing`,
+  never silently left out. The PDF and the summary are listed in the manifest as well.
+- Same caps as the selection download (`CAD_ZIP_MAX_FILES`, `CAD_ZIP_MAX_MB`, counted from the recorded
+  sizes; 413), one running download per user across both kinds (429), bounded memory (the job-bag PDF,
+  at most 200 lines, is built before the first byte and held in memory), every run audited as
+  `order.download` (order number, kinds, package, files, missing, changed, bytes).
+- **Purged files and open orders.** The hourly purge never deletes a CAD file that an order which is not
+  cancelled recorded: a replaced or removed file, or the files of a variation purged after
+  `DELETED_FILE_RETENTION_DAYS`, stay in storage (listed on the Removed screen with their time up) and are
+  deleted by the next purge after the last order holding them is cancelled. `done` orders keep holding
+  their files, so the storage cost is the old versions of files that appear on an order that was not
+  cancelled; cancel an order to release them. A file that is gone anyway (deleted by hand, a retention of
+  0 before this feature) shows as `missing` with "the stored object is gone". The cover photo thumbnail is
+  protected the same way for removed photos.
 
 ### Audit log
 

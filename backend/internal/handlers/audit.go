@@ -85,6 +85,11 @@ var auditRoutes = map[string]auditRoute{
 	"GET /api/v1/orders/:id/csv":              {action: "order.csv", entity: "order", idParam: "id", reads: true},
 	"GET /api/v1/exports/orders-csv":          {action: "export.orders", entity: "order", reads: true},
 	"POST /api/v1/orders/:id/costing":         {action: "order.cost", entity: "order", idParam: "id"},
+	"GET /api/v1/orders/:id/download":         {action: "order.download", entity: "order", idParam: "id", reads: true},
+	"GET /api/v1/orders/:id/package":          {action: "order.download", entity: "order", idParam: "id", reads: true},
+	"GET /api/v1/orders/:id/download/link":    {skip: true}, // checks and signs only; the download is recorded when it runs
+	"GET /api/v1/orders/:id/package/link":     {skip: true},
+	"GET /api/v1/downloads/order-zip/file":    {action: "order.download", entity: "order", reads: true},
 	"POST /api/v1/backups/run":                {action: "backup.request", entity: "backup"},
 	"GET /api/v1/backups/download":            {action: "backup.download_link", entity: "backup", reads: true},
 	"POST /api/v1/downloads/cad-zip":          {action: "download.cad_zip", entity: "variation"},

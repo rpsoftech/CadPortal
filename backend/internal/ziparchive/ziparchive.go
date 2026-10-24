@@ -67,6 +67,16 @@ type Entry struct {
 	Meta []string
 	// Detail is a reason shown in the manifest for an entry that is not written (Key empty).
 	Detail string
+	// Note is added to the manifest detail of an entry that was written (for example "the variation's
+	// file has changed since the order was made"). It does not change the status.
+	Note string
+}
+
+// Extra is a small generated file (a PDF, a summary CSV) that goes into the ZIP before the CAD files. It is
+// held in memory by the caller, so it must stay small; it is listed in the manifest like every other file.
+type Extra struct {
+	Name string
+	Data []byte
 }
 
 // Options for Write.
@@ -78,6 +88,8 @@ type Options struct {
 	// Comment is written as the ZIP archive comment (shown by `unzip -z`); a warning about problems is
 	// appended to it automatically.
 	Comment string
+	// Extras are written first and listed in the manifest with empty meta columns.
+	Extras []Extra
 }
 
 // Outcome is what happened to one entry.
@@ -115,6 +127,25 @@ func Write(ctx context.Context, w io.Writer, entries []Entry, o Options) (Result
 	names.reserve(ManifestName)
 	res := Result{Outcomes: make([]Outcome, 0, len(entries))}
 
+	for _, x := range o.Extras {
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
+		oc := Outcome{Name: names.unique(x.Name), Requested: Entry{OriginalName: x.Name}}
+		fw, err := zw.CreateHeader(&zip.FileHeader{Name: oc.Name, Method: zip.Deflate, Modified: time.Now()})
+		if err != nil {
+			return res, err
+		}
+		if _, err := fw.Write(x.Data); err != nil {
+			return res, err
+		}
+		sum := sha256.Sum256(x.Data)
+		oc.SHA256, oc.Bytes, oc.Status = hex.EncodeToString(sum[:]), int64(len(x.Data)), StatusOK
+		res.Files++
+		res.Bytes += oc.Bytes
+		res.Outcomes = append(res.Outcomes, oc)
+	}
+
 	for _, e := range entries {
 		if err := ctx.Err(); err != nil {
 			return res, err
@@ -125,6 +156,7 @@ func Write(ctx context.Context, w io.Writer, entries []Entry, o Options) (Result
 			if oc.Detail == "" {
 				oc.Detail = "no file"
 			}
+			withNote(&oc, e.Note)
 			res.Problems++
 			res.Outcomes = append(res.Outcomes, oc)
 			continue
@@ -133,6 +165,7 @@ func Write(ctx context.Context, w io.Writer, entries []Entry, o Options) (Result
 		if err := writeOne(ctx, zw, o.Store, e, &oc, *buf); err != nil {
 			return res, err
 		}
+		withNote(&oc, e.Note)
 		if oc.Status != StatusOK && oc.Status != StatusUnverified {
 			res.Problems++
 		}
@@ -221,6 +254,17 @@ func writeOne(ctx context.Context, zw *zip.Writer, store storage.Store, e Entry,
 		oc.Status = StatusOK
 	}
 	return nil
+}
+
+// withNote appends the caller's note to an outcome's detail.
+func withNote(oc *Outcome, note string) {
+	if note == "" {
+		return
+	}
+	if oc.Detail != "" {
+		oc.Detail += "; "
+	}
+	oc.Detail += note
 }
 
 func writeManifest(w io.Writer, metaCols []string, outcomes []Outcome) error {

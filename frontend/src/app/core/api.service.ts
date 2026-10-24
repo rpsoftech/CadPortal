@@ -6,6 +6,7 @@ import {
   Order,
   OrderDiff,
   OrderItem,
+  OrderLineLive,
   OrderStatus,
   OrderSummary,
   AuditRecord,
@@ -25,7 +26,9 @@ import {
   CostOrderResult,
   CostSheetRequest,
   CadZipLink,
+  CadZipKind,
   CadZipRequest,
+  OrderZipLink,
   JobBagsRequest,
   DesignDetail,
   DuplicateDesignBody,
@@ -364,6 +367,14 @@ export class ApiService {
   cadZipLink(body: CadZipRequest): Observable<CadZipLink> {
     return this.http.post<CadZipLink>(`${BASE}/downloads/cad-zip/link`, body);
   }
+  /**
+   * Checks an order and returns what its ZIP holds (the CAD files recorded on the order), with a link to
+   * download it. `package` adds the job-bag PDF of every line and a summary CSV.
+   */
+  orderZipLink(orderId: number, kinds: CadZipKind[], pack = false): Observable<OrderZipLink> {
+    const params = new HttpParams().set('files', kinds.join(','));
+    return this.http.get<OrderZipLink>(`${BASE}/orders/${orderId}/${pack ? 'package' : 'download'}/link`, { params });
+  }
   /** Every master-data table as CSV files in one zip (admin only). */
   masterDataZip(): Observable<Blob> {
     return this.http.get(`${BASE}/masters/export`, { responseType: 'blob' });
@@ -447,6 +458,10 @@ export class ApiService {
         total: Number(r.headers.get('X-Total-Count') ?? r.body?.length ?? 0),
       })),
     );
+  }
+  /** Each line compared with the catalog today: unchanged, changed (what) or unavailable (why). */
+  orderLive(id: number): Observable<OrderLineLive[]> {
+    return this.http.get<{ lines: OrderLineLive[] }>(`${BASE}/orders/${id}/live`).pipe(map((r) => r.lines));
   }
   order(id: number): Observable<Order> {
     return this.http.get<Order>(`${BASE}/orders/${id}`);

@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ApiErrorBody, CostDesignProblem } from './models';
+import { ApiErrorBody, CostDesignProblem, OrderProblem } from './models';
 
 export interface ApiError {
   status: number;
@@ -9,6 +9,8 @@ export interface ApiError {
   metalsMissingWastage: string[];
   /** Costing several designs: the designs and variations with missing data. */
   problems: CostDesignProblem[];
+  /** Ordering: the variations that cannot be put on the order, and why (422). */
+  orderProblems: OrderProblem[];
 }
 
 /**
@@ -17,7 +19,7 @@ export interface ApiError {
  */
 export async function toApiError(err: unknown): Promise<ApiError> {
   if (!(err instanceof HttpErrorResponse)) {
-    return { status: 0, message: 'Unexpected error', missing: [], metalsMissingWastage: [], problems: [] };
+    return { status: 0, message: 'Unexpected error', missing: [], metalsMissingWastage: [], problems: [], orderProblems: [] };
   }
   let body: ApiErrorBody | string | null = err.error;
   if (body instanceof Blob) {
@@ -48,6 +50,7 @@ export async function toApiError(err: unknown): Promise<ApiError> {
     message,
     missing: obj?.missing ?? obj?.stone_rates_missing ?? [],
     metalsMissingWastage: obj?.metals_missing_wastage ?? [],
-    problems: obj?.problems ?? [],
+    problems: (obj?.problems ?? []).filter((p): p is CostDesignProblem => 'design_id' in p),
+    orderProblems: (obj?.problems ?? []).filter((p): p is OrderProblem => !('design_id' in p) && 'variation_id' in p),
   };
 }
