@@ -245,7 +245,7 @@ test('order again shows what differs from the old order', async ({ page }) => {
   await expect(dialog(page)).toContainText('total pcs');
   await dialog(page).getByRole('button', { name: /^Open ORD-/ }).click();
 
-  await expect(page).toHaveURL(/\/orders\/\d+$/);
+  await page.waitForURL((u) => /^\/orders\/\d+$/.test(u.pathname) && u.pathname !== orderUrl);
   cloneUrl = new URL(page.url()).pathname;
   expect(cloneUrl).not.toBe(orderUrl);
   await expect(page.getByText('the order it was cloned from')).toBeVisible();

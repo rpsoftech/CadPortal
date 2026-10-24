@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
@@ -108,7 +108,11 @@ export class OrderDetailComponent {
   protected readonly dirtyLines = computed(() => this.qtyEdits().size > 0 || this.removed().size > 0);
 
   constructor() {
-    queueMicrotask(() => this.load());
+    // the same component is reused when the address changes from one order to another
+    effect(() => {
+      this.id();
+      untracked(() => this.load());
+    });
   }
 
   private sum(pick: (l: OrderLine) => string, dp: number): string {
@@ -127,6 +131,7 @@ export class OrderDetailComponent {
   }
 
   protected load(): void {
+    this.order.set(null);
     this.loading.set(true);
     this.error.set('');
     this.api.order(Number(this.id())).subscribe({
