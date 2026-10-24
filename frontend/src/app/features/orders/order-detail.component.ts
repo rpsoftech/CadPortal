@@ -23,6 +23,12 @@ import {
 } from '../../core/models';
 import { OrderCloneData, OrderCloneDialogComponent } from './order-clone-dialog.component';
 import { OrderCostData, OrderCostDialogComponent } from './order-cost-dialog.component';
+import {
+  OrderDownloadData,
+  OrderDownloadDialogComponent,
+  OrderDownloadWhat,
+  orderHasFiles,
+} from './order-download-dialog.component';
 import { parseQuantity } from './order-new.component';
 import { OrderStatusDialogComponent, OrderStatusDialogData } from './order-status-dialog.component';
 import { OrderStatusComponent } from './order-status.component';
@@ -310,6 +316,30 @@ export class OrderDetailComponent {
         this.actionError.set((await toApiError(e)).message);
         this.busy.set(false);
       },
+    });
+  }
+
+  protected readonly hasStl = computed(() => this.hasFiles('stl'));
+  protected readonly has3dm = computed(() => this.hasFiles('3dm'));
+  /** Why a CAD download button is switched off. */
+  protected readonly noCadNote = computed(() => {
+    if (!this.hasStl() && !this.has3dm()) return 'No line of this order has an STL or 3dm file, so only the package can be downloaded.';
+    return !this.hasStl() ? 'No line of this order has an STL file.' : 'No line of this order has a 3dm file.';
+  });
+
+  private hasFiles(what: OrderDownloadWhat): boolean {
+    const o = this.order();
+    return !!o && orderHasFiles(o, what);
+  }
+
+  /** Shows what the ZIP holds first; the dialog starts the browser download from a signed link. */
+  protected openDownload(what: OrderDownloadWhat): void {
+    const o = this.order();
+    if (!o) return;
+    this.dialog.open<OrderDownloadDialogComponent, OrderDownloadData>(OrderDownloadDialogComponent, {
+      data: { order: o, what },
+      width: '560px',
+      maxWidth: '95vw',
     });
   }
 

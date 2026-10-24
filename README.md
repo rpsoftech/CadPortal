@@ -907,6 +907,7 @@ download that streams straight to disk (nothing is held in the page, so it works
 
 On an order (any role may download):
 
+- On the order screen (any role, production too) the buttons **Download STL**, **Download 3dm** and **Download package** open a small dialog that shows the `.../link` estimate (files, size, lines, how many are missing or changed) and then starts the browser download from the signed URL; a button is disabled, with a note, when no line recorded a file of that kind. A refusal (429 one download at a time, 413 too large) is shown in the server's words.
 - `GET /api/v1/orders/:id/download?files=stl|3dm|stl,3dm` streams one ZIP; `GET /api/v1/orders/:id/package?files=...`
   streams the same ZIP plus `ORD-0001-job-bags.pdf` (one job bag per line) and `ORD-0001-summary.csv`
   (one row per line: quantity, pcs, net/stone/gross g, stone %, file names and hashes; no prices exist on
