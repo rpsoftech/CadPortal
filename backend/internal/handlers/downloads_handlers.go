@@ -94,21 +94,31 @@ func (h *H) cadZipFile(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "invalid or expired link"})
 		return
 	}
-	cl := auth.Claims{Role: tk.role, RegisteredClaims: jwt.RegisteredClaims{Subject: tk.subject, IssuedAt: tk.issuedAt}}
+	if !h.ticketCallerOK(c, tk.subject, tk.role, tk.issuedAt) {
+		return
+	}
+	h.streamCADZip(c, service.CADZipRequest{VariationIDs: tk.variationIDs, Kinds: tk.kinds})
+}
+
+// ticketCallerOK checks, for a signed link, that the person it was made for may still sign in (not
+// deactivated, password not changed since), and names them for the audit log. It answers the request itself
+// when the check fails.
+func (h *H) ticketCallerOK(c *gin.Context, subject string, role auth.Role, issuedAt *jwt.NumericDate) bool {
+	cl := auth.Claims{Role: role, RegisteredClaims: jwt.RegisteredClaims{Subject: subject, IssuedAt: issuedAt}}
 	if h.Validate != nil {
 		ok, err := h.Validate(c.Request.Context(), cl)
 		if err != nil {
 			_ = c.Error(err)
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "service temporarily unavailable"})
-			return
+			return false
 		}
 		if !ok {
 			c.JSON(http.StatusForbidden, gin.H{"error": "invalid or expired link"})
-			return
+			return false
 		}
 	}
-	auth.SetCaller(c, tk.subject, tk.role) // so the audit log names the person
-	h.streamCADZip(c, service.CADZipRequest{VariationIDs: tk.variationIDs, Kinds: tk.kinds})
+	auth.SetCaller(c, subject, role) // so the audit log names the person
+	return true
 }
 
 func (h *H) streamCADZip(c *gin.Context, req service.CADZipRequest) {

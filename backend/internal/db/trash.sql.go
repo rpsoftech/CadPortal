@@ -12,10 +12,18 @@ import (
 )
 
 const claimExpiredTrash = `-- name: ClaimExpiredTrash :many
-SELECT id, kind, object_key, thumb_key, label, restore, reason, deleted_at, purge_after, deleted_by FROM trashed_files WHERE purge_after <= now() ORDER BY purge_after LIMIT 100 FOR UPDATE SKIP LOCKED
+SELECT id, kind, object_key, thumb_key, label, restore, reason, deleted_at, purge_after, deleted_by FROM trashed_files t WHERE t.purge_after <= now()
+  AND NOT EXISTS (
+    SELECT 1 FROM order_lines l JOIN orders o ON o.id = l.order_id
+    WHERE o.status <> 'cancelled'
+      AND (l.internal->>'file_3dm_key' = t.object_key OR l.internal->>'file_stl_key' = t.object_key
+           OR (t.thumb_key IS NOT NULL AND l.internal->>'cover_thumb_key' = t.thumb_key)))
+ORDER BY t.purge_after LIMIT 100 FOR UPDATE OF t SKIP LOCKED
 `
 
 // Rows whose time is up. SKIP LOCKED keeps a purge from waiting on, or colliding with, a restore.
+// A file that an order which is not cancelled recorded (its CAD object or cover thumbnail) is kept, so the
+// order can still be downloaded; it is claimed again once every such order is cancelled.
 func (q *Queries) ClaimExpiredTrash(ctx context.Context) ([]TrashedFile, error) {
 	rows, err := q.db.Query(ctx, claimExpiredTrash)
 	if err != nil {
@@ -218,6 +226,21 @@ func (q *Queries) ListTrashedFiles(ctx context.Context) ([]TrashedFile, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const objectKeyInOpenOrder = `-- name: ObjectKeyInOpenOrder :one
+SELECT EXISTS (
+  SELECT 1 FROM order_lines l JOIN orders o ON o.id = l.order_id
+  WHERE o.status <> 'cancelled' AND (l.internal->>'file_3dm_key' = $1::text OR l.internal->>'file_stl_key' = $1::text)
+) AS held
+`
+
+// True when an order that is not cancelled recorded this CAD object.
+func (q *Queries) ObjectKeyInOpenOrder(ctx context.Context, dollar_1 string) (bool, error) {
+	row := q.db.QueryRow(ctx, objectKeyInOpenOrder, dollar_1)
+	var held bool
+	err := row.Scan(&held)
+	return held, err
 }
 
 const restoreDesign = `-- name: RestoreDesign :execrows
