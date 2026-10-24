@@ -9,10 +9,13 @@
 set -euo pipefail
 
 base=${E2E_BASE_URL:-http://127.0.0.1:${WEB_PORT:-8080}}
+# The status is the last word of the output: `-o /dev/null` fails (curl exit 23) with a native
+# Windows curl, e.g. under Git Bash.
+last_word() { local out; out=$(cat); echo "${out##* }"; }
 login() { # client address -> prints the HTTP status
-  curl -s -o /dev/null -w '%{http_code}' -X POST "$base/api/v1/auth/login" \
+  curl -s -w ' %{http_code}' -X POST "$base/api/v1/auth/login" \
     -H 'Content-Type: application/json' -H "X-Forwarded-For: $1" \
-    -d '{"email":"nobody-ratelimit@example.com","password":"wrong-password-0000"}'
+    -d '{"email":"nobody-ratelimit@example.com","password":"wrong-password-0000"}' | last_word
 }
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
@@ -32,14 +35,14 @@ echo "client A: $ok answered, $limited limited"
 echo "client B: still answered normally"
 
 # The limit covers sign-in only.
-code=$(curl -s -o /dev/null -w '%{http_code}' -H 'X-Forwarded-For: 203.0.113.50' "$base/api/v1/designs")
+code=$(curl -s -w ' %{http_code}' -H 'X-Forwarded-For: 203.0.113.50' "$base/api/v1/designs" | last_word)
 [ "$code" = "401" ] || fail "other API routes should not be limited (got $code)"
 echo "sign-in rate limit OK"
 
 # "Forgot password" is public too, so it has its own limit (5 a minute, burst of 10).
 forgot() { # client address -> prints the HTTP status
-  curl -s -o /dev/null -w '%{http_code}' -X POST "$base/api/v1/auth/forgot-password" \
-    -H 'Content-Type: application/json' -H "X-Forwarded-For: $1" -d '{"email":"nobody-ratelimit@example.com"}'
+  curl -s -w ' %{http_code}' -X POST "$base/api/v1/auth/forgot-password" \
+    -H 'Content-Type: application/json' -H "X-Forwarded-For: $1" -d '{"email":"nobody-ratelimit@example.com"}' | last_word
 }
 ok=0 limited=0
 for _ in $(seq 1 30); do

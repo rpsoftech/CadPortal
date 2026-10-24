@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { Page, expect, test } from '@playwright/test';
+import { signIn } from './auth';
 import { PDFDocument } from 'pdf-lib';
 
 // Runs after smoke.e2e.ts (file order), which has already set up the master data and categories.
@@ -8,14 +9,6 @@ const env = (name: string): string => {
   if (!v) throw new Error(`${name} must be set (scripts/e2e.sh does this)`);
   return v;
 };
-
-async function signIn(page: Page, email: string, password: string): Promise<void> {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible();
-}
 
 async function pdfPages(path: string): Promise<number> {
   const bytes = readFileSync(path);

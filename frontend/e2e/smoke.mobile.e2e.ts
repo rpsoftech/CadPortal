@@ -1,4 +1,5 @@
 import { Page, expect, test } from '@playwright/test';
+import { admin } from './auth';
 
 // A phone (375 px wide). Runs after smoke.e2e.ts, so the catalog has designs to open.
 test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
@@ -9,13 +10,7 @@ const env = (name: string): string => {
   return v;
 };
 
-async function signIn(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(env('E2E_ADMIN_EMAIL'));
-  await page.getByLabel('Password').fill(env('E2E_ADMIN_PASSWORD'));
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible();
-}
+const signIn = admin;
 
 /** Elements that stick out past the right edge of the screen (what makes a page scroll sideways). */
 async function overflowing(page: Page): Promise<string[]> {

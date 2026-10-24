@@ -122,8 +122,10 @@ for _ in $(seq 1 40); do
   [ "$picked" = "1" ] && break
   sleep 3
 done
-docker logs "$net-daemon" 2>&1 | tail -5
-docker logs "$net-daemon" 2>&1 | grep -q "next backup at" || fail "the service did not report its next scheduled run (BACKUP_AT list)"
+# Read the log once: `docker logs | grep -q` under pipefail fails when grep exits early and docker logs gets SIGPIPE.
+daemon_log=$(docker logs "$net-daemon" 2>&1)
+echo "$daemon_log" | tail -5
+grep -q "next backup at" <<<"$daemon_log" || fail "the service did not report its next scheduled run (BACKUP_AT list)"
 docker rm -f "$net-daemon" >/dev/null 2>&1
 [ "$picked" = "1" ] || fail "a requested backup was not picked up by the running service"
 

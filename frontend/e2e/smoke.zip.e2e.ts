@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { Page, expect, test } from '@playwright/test';
+import { signIn } from './auth';
 import { readZip } from './zip';
 
 // One ZIP of the STL / 3dm files of the selected designs. Runs after smoke.e2e.ts (it needs the category
@@ -10,26 +11,6 @@ const env = (name: string): string => {
   if (!v) throw new Error(`${name} must be set (scripts/e2e.sh does this)`);
   return v;
 };
-
-// The sign-in form is rate limited per address (10 a minute), and the whole suite shares that budget, so
-// this file signs in once per user and hands the session to later tests.
-const sessions = new Map<string, string>();
-
-async function signIn(page: Page, email: string, password: string): Promise<void> {
-  const saved = sessions.get(email);
-  if (saved) {
-    await page.addInitScript((v) => sessionStorage.setItem('cadportal.session', v), saved);
-    await page.goto('/');
-  } else {
-    await page.goto('/login');
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Password').fill(password);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-  }
-  await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible();
-  const session = await page.evaluate(() => sessionStorage.getItem('cadportal.session'));
-  if (session) sessions.set(email, session);
-}
 
 /** A call to the API with the signed-in user's token, as the app itself makes them. */
 async function api(page: Page, method: string, path: string, body?: unknown) {

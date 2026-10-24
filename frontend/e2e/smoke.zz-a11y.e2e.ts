@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { Browser, BrowserContext, Page, expect, test } from '@playwright/test';
+import { admin } from './auth';
 
 // Accessibility (WCAG 2.2 AA) over every screen, dialog and menu, in light and dark, at desktop and
 // phone width. Runs after smoke.e2e.ts and smoke.mobile.e2e.ts (file name order) because it needs the
@@ -85,13 +86,7 @@ class Scanner {
   }
 }
 
-async function signIn(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(env('E2E_ADMIN_EMAIL'));
-  await page.getByLabel('Password').fill(env('E2E_ADMIN_PASSWORD'));
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Catalog', level: 1 })).toBeVisible();
-}
+const signIn = admin;
 
 async function newPage(
   browser: Browser,
