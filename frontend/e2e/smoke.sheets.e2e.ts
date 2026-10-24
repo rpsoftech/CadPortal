@@ -269,7 +269,7 @@ test('missing data is listed, never costed as zero, unless the user chooses to s
 test('a production user has no way to cost or open costing sheets', async ({ page }) => {
   await signIn(page, env('E2E_PROD_EMAIL'), env('E2E_PROD_PASSWORD'));
   await expect(page.getByRole('link', { name: 'Costing sheets' })).toHaveCount(0);
-  await expect(page.getByRole('checkbox')).toHaveCount(0);
+  // (Production can tick designs, to download CAD files; see smoke.zip.e2e.ts.)
   await expect(page.getByRole('button', { name: 'Cost selected' })).toHaveCount(0);
 
   await page.goto('/costing-sheets');

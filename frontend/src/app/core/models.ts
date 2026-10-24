@@ -437,6 +437,34 @@ export interface JobBagsRequest {
   skip_incomplete?: boolean;
 }
 
+/** Which CAD file type a ZIP download collects. */
+export type CadZipKind = 'stl' | '3dm';
+
+/** Body of POST /downloads/cad-zip/link: designs stand for all their live variations. */
+export interface CadZipRequest {
+  design_ids?: number[];
+  variation_ids?: number[];
+  kinds: CadZipKind[];
+}
+
+/**
+ * What a ZIP of CAD files would hold, plus a short-lived signed link to fetch it. The link is opened as a
+ * normal browser download (no bearer token needed), so the browser saves the stream straight to disk.
+ */
+export interface CadZipLink {
+  url: string;
+  expires_in_seconds: number;
+  filename: string;
+  variations: number;
+  /** Files that will be in the ZIP. */
+  files: number;
+  /** Requested files that do not exist (the variation has none of that kind); listed in MANIFEST.csv. */
+  missing: number;
+  /** Total size of the original files. */
+  bytes: number;
+  kinds: CadZipKind[];
+}
+
 /** Error body shape returned by the API. Go structs without json tags use PascalCase keys. */
 export interface ApiErrorBody {
   error?: string;

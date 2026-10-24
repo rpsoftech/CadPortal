@@ -827,6 +827,28 @@ failed create gives its number back. Up to 500 lines, quantity 1 to 100000, a va
   total in `X-Total-Count`; `GET /orders/:id`); admin and designer write. Creating, editing, changing lines,
   status changes and clones are in the audit log (`order.*`).
 
+### Downloading many CAD files at once
+
+In the **Catalog**, tick designs (any role can; production too) and use **Download STL** or
+**Download 3dm** in the bar at the bottom. A dialog first says how many files and how many megabytes
+the ZIP holds and how many variations have no such file; **Download ZIP** then starts a normal browser
+download that streams straight to disk (nothing is held in the page, so it works on a phone).
+
+- The ZIP holds the **original files** (the vault stores them gzipped; they are unpacked while
+  streaming), named `LR0001-V1.stl`. A name that clashes gets ` (2)`; names never contain a path.
+- `MANIFEST.csv` is the last entry: design, variation, kind, name in the ZIP, uploaded file name, the
+  recorded and the computed SHA-256, bytes, `status` (`ok`, `missing`, `hash-mismatch`, `error`) and a
+  detail. A file whose bytes do not match the recorded checksum is flagged, never hidden; the ZIP's
+  comment also warns when anything is not `ok`.
+- Memory stays flat: each file goes through a 256 KB buffer, one at a time, and a closed browser tab
+  stops the work. Limits: `CAD_ZIP_MAX_FILES` (1000) and `CAD_ZIP_MAX_MB` (5120) per ZIP (413 above
+  them); one running download per user (429; per API instance when several run).
+- API: `POST /api/v1/downloads/cad-zip` streams the ZIP for a script; the web app calls
+  `POST /api/v1/downloads/cad-zip/link` (estimate plus a 2-minute signed link) because a browser cannot
+  send the sign-in token with a plain download. Every download is audited as `download.cad_zip`.
+- The package `backend/internal/ziparchive` is the reusable core. The planned order download will call
+  it with the file hashes and sizes recorded when the order was made.
+
 ### Audit log
 
 Every state-changing request is recorded in an append-only `audit_log` table: who (a snapshot of

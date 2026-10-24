@@ -131,6 +131,11 @@ for (const scheme of SCHEMES) {
       // --- signed in ---
       await signIn(page);
       await s.scan('catalog');
+      // A design ticked: the selection bar with the CAD download buttons, and the download dialog.
+      await page.getByRole('checkbox', { name: /^Select [A-Z]+\d+/ }).first().check();
+      await s.scan('catalog: selection bar');
+      await s.overlay('catalog: download STL dialog', () => page.getByRole('button', { name: 'Download STL' }).click());
+      await page.getByRole('button', { name: 'Clear', exact: true }).click();
       const filters = page.getByRole('button', { name: /^Filters/ });
       if (phone) {
         await filters.click();

@@ -130,6 +130,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	svc.CADZipMaxFiles, svc.CADZipMaxBytes, err = cadZipCaps(os.Getenv("CAD_ZIP_MAX_FILES"), os.Getenv("CAD_ZIP_MAX_MB"))
+	if err != nil {
+		return err
+	}
 	idleMinutes, err := idleTimeoutMinutes(os.Getenv("IDLE_TIMEOUT_MINUTES"))
 	if err != nil {
 		return err
@@ -499,4 +503,25 @@ func fileRetention(v string) (time.Duration, error) {
 		return 0, fmt.Errorf("DELETED_FILE_RETENTION_DAYS must be a whole number of days (0 deletes at once), got %q", v)
 	}
 	return time.Duration(n) * 24 * time.Hour, nil
+}
+
+// cadZipCaps reads the limits of one CAD ZIP download: CAD_ZIP_MAX_FILES (default 1000) and
+// CAD_ZIP_MAX_MB (default 5120, that is 5 GiB, counted in original file bytes).
+func cadZipCaps(files, mb string) (int, int64, error) {
+	maxFiles, maxBytes := service.DefaultCADZipMaxFiles, service.DefaultCADZipMaxBytes
+	if files != "" {
+		n, err := strconv.Atoi(files)
+		if err != nil || n < 1 || n > 100000 {
+			return 0, 0, fmt.Errorf("CAD_ZIP_MAX_FILES must be a whole number from 1 to 100000, got %q", files)
+		}
+		maxFiles = n
+	}
+	if mb != "" {
+		n, err := strconv.Atoi(mb)
+		if err != nil || n < 1 || n > 1<<20 {
+			return 0, 0, fmt.Errorf("CAD_ZIP_MAX_MB must be a whole number of megabytes (1 to 1048576), got %q", mb)
+		}
+		maxBytes = int64(n) << 20
+	}
+	return maxFiles, maxBytes, nil
 }

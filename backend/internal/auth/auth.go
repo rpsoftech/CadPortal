@@ -116,6 +116,13 @@ func (a *Authenticator) Require(roles ...Role) gin.HandlerFunc {
 	}
 }
 
+// SetCaller marks the request as made by subject with role, for a route that is authorised by something
+// other than a bearer token (a signed download link), so the audit log still names who acted.
+func SetCaller(c *gin.Context, subject string, role Role) {
+	c.Set(roleKey, role)
+	c.Set(userKey, subject)
+}
+
 // Require is shorthand for a stateless Authenticator (signature and expiry only).
 func Require(secret []byte, roles ...Role) gin.HandlerFunc {
 	return (&Authenticator{Secret: secret}).Require(roles...)

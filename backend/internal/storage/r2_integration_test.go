@@ -255,3 +255,27 @@ func TestR2MediaIsServedInlineWithItsTypeAndRanges(t *testing.T) {
 		t.Errorf("photo headers: %q %q", resp.Header.Get("Content-Type"), resp.Header.Get("Content-Disposition"))
 	}
 }
+
+// OpenOriginal must give back the uploaded bytes whether or not the HTTP client decodes the
+// Content-Encoding: gzip answer, and report a missing object as not found.
+func TestR2OpenOriginal(t *testing.T) {
+	r, prefix := newTestR2(t)
+	ctx := context.Background()
+	data := make([]byte, 5<<20)
+	rand.Read(data) //nolint:errcheck
+	copy(data, bytes.Repeat([]byte("solid "), 1000))
+	key := prefix + "zip.stl.gz"
+	putGzipped(t, r, key, data)
+	rc, err := OpenOriginal(ctx, r, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil || sum(got) != sum(data) {
+		t.Fatalf("original bytes differ (err %v, %d vs %d bytes)", err, len(got), len(data))
+	}
+	if _, err := OpenOriginal(ctx, r, prefix+"nope.stl.gz"); !IsNotFound(err) {
+		t.Errorf("missing object: %v, want not-found", err)
+	}
+}

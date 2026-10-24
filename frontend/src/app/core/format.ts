@@ -15,6 +15,15 @@ export function fixed(value: string | null | undefined, dp: number): string {
   return `${m[1]}${m[2]}${dp > 0 ? '.' : ''}${frac.padEnd(dp, '0')}`;
 }
 
+/** A file size for people: "840 KB", "12.4 MB", "1.2 GB" (binary units, one decimal from MB up). */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '–';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
 @Pipe({ name: 'fixed' })
 export class FixedPipe implements PipeTransform {
   transform(value: string | null | undefined, dp = 3): string {
