@@ -18,6 +18,8 @@ args=("$@"); [ "${args[0]}" = compose ] && args=("${args[@]:1}")
 while [ "${args[0]:-}" = -f ]; do args=("${args[@]:2}"); done
 echo "${args[*]}" >>"$FAKE_DOCKER_LOG"
 if [ "${args[0]}" = config ]; then printf '%s\n' db api web ${FAKE_BACKUP:+backup}; fi
+# `ps -q --status running db`: a container id when the database is up, nothing when it is not.
+if [ "${args[0]}" = ps ] && [ -z "${FAKE_DB_DOWN:-}" ]; then echo abc123def456; fi
 if [ "${args[0]}" = run ] && [ -n "${FAKE_BACKUP_FAILS:-}" ]; then exit 1; fi
 exit 0
 EOF
@@ -39,9 +41,25 @@ for mode in "staging" "1.2.3" "1.2.3-rc1"; do
   if grep -v '^config' "$log" | grep -Eq '(^| )(down|rm|stop|kill)( |$)|(^| )-v( |$)|--volumes|--remove-orphans'; then
     fail "$mode: a destructive command was issued: $(cat "$log")"
   fi
-  if grep -v '^config' "$log" | grep -Eq '(^| )db( |$)'; then fail "$mode: the database service was named: $(cat "$log")"; fi
+  # With the database running, nothing but the question "is it running?" may mention it.
+  if grep -v '^config' "$log" | grep -v '^ps -q --status running db$' | grep -Eq '(^| )db( |$)'; then
+    fail "$mode: the database service was named: $(cat "$log")"
+  fi
   grep -q -- '--no-deps' "$log" || fail "$mode: up must use --no-deps so the database is left alone"
 done
+
+# ---- a new server (or a stopped database): the database is STARTED, never recreated, and before the app
+FAKE_DB_DOWN=1 FAKE_BACKUP=1 deploy staging >/dev/null || fail "first deployment failed"
+ran '^up -d --no-recreate --wait db$' || fail "a missing database must be started with --no-recreate: $(cat "$log")"
+db_line=$(grep -n '^up -d --no-recreate --wait db$' "$log" | cut -d: -f1)
+app_line=$(grep -n '^up -d --no-deps' "$log" | cut -d: -f1)
+[ "$db_line" -lt "$app_line" ] || fail "the database must be started before the application services"
+if grep -v '^config' "$log" | grep -Eq '(^| )(down|rm|stop|kill)( |$)|(^| )-v( |$)|--volumes|--remove-orphans|--force-recreate'; then
+  fail "first deployment issued a destructive command: $(cat "$log")"
+fi
+# ...and with the database already running it is not started or touched at all
+FAKE_BACKUP=1 deploy staging >/dev/null || fail "deployment failed"
+ran '^up -d --no-recreate --wait db$' && fail "a running database must be left alone"
 
 # ---- a version is backed up first, and the order is backup, pull, up
 FAKE_BACKUP=1 deploy 1.2.3 >/dev/null || fail "versioned deployment failed"

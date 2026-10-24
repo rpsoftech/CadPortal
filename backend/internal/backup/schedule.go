@@ -89,3 +89,15 @@ func MaxGap(times []TimeOfDay) time.Duration {
 // CatchUpAfter is how old the last good backup may be at start-up before one is taken at once: the
 // longest gap in the schedule plus two hours of slack (26 hours for the classic single nightly run).
 func CatchUpAfter(times []TimeOfDay) time.Duration { return MaxGap(times) + 2*time.Hour }
+
+// RetryDelay is how long to wait before trying a backup again after the n-th failure in a row (n starts at 1):
+// 1, 2, 4, 8 and 16 minutes, then every 30 minutes until one works.
+func RetryDelay(n int) time.Duration {
+	if n < 1 {
+		n = 1
+	}
+	if n > 5 {
+		return 30 * time.Minute
+	}
+	return time.Minute << (n - 1)
+}

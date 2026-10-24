@@ -445,6 +445,9 @@ test('photos and video: upload, cover on the catalog card, per-variation, limit 
 });
 
 test('the Backups screen shows the history and queues one backup at a time', async ({ page }) => {
+  // This test needs a stack with no backup bucket and no backup yet. A staging server has both, and a
+  // serial test that fails stops the rest of the file, so staging runs skip it (E2E_STAGING=1).
+  test.skip(process.env['E2E_STAGING'] === '1', 'needs a stack without a backup bucket (not staging)');
   await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
   await page.getByRole('link', { name: 'Backups' }).click();
   await expect(page.getByRole('heading', { name: 'Backups' })).toBeVisible();
