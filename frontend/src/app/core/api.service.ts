@@ -3,6 +3,11 @@ import { Injectable, inject, signal } from '@angular/core';
 import { MonoTypeOperatorFunction, Observable, catchError, map, of, tap, throwError } from 'rxjs';
 import {
   AuditFilter,
+  Order,
+  OrderDiff,
+  OrderItem,
+  OrderStatus,
+  OrderSummary,
   AuditRecord,
   AuthConfig,
   ResetLink,
@@ -10,6 +15,7 @@ import {
   BaseInput,
   BomResult,
   Category,
+  CreateOrderRequest,
   CostingItem,
   CostingSheet,
   CostingSheetComparison,
@@ -407,6 +413,52 @@ export class ApiService {
       `${BASE}/costing-sheets/${id}/recost`,
       body,
     );
+  }
+
+  // ----- orders (admin/designer write, everyone signed in reads) -----
+
+  createOrder(body: CreateOrderRequest): Observable<Order> {
+    return this.http.post<Order>(`${BASE}/orders`, body);
+  }
+  orders(f: {
+    status?: string;
+    q?: string;
+    from?: string;
+    to?: string;
+    limit: number;
+    offset: number;
+  }): Observable<{ items: OrderSummary[]; total: number }> {
+    let params = new HttpParams().set('limit', f.limit).set('offset', f.offset);
+    for (const k of ['status', 'q', 'from', 'to'] as const) {
+      const v = f[k]?.trim();
+      if (v) params = params.set(k, v);
+    }
+    return this.http.get<OrderSummary[]>(`${BASE}/orders`, { params, observe: 'response' }).pipe(
+      map((r) => ({
+        items: r.body ?? [],
+        total: Number(r.headers.get('X-Total-Count') ?? r.body?.length ?? 0),
+      })),
+    );
+  }
+  order(id: number): Observable<Order> {
+    return this.http.get<Order>(`${BASE}/orders/${id}`);
+  }
+  updateOrder(id: number, body: { name: string; notes: string; due_date: string }): Observable<Order> {
+    return this.http.put<Order>(`${BASE}/orders/${id}`, body);
+  }
+  /** Replaces the lines of a draft order; lines already on it keep their snapshot. */
+  setOrderLines(id: number, items: OrderItem[]): Observable<Order> {
+    return this.http.put<Order>(`${BASE}/orders/${id}/lines`, { items });
+  }
+  setOrderStatus(id: number, status: OrderStatus, note = ''): Observable<Order> {
+    return this.http.post<Order>(`${BASE}/orders/${id}/status`, { status, note });
+  }
+  /** A new order from an old one, re-snapshotted from the current designs, with what changed. */
+  cloneOrder(
+    id: number,
+    body: { name?: string; metal_code?: string; stone_code?: string; skip_unavailable?: boolean } = {},
+  ): Observable<{ order: Order; diff: OrderDiff }> {
+    return this.http.post<{ order: Order; diff: OrderDiff }>(`${BASE}/orders/${id}/clone`, body);
   }
 }
 
