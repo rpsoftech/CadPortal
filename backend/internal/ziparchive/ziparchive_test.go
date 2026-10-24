@@ -403,3 +403,53 @@ func TestLargeFilesStayInBoundedMemory(t *testing.T) {
 		t.Errorf("heap grew by %d MiB for 120 MiB files: the files are being buffered", growth>>20)
 	}
 }
+
+func TestExtrasAndNotes(t *testing.T) {
+	m := storage.NewMemory()
+	ok := put(t, m, "k1", "a.stl", []byte("solid a"))
+	ok.Note = "the variation has a different file now"
+	gone := Entry{Name: "b.stl", Key: "nope", SHA256: sum([]byte("x")), Size: 1, Note: "kept by an order"}
+	none := Entry{Name: "c.stl", Detail: "no file", Note: "second note"}
+	var out bytes.Buffer
+	res, err := Write(context.Background(), &out, []Entry{ok, gone, none}, Options{
+		Store: m, MetaColumns: []string{"design", "variation"},
+		Extras: []Extra{{Name: "summary.csv", Data: []byte("a,b\n")}, {Name: "MANIFEST.csv", Data: []byte("clash")}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, _ := zip.NewReader(bytes.NewReader(out.Bytes()), int64(out.Len()))
+	names := map[string]bool{}
+	for _, f := range zr.File {
+		names[f.Name] = true
+	}
+	// An extra whose name clashes with the manifest is renamed, never overwrites it; extras come first.
+	if zr.File[0].Name != "summary.csv" || !names["MANIFEST (2).csv"] || !names["MANIFEST.csv"] || res.Files != 3 {
+		t.Errorf("entries = %v, files = %d", names, res.Files)
+	}
+	_, _, _, recs := func() (Result, *zip.Reader, map[string][]byte, []map[string]string) {
+		return build(t, m, []Entry{ok, gone, none})
+	}()
+	by := map[string]map[string]string{}
+	for _, r := range recs {
+		by[r["original_name"]+r["file_in_zip"]] = r
+	}
+	if r := by["orig-a.stla.stl"]; r["status"] != "ok" || r["detail"] != "the variation has a different file now" {
+		t.Errorf("ok row = %v", r)
+	}
+	if r := by["b.stl"]; r != nil {
+		_ = r
+	}
+	var sawGone, sawNone bool
+	for _, r := range recs {
+		switch {
+		case r["status"] == "missing" && strings.Contains(r["detail"], "gone"):
+			sawGone = strings.HasSuffix(r["detail"], "kept by an order")
+		case r["status"] == "missing" && strings.HasPrefix(r["detail"], "no file"):
+			sawNone = strings.HasSuffix(r["detail"], "second note")
+		}
+	}
+	if !sawGone || !sawNone {
+		t.Errorf("notes not appended to missing rows: %v", recs)
+	}
+}

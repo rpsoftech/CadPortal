@@ -277,7 +277,8 @@
     <button matButton type="button" (click)="downloadCad('stl')">Download STL</button>
     <button matButton type="button" (click)="downloadCad('3dm')">Download 3dm</button>
     @if (auth.canEdit()) {
-      <button matButton="filled" type="button" (click)="costSelected()">Cost selected</button>
+      <button matButton type="button" (click)="costSelected()">Cost selected</button>
+      <button matButton="filled" type="button" (click)="createOrder()">Create order</button>
     }
   </app-selection-bar>
 </div>

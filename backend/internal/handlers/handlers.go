@@ -170,10 +170,18 @@ func (h *H) Register(r *gin.Engine) {
 	v1.POST("/orders", editor, h.createOrder)
 	v1.GET("/orders", anyRole, h.listOrders)
 	v1.GET("/orders/:id", anyRole, h.getOrder)
+	v1.GET("/orders/:id/live", anyRole, h.orderLive)
 	v1.PUT("/orders/:id", editor, h.updateOrder)
 	v1.PUT("/orders/:id/lines", editor, h.setOrderLines)
 	v1.POST("/orders/:id/status", editor, h.setOrderStatus)
 	v1.POST("/orders/:id/clone", editor, h.cloneOrder)
+	// The CAD files an order recorded, and the order package, as one ZIP. Every role may download; the signed
+	// link is what a browser opens.
+	v1.GET("/orders/:id/download", anyRole, h.orderDownload(false))
+	v1.GET("/orders/:id/download/link", anyRole, h.orderDownloadLink(false))
+	v1.GET("/orders/:id/package", anyRole, h.orderDownload(true))
+	v1.GET("/orders/:id/package/link", anyRole, h.orderDownloadLink(true))
+	v1.GET("/downloads/order-zip/file", h.orderZipFile)
 }
 
 func fail(c *gin.Context, err error) {
