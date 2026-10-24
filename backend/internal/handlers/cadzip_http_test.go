@@ -408,7 +408,7 @@ func TestCADZipLinkExpiry(t *testing.T) {
 	past := time.Now().Add(-time.Hour)
 	tk, err := jwt.NewWithClaims(jwt.SigningMethodHS256, cadZipClaims{
 		Role: auth.Admin, IDs: "", Kinds: []string{"stl"},
-		RegisteredClaims: jwt.RegisteredClaims{Subject: "u", ExpiresAt: jwt.NewNumericDate(past)},
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "u", IssuedAt: jwt.NewNumericDate(past.Add(-time.Minute)), ExpiresAt: jwt.NewNumericDate(past)},
 	}).SignedString(h.ticketKey())
 	if err != nil {
 		t.Fatal(err)
@@ -423,7 +423,9 @@ func TestCADZipLinkRefusedForADeactivatedUser(t *testing.T) {
 	f := newZipFixture(t)
 	r := gin.New()
 	active := true
-	(&H{S: f.svc, JWTSecret: testSecret, Validate: func(context.Context, auth.Claims) (bool, error) { return active, nil }}).Register(r)
+	(&H{S: f.svc, JWTSecret: testSecret, Validate: func(_ context.Context, c auth.Claims) (bool, error) {
+		return active && c.IssuedAt != nil && c.Subject != "", nil
+	}}).Register(r)
 	f.r = r
 	body := gin.H{"variation_ids": []int64{f.v11}, "kinds": []string{"stl"}}
 	w := zipPost(f, auth.Admin, "/api/v1/downloads/cad-zip/link", body)

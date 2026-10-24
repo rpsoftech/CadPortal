@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { caratsToGrams, exactGrams, fixed } from './format';
+import { caratsToGrams, exactGrams, fixed, formatBytes } from './format';
 
 describe('fixed', () => {
   it.each([
@@ -68,4 +68,17 @@ describe('exactGrams', () => {
   it.each([null, undefined, '', 'x', '-1'])('%j has no grams', (v) =>
     expect(exactGrams(v)).toBeNull(),
   );
+});
+
+describe('formatBytes', () => {
+  it.each([
+    [0, '0 B'],
+    [900, '900 B'],
+    [2048, '2 KB'],
+    [12.4 * 1024 * 1024, '12.4 MB'],
+    [250 * 1024 * 1024, '250.0 MB'],
+    [1.25 * 1024 ** 3, '1.3 GB'],
+    [-1, '–'],
+    [Number.NaN, '–'],
+  ])('%d is %s', (n, want) => expect(formatBytes(n)).toBe(want));
 });

@@ -32,10 +32,11 @@ import { fixed } from '../../core/format';
 import { CatalogSelection } from '../../core/catalog-selection';
 import { gramsToCarats } from '../../core/stone-units';
 import { saveBlob } from '../../shared/download';
-import { DesignFilter, DesignImportResult, DesignListItem, TAG_GROUPS } from '../../core/models';
+import { CadZipKind, DesignFilter, DesignImportResult, DesignListItem, TAG_GROUPS } from '../../core/models';
 import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design-dialog.component';
 import { SelectionBarComponent } from '../../shared/selection-bar.component';
 import { CostSelectedData, CostSelectedDialogComponent } from './cost-selected-dialog.component';
+import { DownloadCadData, DownloadCadDialogComponent } from './download-cad-dialog.component';
 import { DesignImportDialogComponent } from './design-import-dialog.component';
 import { SetupChecklistComponent } from '../../shared/setup-checklist.component';
 import { positiveDecimal } from '../../shared/validators';
@@ -221,6 +222,16 @@ export class CatalogComponent {
           .onAction()
           .subscribe(() => this.router.navigate(['/costing-sheets', sheetId]));
       });
+  }
+
+  /** Opens the download dialog for the STL or 3dm files of the selected designs. */
+  protected downloadCad(kind: CadZipKind): void {
+    const data: DownloadCadData = { kind, designs: this.selection.items() };
+    this.dialog.open<DownloadCadDialogComponent, DownloadCadData>(DownloadCadDialogComponent, {
+      data,
+      width: '520px',
+      maxWidth: '95vw',
+    });
   }
 
   protected onPage(e: PageEvent): void {

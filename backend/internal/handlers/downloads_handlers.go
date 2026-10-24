@@ -94,7 +94,7 @@ func (h *H) cadZipFile(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "invalid or expired link"})
 		return
 	}
-	cl := auth.Claims{Role: tk.role, RegisteredClaims: jwt.RegisteredClaims{Subject: tk.subject}}
+	cl := auth.Claims{Role: tk.role, RegisteredClaims: jwt.RegisteredClaims{Subject: tk.subject, IssuedAt: tk.issuedAt}}
 	if h.Validate != nil {
 		ok, err := h.Validate(c.Request.Context(), cl)
 		if err != nil {
@@ -159,6 +159,7 @@ type cadZipTicket struct {
 	role         auth.Role
 	variationIDs []int64
 	kinds        []string
+	issuedAt     *jwt.NumericDate
 }
 
 type cadZipClaims struct {
@@ -200,7 +201,7 @@ func (h *H) parseCADZipTicket(raw string) (cadZipTicket, error) {
 	var cl cadZipClaims
 	tok, err := jwt.ParseWithClaims(raw, &cl, func(*jwt.Token) (any, error) { return h.ticketKey(), nil },
 		jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
-	if err != nil || !tok.Valid || !cl.Role.Valid() || cl.Subject == "" {
+	if err != nil || !tok.Valid || !cl.Role.Valid() || cl.Subject == "" || cl.IssuedAt == nil {
 		return cadZipTicket{}, errors.New("bad ticket")
 	}
 	b, err := base64.RawURLEncoding.DecodeString(cl.IDs)
@@ -218,7 +219,7 @@ func (h *H) parseCADZipTicket(raw string) (cadZipTicket, error) {
 		prev += int64(d)
 		ids = append(ids, prev)
 	}
-	return cadZipTicket{subject: cl.Subject, role: cl.Role, variationIDs: ids, kinds: cl.Kinds}, nil
+	return cadZipTicket{subject: cl.Subject, role: cl.Role, variationIDs: ids, kinds: cl.Kinds, issuedAt: cl.IssuedAt}, nil
 }
 
 // zipState is embedded in H (see handlers.go) so the limiter is created on first use.

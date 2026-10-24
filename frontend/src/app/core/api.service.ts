@@ -16,6 +16,8 @@ import {
   CostingSheetSummary,
   CostPreview,
   CostSheetRequest,
+  CadZipLink,
+  CadZipRequest,
   JobBagsRequest,
   DesignDetail,
   DuplicateDesignBody,
@@ -349,6 +351,10 @@ export class ApiService {
       responseType: 'blob',
       observe: 'response',
     });
+  }
+  /** Checks a selection and returns what a ZIP of its CAD files holds, with a link to download it. */
+  cadZipLink(body: CadZipRequest): Observable<CadZipLink> {
+    return this.http.post<CadZipLink>(`${BASE}/downloads/cad-zip/link`, body);
   }
   /** Every master-data table as CSV files in one zip (admin only). */
   masterDataZip(): Observable<Blob> {
