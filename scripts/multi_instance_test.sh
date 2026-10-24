@@ -12,7 +12,8 @@
 #   scripts/multi_instance_test.sh
 #
 # Uses its own compose project, so it never touches another stack, and removes it (with its volumes) at
-# the end. Environment (all optional): WEB_PORT (default 18090), COMPOSE_PROJECT_NAME.
+# the end. Environment (all optional): WEB_PORT (default 18090), COMPOSE_PROJECT_NAME, CADPORTAL_NO_BUILD
+# (use images that already exist, tagged <project>-api and <project>-web, instead of building).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export MSYS_NO_PATHCONV=1 # Git Bash on Windows must not rewrite /app/adduser
@@ -41,7 +42,10 @@ count_in_logs() { # container id, fixed string -> number of matching log lines
 }
 
 echo "== start two API instances on an empty database"
-"${COMPOSE[@]}" up -d --build --scale api=2 --wait --wait-timeout 240 || fail "the stack did not come up healthy with two API instances"
+# CI builds the images beforehand (with a layer cache) and sets CADPORTAL_NO_BUILD=1.
+build_flag=--build
+[ -z "${CADPORTAL_NO_BUILD:-}" ] || build_flag=--no-build
+"${COMPOSE[@]}" up -d "$build_flag" --scale api=2 --wait --wait-timeout 240 || fail "the stack did not come up healthy with two API instances"
 
 ids=$("${COMPOSE[@]}" ps -q api)
 [ "$(echo "$ids" | wc -l | tr -d ' ')" = "2" ] || fail "expected two api containers"

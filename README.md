@@ -969,12 +969,49 @@ WEB_PORT=18080 scripts/e2e.sh
 docker compose -f docker-compose.prod.yml down -v     # the next run needs a fresh database
 ```
 
-`scripts/e2e.sh` creates the two users with random passwords; pass Playwright options after it
-(for example `--grep "weight matrix"` or `--headed`). On a CI failure the report and traces are
-attached to the run as the `playwright-report` artifact.
+`scripts/e2e.sh` creates the two users with random passwords. It needs a fresh database (it
+fails if the users already exist). With no arguments it runs everything in two steps: the `main`
+Playwright project (the tests that create and change data: one worker, file order), then the `a11y`
+project (the read-only accessibility scans, four workers in parallel, `E2E_A11Y_WORKERS` to change
+that). With arguments it passes them to Playwright as they are, so a subset is:
+
+```bash
+scripts/e2e.sh smoke.zip                          # one file (the data from smoke.e2e.ts must exist)
+scripts/e2e.sh --project=main --grep "weight matrix"
+scripts/e2e.sh --project=main --headed            # watch it
+scripts/e2e.sh --project=a11y --no-deps           # only the accessibility scans, on data already there
+```
+
+**Signing in.** The sign-in form is rate limited per address (10 a minute, burst 20), so the suite
+does not use it in every test. `frontend/e2e/global-setup.ts` signs in the two E2E users once through
+the API and `frontend/e2e/auth.ts` hands that saved session to each test (`signIn(page, email,
+password)`, or `admin(page)` / `production(page)`). Tests of the form itself (login errors, forgot
+password, idle sign-out) use `signInViaForm`. Do not write a new local `signIn` in a test file.
+`scripts/ratelimit_test.sh` still tests the real limit.
+
+On a CI failure the reports and traces are attached to the run as the `playwright-report` artifact.
 
 The same run includes an accessibility pass (axe over every screen and dialog, light and dark, desktop
 and 375 px) and the phone-layout checks; see [docs/accessibility.md](docs/accessibility.md).
+
+### How CI is laid out
+
+Jobs that run in parallel, each on its own runner (see `.github/workflows/ci.yml`):
+
+| Job | What it checks |
+|---|---|
+| `changes` | which of the others this change needs (required) |
+| `test`, `sqlc`, `frontend`, `vulncheck` | Go tests, sqlc drift, Angular build and unit tests, advisories |
+| `docker-stack` | compose files, deploy script, workflow lint, the production stack, Playwright (`main`, then `a11y`), sign-in rate limit |
+| `docker-backup` | backup and restore round trip, the backup service (nightly dump and file copy) |
+| `docker-multi` | two API instances on one empty database |
+| `docker` | always runs and fails when any `docker-*` part failed, was cancelled or was skipped although needed; this is the one to require in branch protection |
+
+The images are built with buildx and the GitHub Actions layer cache (scopes `api`, `web`, `backup`),
+loaded into the runner and started with `--no-build`. The Playwright browser and the Yarn packages are
+cached too. To run one part locally, run the scripts the job runs (for example
+`scripts/multi_instance_test.sh`; set `CADPORTAL_NO_BUILD=1` to use images you already built, tagged
+`<project>-api` and `<project>-web`).
 
 ## Regenerating sqlc code
 
