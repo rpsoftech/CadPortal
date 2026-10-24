@@ -77,6 +77,9 @@ var auditRoutes = map[string]auditRoute{
 	"GET /api/v1/exports/designs-csv":         {action: "export.designs", entity: "design", reads: true},
 	"POST /api/v1/backups/run":                {action: "backup.request", entity: "backup"},
 	"GET /api/v1/backups/download":            {action: "backup.download_link", entity: "backup", reads: true},
+	"POST /api/v1/downloads/cad-zip":          {action: "download.cad_zip", entity: "variation"},
+	"POST /api/v1/downloads/cad-zip/link":     {skip: true}, // checks and signs only; the download is recorded when it runs
+	"GET /api/v1/downloads/cad-zip/file":      {action: "download.cad_zip", entity: "variation", reads: true},
 	"GET /api/v1/masters/export":              {action: "export.master_data", entity: "master_data", reads: true},
 }
 

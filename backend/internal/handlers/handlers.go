@@ -40,6 +40,8 @@ type H struct {
 	MaxUploadBytes int64
 	// LocalFiles, when set (development storage), serves signed download links.
 	LocalFiles *storage.Local
+
+	zipState // one running CAD ZIP per user (see downloads_handlers.go)
 }
 
 const (
@@ -138,6 +140,12 @@ func (h *H) Register(r *gin.Engine) {
 		// Auth is the signed, expiring link itself (like an R2 presigned URL).
 		v1.GET("/local-files/*key", h.serveLocalFile)
 	}
+
+	// Many CAD files in one ZIP: every role that may download a single file. The signed link is what a
+	// browser opens (it cannot send the bearer token with a navigation), so it has no token middleware.
+	v1.POST("/downloads/cad-zip", anyRole, h.cadZip)
+	v1.POST("/downloads/cad-zip/link", anyRole, h.cadZipLink)
+	v1.GET("/downloads/cad-zip/file", h.cadZipFile)
 
 	// Backups: history, a "back up now" request and download links to the (encrypted) dumps. Admin only.
 	v1.GET("/backups", admin, h.listBackups)

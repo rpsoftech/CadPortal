@@ -4,9 +4,12 @@ package storage
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"sync"
 	"time"
@@ -15,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 // Store is the subset of object-store behaviour the service needs.
@@ -205,7 +209,82 @@ func (m *Memory) Get(_ context.Context, key string) (io.ReadCloser, error) {
 	defer m.mu.Unlock()
 	b, ok := m.Objects[key]
 	if !ok {
-		return nil, fmt.Errorf("storage: no object %q", key)
+		return nil, fmt.Errorf("%w: %q", ErrNotFound, key)
 	}
 	return io.NopCloser(bytes.NewReader(b)), nil
+}
+
+// ErrNotFound is what Get reports for an object that is not there (Memory wraps it; Local and R2 report
+// their own errors, which IsNotFound also recognises).
+var ErrNotFound = errors.New("storage: no such object")
+
+// IsNotFound reports whether err means "the object does not exist", for any store.
+func IsNotFound(err error) bool {
+	var nsk *types.NoSuchKey
+	var nf *types.NotFound
+	return errors.Is(err, ErrNotFound) || errors.Is(err, fs.ErrNotExist) || errors.As(err, &nsk) || errors.As(err, &nf)
+}
+
+// originalGetter is implemented by a store that knows how its objects are encoded on the wire.
+type originalGetter interface {
+	GetOriginal(ctx context.Context, key string) (io.ReadCloser, error)
+}
+
+// OpenOriginal opens a gzipped CAD object and returns the ORIGINAL file bytes (what was uploaded), whichever
+// store holds it. CAD objects are always stored gzipped: Memory and Local hand back the stored bytes, so
+// they are gunzipped here; R2 serves them with Content-Encoding: gzip, which Go's HTTP client may already
+// have decoded (see R2.GetOriginal). The caller closes the result.
+func OpenOriginal(ctx context.Context, s Store, key string) (io.ReadCloser, error) {
+	if og, ok := s.(originalGetter); ok {
+		return og.GetOriginal(ctx, key)
+	}
+	rc, err := s.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return gunzipCloser(rc)
+}
+
+// gunzipCloser wraps a gzip stream; closing the result closes the underlying body too.
+func gunzipCloser(rc io.ReadCloser) (io.ReadCloser, error) {
+	zr, err := gzip.NewReader(rc)
+	if err != nil {
+		rc.Close()
+		return nil, fmt.Errorf("storage: object is not valid gzip: %w", err)
+	}
+	return &gzipBody{zr: zr, body: rc}, nil
+}
+
+type gzipBody struct {
+	zr   *gzip.Reader
+	body io.Closer
+}
+
+func (g *gzipBody) Read(p []byte) (int, error) { return g.zr.Read(p) }
+func (g *gzipBody) Close() error {
+	err := g.zr.Close()
+	if cerr := g.body.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// GetOriginal returns the original bytes of a CAD object. The object is stored with Content-Encoding:
+// gzip. Go's HTTP transport asks for gzip by itself and, when the server answers with it, decodes the body
+// and drops the Content-Encoding header; in that case the body already is the original file. When the header
+// is still there (a client that does not decode) the body is the gzip stream and is decoded here. Either
+// way the caller gets the original bytes.
+func (r *R2) GetOriginal(ctx context.Context, key string) (io.ReadCloser, error) {
+	out, err := r.client.GetObject(ctx, &s3.GetObjectInput{Bucket: &r.bucket, Key: &key})
+	if err != nil {
+		return nil, err
+	}
+	return decodeStored(out.Body, aws.ToString(out.ContentEncoding))
+}
+
+func decodeStored(body io.ReadCloser, contentEncoding string) (io.ReadCloser, error) {
+	if contentEncoding == "gzip" {
+		return gunzipCloser(body)
+	}
+	return body, nil
 }
