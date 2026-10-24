@@ -520,3 +520,31 @@ func TestCloneReSnapshotsAndReportsTheDifference(t *testing.T) {
 		t.Error("clone of an order with purged variations must be refused without skip")
 	}
 }
+
+func TestOrderLiveStatusMarksChangedAndUnavailableLines(t *testing.T) {
+	f := newOrderFixture(t)
+	ctx := context.Background()
+	o := f.create(t, OrderItem{f.v1, 2}, OrderItem{f.v2, 1})
+	live, err := f.s.OrderLiveStatus(ctx, o.ID)
+	if err != nil || len(live) != 2 || live[0].Status != "unchanged" || live[1].Status != "unchanged" || live[0].LineID != o.Lines[0].ID {
+		t.Fatalf("fresh order: %+v %v", live, err)
+	}
+	if _, err := f.s.SetSeats(ctx, f.v1, []SeatInput{{SizeMM: d("1.20"), StoneCount: 10}}); err != nil {
+		t.Fatal(err)
+	}
+	live, _ = f.s.OrderLiveStatus(ctx, o.ID)
+	if live[0].Status != "changed" || len(live[0].Changes) == 0 || live[1].Status != "unchanged" {
+		t.Fatalf("after editing V1: %+v", live)
+	}
+	if err := f.s.DeleteDesign(ctx, f.design); err != nil {
+		t.Fatal(err)
+	}
+	live, _ = f.s.OrderLiveStatus(ctx, o.ID)
+	if live[0].Status != "unavailable" || live[1].Status != "unavailable" || live[0].Reason == "" {
+		t.Fatalf("after deleting the design: %+v", live)
+	}
+	// The order itself never changes.
+	if got, _ := f.s.GetOrder(ctx, o.ID); got.Lines[0].Snapshot.TotalPcs != 37 {
+		t.Errorf("snapshot changed: %+v", got.Lines[0].Snapshot)
+	}
+}

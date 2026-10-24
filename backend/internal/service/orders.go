@@ -725,6 +725,51 @@ func (s *Service) OrderLineInternals(ctx context.Context, orderID int64) (map[in
 	return out, nil
 }
 
+// ---------- Live check ----------
+
+// LineLive says how one line of an order compares with the catalog today.
+type LineLive struct {
+	LineID  int64        `json:"line_id"`
+	Status  string       `json:"status"` // unchanged, changed or unavailable (design or variation gone, data missing)
+	Reason  string       `json:"reason,omitempty"`
+	Changes []LineChange `json:"changes"`
+}
+
+// OrderLiveStatus compares every line's stored snapshot with a fresh one from the current catalog, in
+// the line's own metal and stone code. It only reads: the order is never touched. Used by the order
+// screen to mark a line "changed since" or "design deleted".
+func (s *Service) OrderLiveStatus(ctx context.Context, id int64) ([]LineLive, error) {
+	src, err := s.GetOrder(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]LineLive, 0, len(src.Lines))
+	for _, l := range src.Lines {
+		ll := LineLive{LineID: l.ID, Changes: []LineChange{}}
+		if l.VariationID == nil {
+			ll.Status, ll.Reason = "unavailable", "the variation has been purged"
+			out = append(out, ll)
+			continue
+		}
+		built, err := s.snapshotLines(ctx, l.Snapshot.MetalCode, l.Snapshot.StoneCode, []OrderItem{{VariationID: *l.VariationID, Quantity: l.Quantity}})
+		var pe *OrderProblemsError
+		switch {
+		case errors.As(err, &pe):
+			ll.Status, ll.Reason = "unavailable", pe.Problems[0].Message
+		case err != nil:
+			return nil, err
+		default:
+			ll.Changes = diffSnapshots(l.Snapshot, built[0].snap)
+			ll.Status = "unchanged"
+			if len(ll.Changes) > 0 {
+				ll.Status = "changed"
+			}
+		}
+		out = append(out, ll)
+	}
+	return out, nil
+}
+
 // ---------- Clone / reorder ----------
 
 // LineChange is one field that differs between the old snapshot and a fresh one.

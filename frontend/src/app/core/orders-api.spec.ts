@@ -54,3 +54,15 @@ describe('order endpoints', () => {
     http.verify();
   });
 });
+
+describe('order live check', () => {
+  it('reads how each line compares with the catalog', () => {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    const api = TestBed.inject(ApiService);
+    const http = TestBed.inject(HttpTestingController);
+    let got: unknown = null;
+    api.orderLive(4).subscribe((l) => (got = l));
+    http.expectOne('/api/v1/orders/4/live').flush({ lines: [{ line_id: 9, status: 'changed', changes: [] }] });
+    expect(got).toEqual([{ line_id: 9, status: 'changed', changes: [] }]);
+  });
+});

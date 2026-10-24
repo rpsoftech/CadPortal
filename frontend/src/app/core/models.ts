@@ -469,7 +469,7 @@ export interface CadZipLink {
 export interface ApiErrorBody {
   error?: string;
   /** Costing of several designs: what is missing, grouped by design and variation. */
-  problems?: CostDesignProblem[];
+  problems?: (CostDesignProblem | OrderProblem)[];
   missing?: { SizeMM: string; Code: string; Basis?: string }[];
   stone_rates_missing?: { SizeMM: string; Code: string; Basis?: string }[];
   metals_missing_wastage?: string[];
@@ -766,3 +766,30 @@ export interface OrderProblem {
   message: string;
   missing?: { SizeMM: string; Code: string }[];
 }
+
+/** How one order line compares with the catalog today (GET /orders/:id/live). */
+export interface OrderLineLive {
+  line_id: number;
+  status: 'unchanged' | 'changed' | 'unavailable';
+  reason?: string;
+  changes: OrderLineChange[];
+}
+
+/** The next states an order may move to, and who sees which button. */
+export const ORDER_NEXT: Record<OrderStatus, OrderStatus[]> = {
+  draft: ['placed', 'cancelled'],
+  placed: ['in_production', 'cancelled'],
+  in_production: ['done', 'cancelled'],
+  done: [],
+  cancelled: [],
+};
+
+export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
+  draft: 'Draft',
+  placed: 'Placed',
+  in_production: 'In production',
+  done: 'Done',
+  cancelled: 'Cancelled',
+};
+
+export const ORDER_STATUSES: OrderStatus[] = ['draft', 'placed', 'in_production', 'done', 'cancelled'];
