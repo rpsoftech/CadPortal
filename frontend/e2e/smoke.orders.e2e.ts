@@ -1,4 +1,5 @@
 import { Page, expect, test } from '@playwright/test';
+import { admin, production } from './auth';
 
 // Orders: filter the catalog, select designs, create an order, follow it through production, see that a
 // later edit of a design does not touch it, clone it, and the read-only view for production. Runs after
@@ -11,33 +12,6 @@ import { Page, expect, test } from '@playwright/test';
 
 test.describe.configure({ mode: 'serial' });
 
-const env = (name: string): string => {
-  const v = process.env[name];
-  if (!v) throw new Error(`${name} must be set (scripts/e2e.sh does this)`);
-  return v;
-};
-
-// The sign-in form is rate limited per address, so each user signs in once and later tests reuse the session.
-const sessions = new Map<string, string>();
-
-async function signIn(page: Page, email: string, password: string): Promise<void> {
-  const saved = sessions.get(email);
-  if (saved) {
-    await page.addInitScript((v) => sessionStorage.setItem('cadportal.session', v), saved);
-    await page.goto('/');
-  } else {
-    await page.goto('/login');
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Password').fill(password);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-  }
-  await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible();
-  const session = await page.evaluate(() => sessionStorage.getItem('cadportal.session'));
-  if (session) sessions.set(email, session);
-}
-
-const admin = (page: Page) => signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
-const production = (page: Page) => signIn(page, env('E2E_PROD_EMAIL'), env('E2E_PROD_PASSWORD'));
 
 async function api(page: Page, method: string, path: string, body?: unknown) {
   return page.evaluate(
