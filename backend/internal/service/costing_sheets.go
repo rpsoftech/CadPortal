@@ -31,17 +31,24 @@ type SheetRequest struct {
 	// SkipIncomplete costs the variations that can be costed and lists the others; without it any
 	// incomplete variation fails the whole run and nothing is costed.
 	SkipIncomplete bool `json:"skip_incomplete"`
+	// Quantities multiplies a variation's pieces: key is the variation id, value the quantity (at least
+	// 1). A variation with an entry is costed for that many pieces; its row then carries Quantity and
+	// every weight and amount on it is for the whole line. Variations without an entry cost one piece.
+	Quantities map[int64]int `json:"quantities,omitempty"`
 }
 
 // SheetRow is one costed variation. Money is rounded as in calc.Compute.
 type SheetRow struct {
-	DesignID         int64           `json:"design_id"`
-	DesignCode       string          `json:"design_code"`
-	DesignName       string          `json:"design_name"`
-	VariationID      int64           `json:"variation_id"`
-	VariationCode    string          `json:"variation_code"`
-	MetalCode        string          `json:"metal_code"`
-	StoneCode        string          `json:"stone_code"`
+	DesignID      int64  `json:"design_id"`
+	DesignCode    string `json:"design_code"`
+	DesignName    string `json:"design_name"`
+	VariationID   int64  `json:"variation_id"`
+	VariationCode string `json:"variation_code"`
+	MetalCode     string `json:"metal_code"`
+	StoneCode     string `json:"stone_code"`
+	// Quantity is the number of pieces the row stands for; 0 means a plain single-piece row (no
+	// quantity was given). With a quantity, the weights and amounts below are the line's, not one piece's.
+	Quantity         int             `json:"quantity,omitempty"`
 	NetG             decimal.Decimal `json:"net_g"`
 	GrossG           decimal.Decimal `json:"gross_g"`
 	WastagePct       decimal.Decimal `json:"wastage_pct"`
@@ -341,6 +348,11 @@ func (s *Service) CostSelection(ctx context.Context, req SheetRequest) (CostResu
 	if req.SettingRatePerPc.IsNegative() {
 		return CostResult{}, invalid("setting_rate_per_pc must not be negative")
 	}
+	for id, q := range req.Quantities {
+		if q < 1 || q > MaxLineQuantity {
+			return CostResult{}, invalid("quantity of variation %d must be between 1 and %d", id, MaxLineQuantity)
+		}
+	}
 	metal, err := s.Q.GetMetalByCode(ctx, req.MetalCode)
 	if err != nil {
 		if mapErr(err) == ErrNotFound {
@@ -428,7 +440,7 @@ func (s *Service) CostSelection(ctx context.Context, req SheetRequest) (CostResu
 			usedStone[rateKey{l.SizeMM.StringFixed(2), l.StoneCode}] = true
 		}
 		designsCosted[d.ID] = true
-		res.Rows = append(res.Rows, SheetRow{
+		row := SheetRow{
 			DesignID: d.ID, DesignCode: d.Code, DesignName: d.Name,
 			VariationID: v.ID, VariationCode: v.Code, MetalCode: metal.Code, StoneCode: req.StoneCode,
 			NetG: net, GrossG: gross, WastagePct: metal.WastagePct.Decimal,
@@ -436,7 +448,11 @@ func (s *Service) CostSelection(ctx context.Context, req SheetRequest) (CostResu
 			StoneCt: cost.StoneCarats, StoneG: calc.RoundLineGrams(calc.StoneWeight(cost.StoneCarats)), StoneCost: cost.StoneCost,
 			SettingPcs: cost.SettingPcs, SettingRatePerPc: req.SettingRatePerPc, SettingCost: cost.SettingCost,
 			Total: cost.Total,
-		})
+		}
+		if q, ok := req.Quantities[v.ID]; ok {
+			row = row.times(q)
+		}
+		res.Rows = append(res.Rows, row)
 	}
 	res.Problems = append(res.Problems, preProblems...)
 	for _, p := range preProblems {
@@ -471,6 +487,20 @@ func (s *Service) CostSelection(ctx context.Context, req SheetRequest) (CostResu
 	return res, nil
 }
 
+// times makes the row stand for q pieces: every weight and amount is multiplied by q, so the totals row
+// of a sheet still adds up the printed values. Per-piece values are exact at their printed precision,
+// so the product needs no further rounding.
+func (r SheetRow) times(q int) SheetRow {
+	m := decimal.NewFromInt(int64(q))
+	r.Quantity = q
+	r.NetG, r.GrossG, r.GoldG = r.NetG.Mul(m), r.GrossG.Mul(m), r.GoldG.Mul(m)
+	r.GoldCost = r.GoldCost.Mul(m)
+	r.StoneCt, r.StoneG, r.StoneCost = r.StoneCt.Mul(m), r.StoneG.Mul(m), r.StoneCost.Mul(m)
+	r.SettingPcs *= q
+	r.SettingCost, r.Total = r.SettingCost.Mul(m), r.Total.Mul(m)
+	return r
+}
+
 func sumRows(rows []SheetRow) SheetTotals {
 	var t SheetTotals
 	t.Variations = len(rows)
@@ -502,6 +532,7 @@ type SheetInputs struct {
 type SheetSummary struct {
 	ID               int64           `json:"id"`
 	Name             string          `json:"name"`
+	OrderID          *int64          `json:"order_id"`
 	CreatedAt        time.Time       `json:"created_at"`
 	CreatedBy        *int64          `json:"created_by"`
 	CreatedByName    string          `json:"created_by_name"`
@@ -531,6 +562,7 @@ type SaveSheetParams struct {
 	Name     string
 	UserID   int64
 	RecostOf int64
+	OrderID  int64
 	Request  SheetRequest
 	Result   CostResult
 	CSV      string
@@ -563,6 +595,9 @@ func (s *Service) SaveCostingSheet(ctx context.Context, p SaveSheetParams) (Shee
 	if p.RecostOf != 0 {
 		arg.RecostOf = pgtype.Int8{Int64: p.RecostOf, Valid: true}
 	}
+	if p.OrderID != 0 {
+		arg.OrderID = pgtype.Int8{Int64: p.OrderID, Valid: true}
+	}
 	row, err := s.Q.InsertCostingSheet(ctx, arg)
 	if err != nil {
 		return SheetDetail{}, mapErr(err)
@@ -588,7 +623,7 @@ func (s *Service) ListCostingSheets(ctx context.Context, limit, offset int32) ([
 	for _, r := range rows {
 		total = r.TotalCount
 		out = append(out, SheetSummary{
-			ID: r.ID, Name: r.Name, CreatedAt: r.CreatedAt.Time, CreatedBy: int8Ptr(r.CreatedBy),
+			ID: r.ID, Name: r.Name, OrderID: int8Ptr(r.OrderID), CreatedAt: r.CreatedAt.Time, CreatedBy: int8Ptr(r.CreatedBy),
 			CreatedByName: r.CreatedByName, RecostOf: int8Ptr(r.RecostOf), MetalCode: r.MetalCode,
 			StoneCode: r.StoneCode, GoldRatePerG: r.GoldRatePerG, SettingRatePerPc: r.SettingRatePerPc,
 			DesignCount: int(r.DesignCount), VariationCount: int(r.VariationCount),
@@ -612,7 +647,7 @@ func (s *Service) GetCostingSheet(ctx context.Context, id int64) (SheetDetail, s
 		return SheetDetail{}, "", mapErr(err)
 	}
 	d := SheetDetail{SheetSummary: SheetSummary{
-		ID: r.ID, Name: r.Name, CreatedAt: r.CreatedAt.Time, CreatedBy: int8Ptr(r.CreatedBy),
+		ID: r.ID, Name: r.Name, OrderID: int8Ptr(r.OrderID), CreatedAt: r.CreatedAt.Time, CreatedBy: int8Ptr(r.CreatedBy),
 		CreatedByName: r.CreatedByName, RecostOf: int8Ptr(r.RecostOf), MetalCode: r.MetalCode,
 		StoneCode: r.StoneCode, GoldRatePerG: r.GoldRatePerG, SettingRatePerPc: r.SettingRatePerPc,
 		DesignCount: int(r.DesignCount), VariationCount: int(r.VariationCount),
@@ -654,6 +689,7 @@ func RecostRequest(old SheetDetail, o RecostOverrides) SheetRequest {
 	req := SheetRequest{
 		VariationIDs: old.Inputs.ResolvedVariationIDs, MetalCode: old.MetalCode, StoneCode: old.StoneCode,
 		GoldRatePerG: old.GoldRatePerG, SettingRatePerPc: old.SettingRatePerPc, SkipIncomplete: old.Inputs.SkipIncomplete,
+		Quantities: old.Inputs.Quantities,
 	}
 	if o.GoldRatePerG != nil {
 		req.GoldRatePerG = *o.GoldRatePerG

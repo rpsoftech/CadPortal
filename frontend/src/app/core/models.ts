@@ -310,6 +310,8 @@ export interface CostSheetRequest {
   setting_rate_per_pc: string;
   /** Cost the complete variations and list the others, instead of costing nothing. */
   skip_incomplete: boolean;
+  /** Pieces per variation id (an order's quantities): the rows are then for that many pieces. */
+  quantities?: Record<number, number>;
 }
 
 /** One costed variation. Money and weights are decimal strings straight from the API. */
@@ -321,6 +323,8 @@ export interface CostSheetRow {
   variation_code: string;
   metal_code: string;
   stone_code: string;
+  /** Pieces the row stands for (an order's quantity); amounts and weights are for the whole line. */
+  quantity?: number;
   net_g: string;
   gross_g: string;
   wastage_pct: string;
@@ -379,6 +383,8 @@ export interface CostPreview {
 export interface CostingSheetSummary {
   id: number;
   name: string;
+  /** The order this sheet was made from, if any. */
+  order_id?: number | null;
   created_at: string;
   created_by: number | null;
   created_by_name: string;
@@ -765,4 +771,19 @@ export interface OrderProblem {
   variation_code?: string;
   message: string;
   missing?: { SizeMM: string; Code: string }[];
+}
+
+/** Body of POST /orders/:id/costing: metal and stone code come from the order. */
+export interface CostOrderRequest {
+  gold_rate_per_g: string;
+  setting_rate_per_pc: string;
+  skip_incomplete: boolean;
+  name?: string;
+}
+
+/** The answer to costing an order: the saved sheet and how far the live designs have moved from the order. */
+export interface CostOrderResult {
+  sheet: CostingSheet;
+  snapshot_differs: boolean;
+  drift: OrderDiff;
 }

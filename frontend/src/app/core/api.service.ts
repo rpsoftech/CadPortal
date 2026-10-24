@@ -21,6 +21,8 @@ import {
   CostingSheetComparison,
   CostingSheetSummary,
   CostPreview,
+  CostOrderRequest,
+  CostOrderResult,
   CostSheetRequest,
   CadZipLink,
   CadZipRequest,
@@ -465,6 +467,37 @@ export class ApiService {
     body: { name?: string; metal_code?: string; stone_code?: string; skip_unavailable?: boolean } = {},
   ): Observable<{ order: Order; diff: OrderDiff }> {
     return this.http.post<{ order: Order; diff: OrderDiff }>(`${BASE}/orders/${id}/clone`, body);
+  }
+  /** One-page-plus summary of the order from its snapshot (any role). */
+  orderSummaryPdf(id: number): Observable<Blob> {
+    return this.http.get(`${BASE}/orders/${id}/summary.pdf`, { responseType: 'blob' });
+  }
+  /** A job bag per line of the order, or per piece, from the order's snapshot (any role). */
+  orderJobBagsPdf(id: number, perPiece = false): Observable<Blob> {
+    const params = new HttpParams().set('per_piece', perPiece);
+    return this.http.get(`${BASE}/orders/${id}/job-bags.pdf`, { params, responseType: 'blob' });
+  }
+  orderCsv(id: number): Observable<Blob> {
+    return this.http.get(`${BASE}/orders/${id}/csv`, { responseType: 'blob' });
+  }
+  /** The orders list as CSV, with the list's own filters. */
+  ordersCsv(f: { status?: string; q?: string; from?: string; to?: string } = {}): Observable<Blob> {
+    let params = new HttpParams();
+    for (const k of ['status', 'q', 'from', 'to'] as const) {
+      const v = f[k]?.trim();
+      if (v) params = params.set(k, v);
+    }
+    return this.http.get(`${BASE}/exports/orders-csv`, { params, responseType: 'blob' });
+  }
+  /**
+   * Costs the order from today's master data for its quantities and saves an immutable sheet linked to
+   * it (admin/designer). Missing data fails with 422 and the grouped problems unless `skip_incomplete`.
+   */
+  costOrder(id: number, body: CostOrderRequest): Observable<CostOrderResult> {
+    return this.http.post<CostOrderResult>(`${BASE}/orders/${id}/costing`, body);
+  }
+  orderCostingSheets(id: number): Observable<CostingSheetSummary[]> {
+    return this.http.get<CostingSheetSummary[]>(`${BASE}/orders/${id}/costing-sheets`);
   }
 }
 

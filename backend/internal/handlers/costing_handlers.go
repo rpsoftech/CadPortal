@@ -190,8 +190,11 @@ func (h *H) recostCostingSheet(c *gin.Context) {
 		name += " (re-cost)"
 	}
 	uid, _ := strconv.ParseInt(auth.UserIDFrom(c), 10, 64)
-	d, err := h.S.SaveCostingSheet(c, service.SaveSheetParams{Name: name, UserID: uid, RecostOf: id,
-		Request: req, Result: res, CSV: string(csv)})
+	p := service.SaveSheetParams{Name: name, UserID: uid, RecostOf: id, Request: req, Result: res, CSV: string(csv)}
+	if old.OrderID != nil { // a re-cost of an order's sheet stays on that order
+		p.OrderID = *old.OrderID
+	}
+	d, err := h.S.SaveCostingSheet(c, p)
 	if err != nil {
 		fail(c, err)
 		return
