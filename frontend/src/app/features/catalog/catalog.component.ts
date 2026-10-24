@@ -44,6 +44,7 @@ import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design
 import { SelectionBarComponent } from '../../shared/selection-bar.component';
 import { CostSelectedData, CostSelectedDialogComponent } from './cost-selected-dialog.component';
 import { DownloadCadData, DownloadCadDialogComponent } from './download-cad-dialog.component';
+import { PrintJobBagsData, PrintJobBagsDialogComponent } from './print-job-bags-dialog.component';
 import { DesignImportDialogComponent } from './design-import-dialog.component';
 import { SetupChecklistComponent } from '../../shared/setup-checklist.component';
 import { percent, positiveDecimal } from '../../shared/validators';
@@ -298,6 +299,16 @@ export class CatalogComponent {
   protected downloadCad(kind: CadZipKind): void {
     const data: DownloadCadData = { kind, designs: this.selection.items() };
     this.dialog.open<DownloadCadDialogComponent, DownloadCadData>(DownloadCadDialogComponent, {
+      data,
+      width: '520px',
+      maxWidth: '95vw',
+    });
+  }
+
+  /** Opens the dialog that prints the job bags of the selected designs into one PDF. */
+  protected printJobBags(): void {
+    const data: PrintJobBagsData = { designs: this.selection.items() };
+    this.dialog.open<PrintJobBagsDialogComponent, PrintJobBagsData>(PrintJobBagsDialogComponent, {
       data,
       width: '520px',
       maxWidth: '95vw',

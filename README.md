@@ -849,6 +849,39 @@ failed create gives its number back. Up to 500 lines, quantity 1 to 100000, a va
   since this order was made** with the fields; a deleted or purged one is marked **No longer in the catalog as
   ordered** with the reason; the snapshot is shown either way. Production sees all of it and none of the buttons.
 
+#### What an order produces (stage 41)
+
+All of these read the order's own snapshot, so they print the same after the design changes. Every role
+may use the first four (production works from them; nothing in them is a price); costing is admin and
+designer only.
+
+- **Summary PDF**, `GET /orders/:id/summary.pdf`: order number and QR (a link to the order page when
+  `APP_BASE_URL` is set, else the number), name, status, due date, metal, stone code, notes, the
+  `criteria` note, totals (pieces, stones to set, net / stone / gross weight, average stone %; each is the
+  sum of line weight x quantity), then the lines in a table that continues over as many pages as needed,
+  repeating its header, with `Page n of N` in the footer. Same branding as the job bag.
+- **Job bags**, `GET /orders/:id/job-bags.pdf[?per_piece=true]`: one bag per line, built from the snapshot
+  (weights, BOM, base input, CAD file hashes) with the order number and quantity printed on it; with
+  `per_piece=true` one bag for every piece ("piece 2 of 5"). At most 500 bags at once (400 otherwise).
+  A variation purged since still prints from its snapshot.
+- **CSV**, `GET /orders/:id/csv` (a row per line with the weights per piece and for the line, and a `TOTAL`
+  row) and `GET /exports/orders-csv` (the orders list, same `status`, `q`, `from`, `to` filters, at most
+  5000 rows). Text that came from people is neutralised against spreadsheet formulas like the other CSVs.
+- **Cost this order**, `POST /orders/:id/costing {gold_rate_per_g, setting_rate_per_pc, skip_incomplete?,
+  name?}` (metal and stone code come from the order). Costs the order's variations from **today's** master
+  data and designs (wastage, stone prices, matrix, seats), multiplying every weight and amount by the line
+  quantity (a `qty` column in the CSV; the sheet rows carry `quantity`), and saves an immutable costing
+  sheet linked to the order (`costing_sheets.order_id`, migration 000019). Missing wastage, stone prices or
+  matrix rows fail with 422 and the same grouped `problems` list as costing designs (nothing is saved, nothing
+  is costed as zero), unless `skip_incomplete`. A line whose variation was purged cannot be costed and is
+  reported as a problem. The answer is `{sheet, snapshot_differs, drift}`: `drift` lists, per line, how the
+  live design differs from the order's snapshot, so a costing is never silently based on something other than
+  what production will build. `GET /orders/:id/costing-sheets` lists the order's sheets; re-costing such a
+  sheet keeps its quantities and its order.
+- **Catalog**: the selection bar has **Print job bags** (any role): metal and stone code, optional *skip
+  variations with missing stone data*, one PDF with a bag per variation of the selected designs (the existing
+  `POST /exports/job-bags-pdf`, at most 200 bags).
+
 ### Downloading many CAD files at once
 
 In the **Catalog**, tick designs (any role can; production too) and use **Download STL** or

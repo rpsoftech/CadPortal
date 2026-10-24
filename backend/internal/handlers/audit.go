@@ -80,6 +80,11 @@ var auditRoutes = map[string]auditRoute{
 	"PUT /api/v1/orders/:id/lines":            {action: "order.set_lines", entity: "order", idParam: "id"},
 	"POST /api/v1/orders/:id/status":          {action: "order.status", entity: "order", idParam: "id"},
 	"POST /api/v1/orders/:id/clone":           {action: "order.clone", entity: "order", idParam: "id"},
+	"GET /api/v1/orders/:id/summary.pdf":      {action: "order.summary_pdf", entity: "order", idParam: "id", reads: true},
+	"GET /api/v1/orders/:id/job-bags.pdf":     {action: "order.job_bags", entity: "order", idParam: "id", reads: true},
+	"GET /api/v1/orders/:id/csv":              {action: "order.csv", entity: "order", idParam: "id", reads: true},
+	"GET /api/v1/exports/orders-csv":          {action: "export.orders", entity: "order", reads: true},
+	"POST /api/v1/orders/:id/costing":         {action: "order.cost", entity: "order", idParam: "id"},
 	"GET /api/v1/orders/:id/download":         {action: "order.download", entity: "order", idParam: "id", reads: true},
 	"GET /api/v1/orders/:id/package":          {action: "order.download", entity: "order", idParam: "id", reads: true},
 	"GET /api/v1/orders/:id/download/link":    {skip: true}, // checks and signs only; the download is recorded when it runs

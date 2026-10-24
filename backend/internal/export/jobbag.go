@@ -142,6 +142,9 @@ func (b *JobBagsPDF) AddBag(jb service.JobBag) error {
 		pdf.SetFont("Helvetica", "", 10)
 		pdf.MultiCell(0, 6, tr(v), "", "L", false)
 	}
+	if jb.OrderRef != "" {
+		kv("Order", jb.OrderRef)
+	}
 	kv("Design", strings.TrimSpace(jb.DesignCode+" "+jb.DesignName))
 	kv("Category", jb.Category)
 	if len(jb.Tags) > 0 {

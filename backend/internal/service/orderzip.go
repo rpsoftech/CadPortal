@@ -57,7 +57,7 @@ func (s *Service) orderZipKinds(files string) ([]string, error) {
 // when the order was made, checked against the recorded hash and size while it streams), not from the
 // variation as it is now; the live variation is only looked at to tell the manifest whether the catalog
 // has moved on. files is "stl", "3dm" or "stl,3dm"; with pack the ZIP also gets the job-bag PDF and a
-// summary CSV (the PDF is made by the caller at stream time, see OrderJobBags). ErrTooLarge when the
+// summary CSV (the PDF is made by the caller at stream time, see OrderPackageBags). ErrTooLarge when the
 // recorded files or bytes pass the caps.
 func (s *Service) PlanOrderZip(ctx context.Context, orderID int64, files string, pack bool) (*OrderZipPlan, error) {
 	if s.Store == nil {
@@ -213,10 +213,10 @@ type OrderBag struct {
 	ThumbKey string
 }
 
-// OrderJobBags builds one job bag per order line from the snapshot taken when the order was made, so the
+// OrderPackageBags builds one job bag per order line (with its cover thumbnail key, for the order package) from the snapshot taken when the order was made, so the
 // sheet shows the weights and BOM that were agreed even if the masters changed since, and cannot fail on a
 // stone-weight row that was removed later. Photos are not read here (see OrderBagPhoto).
-func (s *Service) OrderJobBags(ctx context.Context, orderID int64) ([]OrderBag, error) {
+func (s *Service) OrderPackageBags(ctx context.Context, orderID int64) ([]OrderBag, error) {
 	od, err := s.GetOrder(ctx, orderID)
 	if err != nil {
 		return nil, err
@@ -230,7 +230,7 @@ func (s *Service) OrderJobBags(ctx context.Context, orderID int64) ([]OrderBag, 
 		sn := l.Snapshot
 		jb := JobBag{
 			QR: s.jobBagQR(sn.DesignCode, sn.VariationCode), DesignCode: sn.DesignCode, DesignName: sn.DesignName, Category: sn.CategoryName,
-			Tags: sn.Tags, VariationCode: sn.VariationCode, BaseInput: orderBaseInput(sn.BaseInput), MetalCode: sn.MetalCode,
+			Tags: sn.Tags, VariationCode: sn.VariationCode, BaseInput: snapshotBaseInput(sn.BaseInput), MetalCode: sn.MetalCode,
 			NetG: sn.NetG, GrossG: sn.GrossG, GeneratedAt: sn.SnapshotAt,
 			BOM: BOMResult{VariationCode: sn.VariationCode, StoneCode: sn.StoneCode, Lines: sn.BOM, TotalPcs: sn.TotalPcs,
 				TotalCarats: sn.StoneCt, StoneWeightG: sn.StoneG},
@@ -244,16 +244,6 @@ func (s *Service) OrderJobBags(ctx context.Context, orderID int64) ([]OrderBag, 
 		bags = append(bags, OrderBag{JobBag: jb, ThumbKey: internals[l.ID].CoverThumb})
 	}
 	return bags, nil
-}
-
-func orderBaseInput(b BaseInputSnapshot) string {
-	switch {
-	case b.VolumeMM3 != nil:
-		return fmt.Sprintf("Volume %s mm3", b.VolumeMM3.StringFixed(3))
-	case b.RefWeightG != nil:
-		return fmt.Sprintf("Reference %s g in %s", b.RefWeightG.StringFixed(3), b.RefMetalCode)
-	}
-	return ""
 }
 
 // OrderBagPhoto reads the cover thumbnail recorded for a line (nil when there is none or it is gone).

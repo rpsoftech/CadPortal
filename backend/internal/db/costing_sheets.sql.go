@@ -25,7 +25,7 @@ func (q *Queries) DeleteCostingSheet(ctx context.Context, id int64) (int64, erro
 }
 
 const getCostingSheet = `-- name: GetCostingSheet :one
-SELECT s.id, s.name, s.created_by, s.created_at, s.recost_of, s.metal_code, s.stone_code, s.gold_rate_per_g, s.setting_rate_per_pc, s.design_count, s.variation_count, s.incomplete_count, s.total, s.inputs, s.result_rows, s.totals, s.problems, s.rates, s.csv, COALESCE(NULLIF(u.name, ''), u.email, '')::text AS created_by_name
+SELECT s.id, s.name, s.created_by, s.created_at, s.recost_of, s.metal_code, s.stone_code, s.gold_rate_per_g, s.setting_rate_per_pc, s.design_count, s.variation_count, s.incomplete_count, s.total, s.inputs, s.result_rows, s.totals, s.problems, s.rates, s.csv, s.order_id, COALESCE(NULLIF(u.name, ''), u.email, '')::text AS created_by_name
 FROM costing_sheets s
 LEFT JOIN users u ON u.id = s.created_by
 WHERE s.id = $1
@@ -51,6 +51,7 @@ type GetCostingSheetRow struct {
 	Problems         []byte             `json:"problems"`
 	Rates            []byte             `json:"rates"`
 	Csv              string             `json:"csv"`
+	OrderID          pgtype.Int8        `json:"order_id"`
 	CreatedByName    string             `json:"created_by_name"`
 }
 
@@ -77,6 +78,7 @@ func (q *Queries) GetCostingSheet(ctx context.Context, id int64) (GetCostingShee
 		&i.Problems,
 		&i.Rates,
 		&i.Csv,
+		&i.OrderID,
 		&i.CreatedByName,
 	)
 	return i, err
@@ -85,8 +87,8 @@ func (q *Queries) GetCostingSheet(ctx context.Context, id int64) (GetCostingShee
 const insertCostingSheet = `-- name: InsertCostingSheet :one
 INSERT INTO costing_sheets (name, created_by, recost_of, metal_code, stone_code, gold_rate_per_g,
                             setting_rate_per_pc, design_count, variation_count, incomplete_count, total,
-                            inputs, result_rows, totals, problems, rates, csv)
-VALUES ($1, $16, $17, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                            inputs, result_rows, totals, problems, rates, csv, order_id)
+VALUES ($1, $16, $17, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $18)
 RETURNING id, created_at
 `
 
@@ -108,6 +110,7 @@ type InsertCostingSheetParams struct {
 	Csv              string          `json:"csv"`
 	CreatedBy        pgtype.Int8     `json:"created_by"`
 	RecostOf         pgtype.Int8     `json:"recost_of"`
+	OrderID          pgtype.Int8     `json:"order_id"`
 }
 
 type InsertCostingSheetRow struct {
@@ -134,6 +137,7 @@ func (q *Queries) InsertCostingSheet(ctx context.Context, arg InsertCostingSheet
 		arg.Csv,
 		arg.CreatedBy,
 		arg.RecostOf,
+		arg.OrderID,
 	)
 	var i InsertCostingSheetRow
 	err := row.Scan(&i.ID, &i.CreatedAt)
@@ -141,7 +145,7 @@ func (q *Queries) InsertCostingSheet(ctx context.Context, arg InsertCostingSheet
 }
 
 const listCostingSheets = `-- name: ListCostingSheets :many
-SELECT s.id, s.name, s.created_by, COALESCE(NULLIF(u.name, ''), u.email, '')::text AS created_by_name,
+SELECT s.id, s.name, s.order_id, s.created_by, COALESCE(NULLIF(u.name, ''), u.email, '')::text AS created_by_name,
        s.created_at, s.recost_of, s.metal_code, s.stone_code, s.gold_rate_per_g, s.setting_rate_per_pc,
        s.design_count, s.variation_count, s.incomplete_count, s.total,
        count(*) OVER ()::bigint AS total_count
@@ -159,6 +163,7 @@ type ListCostingSheetsParams struct {
 type ListCostingSheetsRow struct {
 	ID               int64              `json:"id"`
 	Name             string             `json:"name"`
+	OrderID          pgtype.Int8        `json:"order_id"`
 	CreatedBy        pgtype.Int8        `json:"created_by"`
 	CreatedByName    string             `json:"created_by_name"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
@@ -186,6 +191,7 @@ func (q *Queries) ListCostingSheets(ctx context.Context, arg ListCostingSheetsPa
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.OrderID,
 			&i.CreatedBy,
 			&i.CreatedByName,
 			&i.CreatedAt,
@@ -199,6 +205,70 @@ func (q *Queries) ListCostingSheets(ctx context.Context, arg ListCostingSheetsPa
 			&i.IncompleteCount,
 			&i.Total,
 			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCostingSheetsForOrder = `-- name: ListCostingSheetsForOrder :many
+SELECT s.id, s.name, s.order_id, s.created_by, COALESCE(NULLIF(u.name, ''), u.email, '')::text AS created_by_name,
+       s.created_at, s.recost_of, s.metal_code, s.stone_code, s.gold_rate_per_g, s.setting_rate_per_pc,
+       s.design_count, s.variation_count, s.incomplete_count, s.total
+FROM costing_sheets s
+LEFT JOIN users u ON u.id = s.created_by
+WHERE s.order_id = $1
+ORDER BY s.created_at DESC, s.id DESC
+`
+
+type ListCostingSheetsForOrderRow struct {
+	ID               int64              `json:"id"`
+	Name             string             `json:"name"`
+	OrderID          pgtype.Int8        `json:"order_id"`
+	CreatedBy        pgtype.Int8        `json:"created_by"`
+	CreatedByName    string             `json:"created_by_name"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	RecostOf         pgtype.Int8        `json:"recost_of"`
+	MetalCode        string             `json:"metal_code"`
+	StoneCode        string             `json:"stone_code"`
+	GoldRatePerG     decimal.Decimal    `json:"gold_rate_per_g"`
+	SettingRatePerPc decimal.Decimal    `json:"setting_rate_per_pc"`
+	DesignCount      int32              `json:"design_count"`
+	VariationCount   int32              `json:"variation_count"`
+	IncompleteCount  int32              `json:"incomplete_count"`
+	Total            decimal.Decimal    `json:"total"`
+}
+
+func (q *Queries) ListCostingSheetsForOrder(ctx context.Context, orderID pgtype.Int8) ([]ListCostingSheetsForOrderRow, error) {
+	rows, err := q.db.Query(ctx, listCostingSheetsForOrder, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCostingSheetsForOrderRow
+	for rows.Next() {
+		var i ListCostingSheetsForOrderRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.OrderID,
+			&i.CreatedBy,
+			&i.CreatedByName,
+			&i.CreatedAt,
+			&i.RecostOf,
+			&i.MetalCode,
+			&i.StoneCode,
+			&i.GoldRatePerG,
+			&i.SettingRatePerPc,
+			&i.DesignCount,
+			&i.VariationCount,
+			&i.IncompleteCount,
+			&i.Total,
 		); err != nil {
 			return nil, err
 		}

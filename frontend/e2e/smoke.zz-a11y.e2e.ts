@@ -130,6 +130,7 @@ for (const scheme of SCHEMES) {
       await page.getByRole('checkbox', { name: /^Select [A-Z]+\d+/ }).first().check();
       await s.scan('catalog: selection bar');
       await s.overlay('catalog: download STL dialog', () => page.getByRole('button', { name: 'Download STL' }).click());
+      await s.overlay('catalog: print job bags dialog', () => page.getByRole('button', { name: 'Print job bags' }).click());
       // New order: the review step from the selection (SPA navigation keeps the selection), then back
       await page.getByRole('button', { name: 'Create order' }).click();
       await expect(page.getByRole('heading', { name: 'New order', level: 1 })).toBeVisible();
@@ -220,6 +221,7 @@ for (const scheme of SCHEMES) {
       await page.getByRole('link', { name: /^ORD-/ }).first().click();
       await expect(page.getByRole('table', { name: 'Order lines' })).toBeVisible();
       await s.scan('order detail');
+      await s.overlay('order: cost dialog', () => page.getByRole('button', { name: 'Cost this order' }).click());
       await s.overlay('order: order again dialog', () => page.getByRole('button', { name: 'Order again' }).click());
       const cancel = page.getByRole('button', { name: 'Cancel order' });
       if (await cancel.count()) await s.overlay('order: cancel dialog', () => cancel.click());

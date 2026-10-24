@@ -95,6 +95,7 @@ type CostingSheet struct {
 	Problems         []byte             `json:"problems"`
 	Rates            []byte             `json:"rates"`
 	Csv              string             `json:"csv"`
+	OrderID          pgtype.Int8        `json:"order_id"`
 }
 
 type DesignMedium struct {

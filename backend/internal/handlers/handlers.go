@@ -175,6 +175,12 @@ func (h *H) Register(r *gin.Engine) {
 	v1.PUT("/orders/:id/lines", editor, h.setOrderLines)
 	v1.POST("/orders/:id/status", editor, h.setOrderStatus)
 	v1.POST("/orders/:id/clone", editor, h.cloneOrder)
+	v1.GET("/orders/:id/summary.pdf", anyRole, h.orderSummaryPDF)
+	v1.GET("/orders/:id/job-bags.pdf", anyRole, h.orderJobBags)
+	v1.GET("/orders/:id/csv", anyRole, h.orderCSV)
+	v1.GET("/exports/orders-csv", anyRole, h.ordersCSV)
+	v1.POST("/orders/:id/costing", editor, h.costOrder)
+	v1.GET("/orders/:id/costing-sheets", editor, h.listOrderCostingSheets)
 	// The CAD files an order recorded, and the order package, as one ZIP. Every role may download; the signed
 	// link is what a browser opens.
 	v1.GET("/orders/:id/download", anyRole, h.orderDownload(false))

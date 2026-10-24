@@ -229,6 +229,8 @@ type JobBag struct {
 	FileStlName   string
 	FileStlSHA256 string
 	GeneratedAt   time.Time
+	// OrderRef, when the bag is printed for an order, says which ("ORD-0007, quantity 3"); empty otherwise.
+	OrderRef string
 	// Photo is a JPEG thumbnail of the variation (or, failing that, the design) for the top of the
 	// sheet; nil when there is none or storage cannot be read. The job bag never fails for want of it.
 	Photo []byte

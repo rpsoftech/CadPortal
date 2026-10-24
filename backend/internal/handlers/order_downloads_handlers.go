@@ -150,7 +150,7 @@ func (h *H) streamOrderZip(c *gin.Context, orderID int64, files string, pack boo
 }
 
 func (h *H) orderJobBagsPDF(c *gin.Context, orderID int64, number string) ([]byte, error) {
-	bags, err := h.S.OrderJobBags(c, orderID)
+	bags, err := h.S.OrderPackageBags(c, orderID)
 	if err != nil {
 		return nil, err
 	}

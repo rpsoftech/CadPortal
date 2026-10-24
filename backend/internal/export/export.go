@@ -79,7 +79,23 @@ func WriteCostingCSV(w io.Writer, rows []service.CostRow) error {
 // (skip_incomplete), a clearly separate NOT COSTED section listing them and why.
 func WriteCostingSheetCSV(w io.Writer, rows []service.SheetRow, totals service.SheetTotals, problems []service.DesignProblem) error {
 	cw := csv.NewWriter(w)
-	if err := cw.Write(CostingHeader); err != nil {
+	// A sheet costed for quantities (an order) has a qty column after the variation, and every
+	// amount on a row is then for that many pieces.
+	withQty := false
+	qtyTotal := 0
+	for _, r := range rows {
+		if r.Quantity > 0 {
+			withQty = true
+		}
+		qtyTotal += r.Quantity
+	}
+	addQty := func(rec []string, qty string) []string {
+		if !withQty {
+			return rec
+		}
+		return append(rec[:1], append([]string{qty}, rec[1:]...)...)
+	}
+	if err := cw.Write(addQty(append([]string(nil), CostingHeader...), "qty")); err != nil {
 		return err
 	}
 	for _, r := range rows {
@@ -91,7 +107,7 @@ func WriteCostingSheetCSV(w io.Writer, rows []service.SheetRow, totals service.S
 			strconv.Itoa(r.SettingPcs), r.SettingRatePerPc.String(), r.SettingCost.StringFixed(2),
 			r.Total.StringFixed(2),
 		}
-		if err := cw.Write(rec); err != nil {
+		if err := cw.Write(addQty(rec, strconv.Itoa(r.Quantity))); err != nil {
 			return err
 		}
 	}
@@ -101,7 +117,7 @@ func WriteCostingSheetCSV(w io.Writer, rows []service.SheetRow, totals service.S
 			totals.StoneCt.StringFixed(4), totals.StoneG.StringFixed(4), totals.StoneCost.StringFixed(2),
 			strconv.Itoa(totals.SettingPcs), "", totals.SettingCost.StringFixed(2), totals.Total.StringFixed(2),
 		}
-		if err := cw.Write(rec); err != nil {
+		if err := cw.Write(addQty(rec, strconv.Itoa(qtyTotal))); err != nil {
 			return err
 		}
 	}
