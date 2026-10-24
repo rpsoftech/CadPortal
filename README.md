@@ -868,8 +868,41 @@ download that streams straight to disk (nothing is held in the page, so it works
 - API: `POST /api/v1/downloads/cad-zip` streams the ZIP for a script; the web app calls
   `POST /api/v1/downloads/cad-zip/link` (estimate plus a 2-minute signed link) because a browser cannot
   send the sign-in token with a plain download. Every download is audited as `download.cad_zip`.
-- The package `backend/internal/ziparchive` is the reusable core. The planned order download will call
-  it with the file hashes and sizes recorded when the order was made.
+- The package `backend/internal/ziparchive` is the reusable core; the order downloads below use it.
+
+#### Order download and order package
+
+On an order (any role may download):
+
+- `GET /api/v1/orders/:id/download?files=stl|3dm|stl,3dm` streams one ZIP; `GET /api/v1/orders/:id/package?files=...`
+  streams the same ZIP plus `ORD-0001-job-bags.pdf` (one job bag per line) and `ORD-0001-summary.csv`
+  (one row per line: quantity, pcs, net/stone/gross g, stone %, file names and hashes; no prices exist on
+  an order). Browsers use `.../download/link?files=...` or `.../package/link?files=...`, which return
+  `files`, `missing`, `changed`, `bytes`, a `filename` and a 2-minute signed `url`
+  (`/api/v1/downloads/order-zip/file?ticket=`, no bearer token) that saves the ZIP straight to disk.
+- **The order's own copy ships.** The files come from the order snapshot (storage key, SHA-256 and size
+  recorded when the order was made), not from the variation as it is now, and are verified against that
+  hash while streaming. The job bags are drawn from the snapshot too (weights, BOM and stone code as
+  agreed), so they cannot fail on a stone-weight row that changed later.
+- `MANIFEST.csv` columns: `order, design, variation, metal, stone_code, quantity, kind, current_file`, then
+  the usual `file_in_zip, original_name, expected_sha256, actual_sha256, expected_bytes, bytes_written,
+  status, detail`. `current_file` says what the catalog holds now: `same`, `changed` (a different file,
+  named in `detail`), `removed` (the variation has no file of that kind now), `variation-gone` (deleted or
+  purged) or `none-when-ordered`. Anything but `same` is also counted in the ZIP comment and in `changed`
+  of the link answer, so the shop floor knows the catalog moved on. Missing data is `status=missing`,
+  never silently left out. The PDF and the summary are listed in the manifest as well.
+- Same caps as the selection download (`CAD_ZIP_MAX_FILES`, `CAD_ZIP_MAX_MB`, counted from the recorded
+  sizes; 413), one running download per user across both kinds (429), bounded memory (the job-bag PDF,
+  at most 200 lines, is built before the first byte and held in memory), every run audited as
+  `order.download` (order number, kinds, package, files, missing, changed, bytes).
+- **Purged files and open orders.** The hourly purge never deletes a CAD file that an order which is not
+  cancelled recorded: a replaced or removed file, or the files of a variation purged after
+  `DELETED_FILE_RETENTION_DAYS`, stay in storage (listed on the Removed screen with their time up) and are
+  deleted by the next purge after the last order holding them is cancelled. `done` orders keep holding
+  their files, so the storage cost is the old versions of files that appear on an order that was not
+  cancelled; cancel an order to release them. A file that is gone anyway (deleted by hand, a retention of
+  0 before this feature) shows as `missing` with "the stored object is gone". The cover photo thumbnail is
+  protected the same way for removed photos.
 
 ### Audit log
 

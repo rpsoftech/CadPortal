@@ -58,12 +58,22 @@ func (s *Service) retire(ctx context.Context, items ...retired) {
 	}
 	ctx = context.WithoutCancel(ctx)
 	for _, it := range items {
+		purgeAfter := time.Now().Add(s.Retention)
 		if s.Retention <= 0 {
-			_ = s.Store.Delete(ctx, it.ObjectKey)
-			if it.ThumbKey != "" {
-				_ = s.Store.Delete(ctx, it.ThumbKey)
+			// Retention 0 deletes at once, except a CAD file that an order which is not cancelled recorded:
+			// that one is recorded with its time up and the purge deletes it when the order is cancelled.
+			held := false
+			if it.Kind == "cad" {
+				held, _ = s.Q.ObjectKeyInOpenOrder(ctx, it.ObjectKey)
 			}
-			continue
+			if !held {
+				_ = s.Store.Delete(ctx, it.ObjectKey)
+				if it.ThumbKey != "" {
+					_ = s.Store.Delete(ctx, it.ThumbKey)
+				}
+				continue
+			}
+			purgeAfter = time.Now()
 		}
 		var restore []byte
 		if it.Restore != nil {
@@ -71,7 +81,7 @@ func (s *Service) retire(ctx context.Context, items ...retired) {
 		}
 		_, err := s.Q.InsertTrashedFile(ctx, db.InsertTrashedFileParams{
 			Kind: it.Kind, ObjectKey: it.ObjectKey, ThumbKey: pgText(it.ThumbKey), Label: it.Label,
-			Restore: restore, Reason: it.Reason, PurgeAfter: pgtype.Timestamptz{Time: time.Now().Add(s.Retention), Valid: true},
+			Restore: restore, Reason: it.Reason, PurgeAfter: pgtype.Timestamptz{Time: purgeAfter, Valid: true},
 		})
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) { // no rows: already recorded
 			log.Printf("trash: could not record %s, leaving the object in place: %v", it.ObjectKey, err)

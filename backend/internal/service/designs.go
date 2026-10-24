@@ -107,8 +107,24 @@ func (s *Service) DeleteVariation(ctx context.Context, id int64) error {
 func purgeVariationRow(ctx context.Context, q *db.Queries, v db.CadVariation) ([]string, error) {
 	var keys []string
 	for _, k := range []pgtype.Text{v.File3dmKey, v.FileStlKey} {
-		if k.Valid {
+		if !k.Valid {
+			continue
+		}
+		// A file that an order which is not cancelled recorded stays in storage, listed as removed with its
+		// time already up; the purge deletes it once no such order holds it any more.
+		held, err := q.ObjectKeyInOpenOrder(ctx, k.String)
+		if err != nil {
+			return nil, err
+		}
+		if !held {
 			keys = append(keys, k.String)
+			continue
+		}
+		if _, err := q.InsertTrashedFile(ctx, db.InsertTrashedFileParams{
+			Kind: "cad", ObjectKey: k.String, Label: v.Code + " (kept for an order)", Reason: "variation_purged",
+			PurgeAfter: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		}); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
 		}
 	}
 	photos, err := q.ListMediaForPurgedVariation(ctx, pgtype.Int8{Int64: v.ID, Valid: true})

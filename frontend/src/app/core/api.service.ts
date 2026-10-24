@@ -24,7 +24,9 @@ import {
   CostPreview,
   CostSheetRequest,
   CadZipLink,
+  CadZipKind,
   CadZipRequest,
+  OrderZipLink,
   JobBagsRequest,
   DesignDetail,
   DuplicateDesignBody,
@@ -362,6 +364,14 @@ export class ApiService {
   /** Checks a selection and returns what a ZIP of its CAD files holds, with a link to download it. */
   cadZipLink(body: CadZipRequest): Observable<CadZipLink> {
     return this.http.post<CadZipLink>(`${BASE}/downloads/cad-zip/link`, body);
+  }
+  /**
+   * Checks an order and returns what its ZIP holds (the CAD files recorded on the order), with a link to
+   * download it. `package` adds the job-bag PDF of every line and a summary CSV.
+   */
+  orderZipLink(orderId: number, kinds: CadZipKind[], pack = false): Observable<OrderZipLink> {
+    const params = new HttpParams().set('files', kinds.join(','));
+    return this.http.get<OrderZipLink>(`${BASE}/orders/${orderId}/${pack ? 'package' : 'download'}/link`, { params });
   }
   /** Every master-data table as CSV files in one zip (admin only). */
   masterDataZip(): Observable<Blob> {
