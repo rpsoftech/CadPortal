@@ -40,6 +40,8 @@ type H struct {
 	MaxUploadBytes int64
 	// LocalFiles, when set (development storage), serves signed download links.
 	LocalFiles *storage.Local
+
+	zipState // one running CAD ZIP per user (see downloads_handlers.go)
 }
 
 const (
@@ -139,6 +141,12 @@ func (h *H) Register(r *gin.Engine) {
 		v1.GET("/local-files/*key", h.serveLocalFile)
 	}
 
+	// Many CAD files in one ZIP: every role that may download a single file. The signed link is what a
+	// browser opens (it cannot send the bearer token with a navigation), so it has no token middleware.
+	v1.POST("/downloads/cad-zip", anyRole, h.cadZip)
+	v1.POST("/downloads/cad-zip/link", anyRole, h.cadZipLink)
+	v1.GET("/downloads/cad-zip/file", h.cadZipFile)
+
 	// Backups: history, a "back up now" request and download links to the (encrypted) dumps. Admin only.
 	v1.GET("/backups", admin, h.listBackups)
 	v1.POST("/backups/run", admin, h.requestBackup)
@@ -156,6 +164,16 @@ func (h *H) Register(r *gin.Engine) {
 	v1.DELETE("/costing-sheets/:id", editor, h.deleteCostingSheet)
 	v1.POST("/costing-sheets/:id/recost", editor, h.recostCostingSheet)
 	v1.GET("/exports/designs-csv", anyRole, h.designsCSV)
+
+	// Orders: a selection of catalog variations sent to production. Everyone signed in reads (production
+	// works from them); admin/designer write. Cancelled, never deleted.
+	v1.POST("/orders", editor, h.createOrder)
+	v1.GET("/orders", anyRole, h.listOrders)
+	v1.GET("/orders/:id", anyRole, h.getOrder)
+	v1.PUT("/orders/:id", editor, h.updateOrder)
+	v1.PUT("/orders/:id/lines", editor, h.setOrderLines)
+	v1.POST("/orders/:id/status", editor, h.setOrderStatus)
+	v1.POST("/orders/:id/clone", editor, h.cloneOrder)
 }
 
 func fail(c *gin.Context, err error) {
@@ -464,7 +482,8 @@ func (h *H) getDesign(c *gin.Context) {
 }
 
 func (h *H) listDesigns(c *gin.Context) {
-	f := service.DesignFilter{MetalCode: c.Query("metal_code"), Query: c.Query("q")}
+	f := service.DesignFilter{MetalCode: c.Query("metal_code"), Query: c.Query("q"),
+		StoneCode: c.Query("stone_code"), Sort: c.Query("sort")}
 	var err error
 	if f.CategoryID, err = optInt(c, "category_id"); err != nil {
 		badRequest(c, err.Error())
@@ -482,6 +501,7 @@ func (h *H) listDesigns(c *gin.Context) {
 		"min_net_wt": &f.MinNetWt, "max_net_wt": &f.MaxNetWt,
 		"min_gross_wt": &f.MinGrossWt, "max_gross_wt": &f.MaxGrossWt,
 		"max_stone_cts": &f.MaxStoneCts,
+		"min_stone_pct": &f.MinStonePct, "max_stone_pct": &f.MaxStonePct,
 	} {
 		if s := c.Query(name); s != "" {
 			d, perr := decimal.NewFromString(s)

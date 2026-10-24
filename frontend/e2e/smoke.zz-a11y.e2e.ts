@@ -131,6 +131,11 @@ for (const scheme of SCHEMES) {
       // --- signed in ---
       await signIn(page);
       await s.scan('catalog');
+      // A design ticked: the selection bar with the CAD download buttons, and the download dialog.
+      await page.getByRole('checkbox', { name: /^Select [A-Z]+\d+/ }).first().check();
+      await s.scan('catalog: selection bar');
+      await s.overlay('catalog: download STL dialog', () => page.getByRole('button', { name: 'Download STL' }).click());
+      await page.getByRole('button', { name: 'Clear', exact: true }).click();
       const filters = page.getByRole('button', { name: /^Filters/ });
       if (phone) {
         await filters.click();
@@ -153,6 +158,20 @@ for (const scheme of SCHEMES) {
       if (phone) {
         await s.overlay('navigation menu', () => page.getByRole('button', { name: 'Menu', exact: true }).click());
       }
+
+      // catalog with a metal and stone code: the stone figures on the cards, and the stone filters
+      await s.go('/?metal=22KY&stone=2HD&pct_min=0&sort=stone_pct_desc', 'catalog: stone figures');
+      if (phone) {
+        await filters.click();
+        await expect(page.getByLabel('Stone % min')).toBeVisible();
+        await s.scan('catalog: stone filters panel open');
+        await filters.click();
+      }
+      await s.overlay('catalog: stone code list', async () => {
+        if (phone) await filters.click();
+        await page.getByLabel('Stone code').click();
+        await page.getByRole('option').first().waitFor();
+      });
 
       // design detail
       await s.go('/designs/LR0001', 'design detail');

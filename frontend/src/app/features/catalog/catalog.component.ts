@@ -12,7 +12,7 @@ import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   Subject,
   catchError,
@@ -32,13 +32,22 @@ import { fixed } from '../../core/format';
 import { CatalogSelection } from '../../core/catalog-selection';
 import { gramsToCarats } from '../../core/stone-units';
 import { saveBlob } from '../../shared/download';
-import { DesignFilter, DesignImportResult, DesignListItem, TAG_GROUPS } from '../../core/models';
+import {
+  CadZipKind,
+  DesignFilter,
+  DesignImportResult,
+  DesignListItem,
+  DesignSort,
+  TAG_GROUPS,
+} from '../../core/models';
 import { NewDesignData, NewDesignDialogComponent } from '../../shared/new-design-dialog.component';
 import { SelectionBarComponent } from '../../shared/selection-bar.component';
 import { CostSelectedData, CostSelectedDialogComponent } from './cost-selected-dialog.component';
+import { DownloadCadData, DownloadCadDialogComponent } from './download-cad-dialog.component';
 import { DesignImportDialogComponent } from './design-import-dialog.component';
 import { SetupChecklistComponent } from '../../shared/setup-checklist.component';
-import { positiveDecimal } from '../../shared/validators';
+import { percent, positiveDecimal } from '../../shared/validators';
+import { EMPTY_FILTERS, filtersToParams, paramsToFilters } from './catalog-url';
 
 interface ListState {
   loading: boolean;
@@ -81,6 +90,9 @@ export class CatalogComponent {
   private readonly dialog = inject(MatDialog);
   private readonly snack = inject(MatSnackBar);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  /** The filters of the address the screen was opened with (a shared link, or back from a design). */
+  private readonly initial = paramsToFilters(this.route.snapshot.queryParams);
   protected readonly auth = inject(AuthService);
   protected readonly selection = inject(CatalogSelection);
 
@@ -98,6 +110,27 @@ export class CatalogComponent {
     { initialValue: [] },
   );
 
+  protected readonly stoneCodes = toSignal(
+    this.api.stoneCodes().pipe(
+      map((cs) => cs.filter((c) => c.active)),
+      catchError(() => of([])),
+    ),
+    { initialValue: [] },
+  );
+  protected readonly baselineCode = computed(
+    () => this.stoneCodes().find((c) => c.is_default_baseline)?.code ?? null,
+  );
+
+  protected readonly sortOptions: { value: DesignSort; label: string; needsMetal: boolean }[] = [
+    { value: 'code', label: 'Design code', needsMetal: false },
+    { value: 'net_asc', label: 'Net weight, light first', needsMetal: true },
+    { value: 'net_desc', label: 'Net weight, heavy first', needsMetal: true },
+    { value: 'gross_asc', label: 'Gross weight, light first', needsMetal: true },
+    { value: 'gross_desc', label: 'Gross weight, heavy first', needsMetal: true },
+    { value: 'stone_pct_asc', label: 'Stone %, low first', needsMetal: true },
+    { value: 'stone_pct_desc', label: 'Stone %, high first', needsMetal: true },
+  ];
+
   protected readonly tagGroups = computed(() =>
     TAG_GROUPS.map((name) => ({
       name,
@@ -106,16 +139,29 @@ export class CatalogComponent {
   );
 
   protected readonly form = new FormGroup({
-    q: new FormControl(''),
-    categoryId: new FormControl<number | null>(null),
-    metalCode: new FormControl<string | null>(null),
-    minNetWt: new FormControl('', positiveDecimal(3)),
-    maxNetWt: new FormControl('', positiveDecimal(3)),
-    minGrossWt: new FormControl('', positiveDecimal(3)),
-    maxGrossWt: new FormControl('', positiveDecimal(3)),
-    maxStoneCts: new FormControl('', positiveDecimal(8)),
-    tagIds: new FormControl<number[]>([], { nonNullable: true }),
+    q: new FormControl(this.initial.value.q),
+    categoryId: new FormControl<number | null>(this.initial.value.categoryId),
+    metalCode: new FormControl<string | null>(this.initial.value.metalCode),
+    stoneCode: new FormControl<string | null>(this.initial.value.stoneCode),
+    minNetWt: new FormControl(this.initial.value.minNetWt, positiveDecimal(3)),
+    maxNetWt: new FormControl(this.initial.value.maxNetWt, positiveDecimal(3)),
+    minGrossWt: new FormControl(this.initial.value.minGrossWt, positiveDecimal(3)),
+    maxGrossWt: new FormControl(this.initial.value.maxGrossWt, positiveDecimal(3)),
+    minStonePct: new FormControl(this.initial.value.minStonePct, percent(2)),
+    maxStonePct: new FormControl(this.initial.value.maxStonePct, percent(2)),
+    maxStoneCts: new FormControl(this.initial.value.maxStoneCts, positiveDecimal(8)),
+    sort: new FormControl<DesignSort>(this.initial.value.sort, { nonNullable: true }),
+    tagIds: new FormControl<number[]>(this.initial.value.tagIds, { nonNullable: true }),
   });
+
+  /** The weight and stone % filters and the weight sorts only mean something for a metal. */
+  protected readonly hasMetal = toSignal(
+    this.form.controls.metalCode.valueChanges.pipe(
+      startWith(this.form.controls.metalCode.value),
+      map((m) => m !== null),
+    ),
+    { initialValue: this.form.controls.metalCode.value !== null },
+  );
 
   /** The filter panel is folded away on a phone; on wider screens it is always shown. */
   protected readonly filtersOpen = signal(false);
@@ -130,7 +176,17 @@ export class CatalogComponent {
         return (
           (v.categoryId !== null ? 1 : 0) +
           (v.metalCode !== null ? 1 : 0) +
-          [v.minNetWt, v.maxNetWt, v.minGrossWt, v.maxGrossWt, v.maxStoneCts].filter(set).length +
+          (v.stoneCode !== null ? 1 : 0) +
+          (v.sort !== 'code' ? 1 : 0) +
+          [
+            v.minNetWt,
+            v.maxNetWt,
+            v.minGrossWt,
+            v.maxGrossWt,
+            v.minStonePct,
+            v.maxStonePct,
+            v.maxStoneCts,
+          ].filter(set).length +
           v.tagIds.length
         );
       }),
@@ -139,8 +195,8 @@ export class CatalogComponent {
   );
 
   protected readonly pageSizeOptions = [12, 24, 48, 96];
-  protected readonly pageIndex = signal(0);
-  protected readonly pageSize = signal(24);
+  protected readonly pageIndex = signal(this.initial.pageIndex);
+  protected readonly pageSize = signal(this.initial.pageSize);
   private readonly pageChanged$ = new Subject<void>();
 
   protected readonly state = toSignal(
@@ -156,6 +212,7 @@ export class CatalogComponent {
       switchMap(() => {
         const size = this.pageSize();
         const f = { ...this.filter(), limit: size, offset: this.pageIndex() * size };
+        this.syncUrl();
         const metal = f.metalCode ?? null;
         return this.api.listDesigns(f).pipe(
           tap(({ items }) => {
@@ -223,20 +280,49 @@ export class CatalogComponent {
       });
   }
 
+  /** Opens the download dialog for the STL or 3dm files of the selected designs. */
+  protected downloadCad(kind: CadZipKind): void {
+    const data: DownloadCadData = { kind, designs: this.selection.items() };
+    this.dialog.open<DownloadCadDialogComponent, DownloadCadData>(DownloadCadDialogComponent, {
+      data,
+      width: '520px',
+      maxWidth: '95vw',
+    });
+  }
+
   protected onPage(e: PageEvent): void {
     this.pageIndex.set(e.pageIndex);
     this.pageSize.set(e.pageSize);
     this.pageChanged$.next();
   }
 
+  /**
+   * Keeps the address in step with the filters, so a link shares them and coming back from a design
+   * restores them. It replaces the history entry instead of adding one per keystroke.
+   */
+  private syncUrl(): void {
+    const params = filtersToParams(
+      this.form.getRawValue(),
+      this.pageIndex(),
+      this.pageSize(),
+    );
+    void this.router.navigate([], { queryParams: params, replaceUrl: true });
+  }
+
   /** Invalid number fields are left out of the request instead of sent as garbage. */
   private filter(): DesignFilter {
     const c = this.form.controls;
     const num = (ctl: FormControl<string | null>) => (ctl.valid ? ctl.value : null);
+    const metal = c.metalCode.value;
     return {
       q: c.q.value,
       categoryId: c.categoryId.value,
-      metalCode: c.metalCode.value,
+      metalCode: metal,
+      stoneCode: c.stoneCode.value,
+      // stone % and the weight sorts are about the chosen metal: without one they are not sent
+      minStonePct: metal ? num(c.minStonePct) : null,
+      maxStonePct: metal ? num(c.maxStonePct) : null,
+      sort: metal && c.sort.value !== 'code' ? c.sort.value : null,
       tagIds: c.tagIds.value,
       minNetWt: num(c.minNetWt),
       maxNetWt: num(c.maxNetWt),
@@ -255,7 +341,13 @@ export class CatalogComponent {
   }
 
   protected reset(): void {
-    this.form.reset({ tagIds: [] });
+    this.form.reset({ ...EMPTY_FILTERS });
+  }
+
+  /** "Stone 0.069 g · 2.23 %" for the shown variation, or null when there is no stone figure. */
+  protected stone(d: DesignListItem): string | null {
+    if (d.stone_status !== 'ok' || d.stone_g == null || d.stone_pct == null) return null;
+    return `${fixed(d.stone_g, 3)} g · ${fixed(d.stone_pct, 2)} %`;
   }
 
   protected newDesign(): void {

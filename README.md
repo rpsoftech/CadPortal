@@ -531,6 +531,7 @@ CADPORTAL_VERSION=1.2.3 docker compose -f docker-compose.prod.yml -f docker-comp
 | CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl`, `DELETE /variations/:id/cad?kind=3dm\|stl` |
 | Exports | `POST /exports/job-bag-pdf`, `POST /exports/job-bags-pdf` (many bags in one PDF), `GET /exports/designs-csv` (any role); `POST /exports/costing-csv`, `POST /exports/costing-preview` (admin/designer) |
 | Costing sheets (admin/designer) | `POST/GET /costing-sheets`, `GET/DELETE /costing-sheets/:id`, `GET /costing-sheets/:id/csv`, `POST /costing-sheets/:id/recost` |
+| Orders (read: any role; write: admin/designer) | `POST/GET /orders`, `GET/PUT /orders/:id`, `PUT /orders/:id/lines` (draft only), `POST /orders/:id/status`, `POST /orders/:id/clone` |
 
 All paths are under `/api/v1`. Alongside the routes above:
 
@@ -695,6 +696,29 @@ Admins and designers have a **Removed** link in the top bar for taking back a mi
 - This is a safety net, not a backup: after the period the file is gone from R2 unless you turned on
   R2 object versioning or keep your own copy.
 
+### Catalog filters, stone code and stone %
+
+The catalog filters by category, text (code or name), tags, **target purity** (the metal), net and gross weight
+ranges, **stone code** (1HD, 2HD, 3HD, ...) and a **stone %** range, and sorts by design code, net weight, gross
+weight or stone %. The stone figures are worked out **on the fly** for the chosen metal and stone code from the
+seats and the stone size matrix (the weight cache only holds the baseline code): flexible seats use the chosen
+code, locked seats keep their own, with the same rounding as the job bag (carats to 4 dp, stone grams and gross to
+3 dp). Stone % is stone weight / **gross** weight x 100, rounded to 2 dp (e.g. the fixture in 18KR with 2HD: 0.0694 g
+over 3.119 g is 2.23 %); the min and max are inclusive and compare the rounded value. A variation with a missing
+matrix row for the chosen code has no stone figure: it is excluded by any gross or stone % filter, never treated as
+0, and its card says "no data for 2HD". A design matches when one of its variations does; the card shows that
+variation's net, stone g, gross and stone %. Stone % and sorting need a target purity. All filters, the sort and the
+page are in the address (shareable; coming back from a design restores them), and the ticked designs stay ticked.
+
+`GET /api/v1/designs` adds `stone_code` (default: the baseline code), `min_stone_pct`, `max_stone_pct` (0 to 100, at
+most 2 decimals) and `sort` (`net_asc|net_desc|gross_asc|gross_desc|stone_pct_asc|stone_pct_desc`). Any role may
+use them; no price or wastage is involved. The gross range now uses the gross for the chosen stone code.
+
+Benchmark (`TestScaleRecalc`, 5,000 designs / 15,000 variations / 60,000 seats, one Postgres 18 container on a
+laptop): list with a metal and no stone filter about 0.1 s; with a stone % range, gross range or a stone % sort
+about 0.6 s (every variation's seats are summed); text search, plain paging under 50 ms. No index was needed:
+`variation_stone_seats (variation_id, position)` already serves the per-variation seat lookup.
+
 ### Duplicating a design
 
 **Duplicate** (design page, admins and designers) makes a new design in the same category with the
@@ -766,6 +790,65 @@ and shows the difference per variation; the old sheet is untouched. An admin may
 designer their own. Creating, downloading, re-costing and deleting are in the audit log
 (`costing_sheet.*`). The production role cannot reach any of this.
 
+### Orders
+
+An order is a selection of catalog variations (a quantity each) in one metal and one stone code, sent
+to production. Not a customer order: no prices, payments or invoicing are stored. The API is built;
+the screens come later.
+
+`POST /orders` takes `{metal_code, stone_code, items: [{variation_id, quantity}], name?, notes?, due_date?,
+criteria?, place?}`. The selection is explicit; `criteria` (the filter the selection came from) is optional
+and informational, and an order is created without it. Numbers are `ORD-0001`, `ORD-0002` … allocated in
+the creating transaction from one locked counter row, so concurrent creates never repeat or skip one and a
+failed create gives its number back. Up to 500 lines, quantity 1 to 100000, a variation once per order.
+
+- **Snapshot.** Each line stores, when it is added, a copy of the design code / name / category / tags, the
+  variation code, metal, stone code and specific gravity, the base input, net / stone / gross weight, stone %
+  (stone weight as a percentage of gross weight), the full stone BOM, the CAD file names, SHA-256 hashes and sizes
+  (3dm and stl) and the cover photo reference. The numbers come from the same code as `simulate-bom`, so they
+  agree with it exactly. An order is read from its own tables only: editing the design, seats, a metal's SG or
+  the stone matrix, soft-deleting or purging the design or variation never changes it (`design_id` /
+  `variation_id` on a line become `null` after a purge; the snapshot stays whole). Storage keys are kept in a
+  separate server-only column and are never sent to a client.
+- **Missing data is never zero.** A variation whose stone data is missing for the chosen code (or that is
+  deleted) makes the whole request fail with 422 and a `problems` list naming every such variation and the
+  missing (size, code) pairs; nothing is created and no number is used.
+- **Status.** `draft` → `placed` → `in_production` → `done`; `cancelled` from draft, placed or in production;
+  `done` and `cancelled` are final. `POST /orders/:id/status {status, note?}` validates the move (409 if not
+  allowed) and records who and when in the order's `history`. Orders are cancelled, never deleted (no delete
+  route). Lines change only while the order is a draft (`PUT /orders/:id/lines`: a variation already on the
+  order keeps its snapshot, a new one is snapshotted now); name, notes and due date change until the order is
+  done or cancelled (`PUT /orders/:id`).
+- **Clone / reorder.** `POST /orders/:id/clone {name?, metal_code?, stone_code?, skip_unavailable?}` makes a
+  new draft from the old lines, re-snapshotted from the current designs, and returns `{order, diff}`; the diff
+  lists per line `unchanged`, `changed` (field, old, new) or `unavailable`. Lines that can no longer be
+  ordered fail the clone (422, listed) unless `skip_unavailable` is set, which drops and reports them.
+- **Roles.** Everyone signed in may read (`GET /orders` with `status`, `q`, `from`, `to`, `limit`, `offset`,
+  total in `X-Total-Count`; `GET /orders/:id`); admin and designer write. Creating, editing, changing lines,
+  status changes and clones are in the audit log (`order.*`).
+
+### Downloading many CAD files at once
+
+In the **Catalog**, tick designs (any role can; production too) and use **Download STL** or
+**Download 3dm** in the bar at the bottom. A dialog first says how many files and how many megabytes
+the ZIP holds and how many variations have no such file; **Download ZIP** then starts a normal browser
+download that streams straight to disk (nothing is held in the page, so it works on a phone).
+
+- The ZIP holds the **original files** (the vault stores them gzipped; they are unpacked while
+  streaming), named `LR0001-V1.stl`. A name that clashes gets ` (2)`; names never contain a path.
+- `MANIFEST.csv` is the last entry: design, variation, kind, name in the ZIP, uploaded file name, the
+  recorded and the computed SHA-256, bytes, `status` (`ok`, `missing`, `hash-mismatch`, `error`) and a
+  detail. A file whose bytes do not match the recorded checksum is flagged, never hidden; the ZIP's
+  comment also warns when anything is not `ok`.
+- Memory stays flat: each file goes through a 256 KB buffer, one at a time, and a closed browser tab
+  stops the work. Limits: `CAD_ZIP_MAX_FILES` (1000) and `CAD_ZIP_MAX_MB` (5120) per ZIP (413 above
+  them); one running download per user (429; per API instance when several run).
+- API: `POST /api/v1/downloads/cad-zip` streams the ZIP for a script; the web app calls
+  `POST /api/v1/downloads/cad-zip/link` (estimate plus a 2-minute signed link) because a browser cannot
+  send the sign-in token with a plain download. Every download is audited as `download.cad_zip`.
+- The package `backend/internal/ziparchive` is the reusable core. The planned order download will call
+  it with the file hashes and sizes recorded when the order was made.
+
 ### Audit log
 
 Every state-changing request is recorded in an append-only `audit_log` table: who (a snapshot of
@@ -787,8 +870,8 @@ Every route except login needs `Authorization: Bearer <token>`.
 | Role | Can do |
 |---|---|
 | `admin` | Everything, including master data and users |
-| `designer` | Create and edit designs, variations, seats and CAD files; costing export |
-| `production` | Read designs, simulate the BOM, job-bag PDF, CAD downloads. Never sees wastage % or stone rates |
+| `designer` | Create and edit designs, variations, seats and CAD files; costing export; create and change orders |
+| `production` | Read designs, simulate the BOM, job-bag PDF, CAD downloads, read orders. Never sees wastage % or stone rates |
 
 Security behaviour worth knowing:
 

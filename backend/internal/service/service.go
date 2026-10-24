@@ -88,6 +88,10 @@ type Service struct {
 	// AppBaseURL is the public address of the portal (https://cad.example.com), used in emailed links.
 	AppBaseURL string
 
+	// CADZipMaxFiles and CADZipMaxBytes cap one CAD ZIP download (0 = the defaults in cadzip.go).
+	CADZipMaxFiles int
+	CADZipMaxBytes int64
+
 	mailWG sync.WaitGroup
 }
 

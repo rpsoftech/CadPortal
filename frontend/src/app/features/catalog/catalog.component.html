@@ -57,7 +57,7 @@
               <mat-option [value]="m.code">{{ m.code }}</mat-option>
             }
           </mat-select>
-          <mat-hint>Weights and weight filters apply to this metal</mat-hint>
+          <mat-hint>Weights, stone % and their filters apply to this metal</mat-hint>
         </mat-form-field>
 
         <mat-form-field appearance="outline" class="num">
@@ -86,6 +86,47 @@
           <input matInput formControlName="maxGrossWt" inputmode="decimal" />
           @if (form.controls.maxGrossWt.invalid) {
             <mat-error>A positive number, 3 decimals at most</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Stone code</mat-label>
+          <mat-select formControlName="stoneCode">
+            <mat-option [value]="null">
+              Baseline{{ baselineCode() ? ' (' + baselineCode() + ')' : '' }}
+            </mat-option>
+            @for (c of stoneCodes(); track c.id) {
+              @if (!c.is_default_baseline) {
+                <mat-option [value]="c.code">{{ c.code }}</mat-option>
+              }
+            }
+          </mat-select>
+          <mat-hint>Stone weight and stone % are worked out for this code</mat-hint>
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="num">
+          <mat-label>Stone % min</mat-label>
+          <input matInput formControlName="minStonePct" inputmode="decimal" />
+          @if (form.controls.minStonePct.invalid) {
+            <mat-error>0 to 100, 2 decimals at most</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="num">
+          <mat-label>Stone % max</mat-label>
+          <input matInput formControlName="maxStonePct" inputmode="decimal" />
+          @if (form.controls.maxStonePct.invalid) {
+            <mat-error>0 to 100, 2 decimals at most</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Sort by</mat-label>
+          <mat-select formControlName="sort">
+            @for (o of sortOptions; track o.value) {
+              <mat-option [value]="o.value" [disabled]="o.needsMetal && !hasMetal()">
+                {{ o.label }}
+              </mat-option>
+            }
+          </mat-select>
+          @if (!hasMetal()) {
+            <mat-hint>Pick a target purity to sort by weight or stone %</mat-hint>
           }
         </mat-form-field>
         <mat-form-field appearance="outline" class="num">
@@ -141,7 +182,7 @@
     </p>
   }
 
-  @if (auth.canEdit() && state().items.length) {
+  @if (state().items.length) {
     <mat-checkbox
       class="select-page"
       [checked]="pageAllSelected()"
@@ -155,14 +196,12 @@
   <div class="grid">
     @for (d of state().items; track d.id) {
       <mat-card appearance="outlined" [class.picked]="selection.has(d.id)">
-        @if (auth.canEdit()) {
-          <mat-checkbox
-            class="pick"
-            [checked]="selection.has(d.id)"
-            (change)="selection.toggle(d)"
-            [aria-label]="'Select ' + d.code"
-          />
-        }
+        <mat-checkbox
+          class="pick"
+          [checked]="selection.has(d.id)"
+          (change)="selection.toggle(d)"
+          [aria-label]="'Select ' + d.code"
+        />
         <a [routerLink]="['/designs', d.code]" class="cover" [attr.aria-label]="'Open ' + d.code">
           @if (d.cover_url) {
             <img [src]="d.cover_url" [alt]="d.code + ' cover photo'" loading="lazy" />
@@ -195,6 +234,18 @@
                 <span class="muted">Gross {{ state().metal }}</span>
                 {{ gross(d) ?? 'unknown (stone matrix gap)' }}
               </div>
+              @if (stone(d); as st) {
+                <div class="stone-line">
+                  <span class="muted">Stone {{ d.stone_code }}</span> {{ st }}
+                  @if (d.variation_count > 1) {
+                    <span class="muted small">({{ d.shown_variation_code }})</span>
+                  }
+                </div>
+              } @else if (d.stone_status === 'no_data') {
+                <div class="stone-line no-data">
+                  <span class="muted">Stone</span> {{ d.stone_note }}
+                </div>
+              }
             } @else {
               <span class="muted">No {{ state().metal }} weights yet</span>
             }
@@ -222,9 +273,11 @@
     />
   }
 
-  @if (auth.canEdit()) {
-    <app-selection-bar>
+  <app-selection-bar>
+    <button matButton type="button" (click)="downloadCad('stl')">Download STL</button>
+    <button matButton type="button" (click)="downloadCad('3dm')">Download 3dm</button>
+    @if (auth.canEdit()) {
       <button matButton="filled" type="button" (click)="costSelected()">Cost selected</button>
-    </app-selection-bar>
-  }
+    }
+  </app-selection-bar>
 </div>
