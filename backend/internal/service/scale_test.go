@@ -125,6 +125,11 @@ func TestScaleRecalc(t *testing.T) {
 		{"list text search", DesignFilter{Query: "SC0042", Limit: 50}},
 		{"list category+metal+weight", DesignFilter{CategoryID: &cat, MetalCode: "18KR", MinNetWt: dp("3"), MaxNetWt: dp("9"), Limit: 50}},
 		{"list max stone cts", DesignFilter{MaxStoneCts: dp("0.5"), Limit: 50}},
+		{"list metal only", DesignFilter{MetalCode: "18KR", Limit: 50}},
+		{"list 18KR 2HD stone 2-6 pct", DesignFilter{MetalCode: "18KR", StoneCode: "2HD", MinStonePct: dp("2"), MaxStonePct: dp("6"), Limit: 50}},
+		{"list 18KR 1HD stone 2-6 pct + weight", DesignFilter{MetalCode: "18KR", StoneCode: "1HD", MinStonePct: dp("2"), MaxStonePct: dp("6"), MinGrossWt: dp("3"), MaxGrossWt: dp("9"), Limit: 50}},
+		{"list sort stone pct desc", DesignFilter{MetalCode: "22KY", StoneCode: "2HD", Sort: "stone_pct_desc", Limit: 50}},
+		{"list sort net asc, deep page", DesignFilter{MetalCode: "22KY", Sort: "net_asc", Limit: 50, Offset: int32(designs - 100)}},
 	} {
 		start := time.Now()
 		items, err := s.ListDesigns(ctx, c.f)

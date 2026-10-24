@@ -1,4 +1,5 @@
 import { Page, expect, test } from '@playwright/test';
+import { admin } from './auth';
 
 // A phone (375 px wide). Runs after smoke.e2e.ts, so the catalog has designs to open.
 test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
@@ -9,13 +10,7 @@ const env = (name: string): string => {
   return v;
 };
 
-async function signIn(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(env('E2E_ADMIN_EMAIL'));
-  await page.getByLabel('Password').fill(env('E2E_ADMIN_PASSWORD'));
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible();
-}
+const signIn = admin;
 
 /** Elements that stick out past the right edge of the screen (what makes a page scroll sideways). */
 async function overflowing(page: Page): Promise<string[]> {
@@ -101,6 +96,21 @@ test('the catalog filters fold into a panel with a count, and the search stays i
   await page.evaluate(() => window.scrollTo(0, 600));
   await expect(page.getByLabel('Search code or name')).toBeInViewport();
   await check(page, 'catalog scrolled');
+});
+
+test('the catalog stone filters and the stone figures fit a phone', async ({ page }) => {
+  await signIn(page);
+  await page.goto('/?metal=22KY&stone=2HD&pct_min=0&sort=stone_pct_desc');
+  await expect(page.locator('mat-card').first()).toContainText(/Stone 2HD|no data for 2HD/);
+  await check(page, 'catalog stone figures');
+  await page.getByRole('button', { name: /^Filters/ }).click();
+  for (const label of ['Stone code', 'Stone % min', 'Stone % max', 'Sort by']) {
+    await expect(page.getByLabel(label)).toBeVisible();
+  }
+  await expect(page.getByLabel('Stone % min')).toHaveAttribute('inputmode', 'decimal');
+  const box = await page.locator('mat-form-field', { hasText: 'Stone % min' }).boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(40);
+  await check(page, 'catalog stone filters open');
 });
 
 test('tables become cards, and the seat grid is one card per seat with large fields', async ({ page }) => {

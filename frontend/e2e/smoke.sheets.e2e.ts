@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { Page, expect, test } from '@playwright/test';
+import { signIn } from './auth';
 
 // Costing several designs at once, and saved costing sheets. Runs after smoke.e2e.ts (it needs the
 // category prefixes that test enters) and sets up its own stone prices, wastage and designs.
@@ -9,14 +10,6 @@ const env = (name: string): string => {
   if (!v) throw new Error(`${name} must be set (scripts/e2e.sh does this)`);
   return v;
 };
-
-async function signIn(page: Page, email: string, password: string): Promise<void> {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible();
-}
 
 /** A call to the API with the signed-in user's token, as the app itself makes them. */
 async function api(page: Page, method: string, path: string, body?: unknown) {
@@ -269,7 +262,7 @@ test('missing data is listed, never costed as zero, unless the user chooses to s
 test('a production user has no way to cost or open costing sheets', async ({ page }) => {
   await signIn(page, env('E2E_PROD_EMAIL'), env('E2E_PROD_PASSWORD'));
   await expect(page.getByRole('link', { name: 'Costing sheets' })).toHaveCount(0);
-  await expect(page.getByRole('checkbox')).toHaveCount(0);
+  // (Production can tick designs, to download CAD files; see smoke.zip.e2e.ts.)
   await expect(page.getByRole('button', { name: 'Cost selected' })).toHaveCount(0);
 
   await page.goto('/costing-sheets');

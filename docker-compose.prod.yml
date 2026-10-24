@@ -62,6 +62,8 @@ services:
       # Removed or replaced CAD files, photos and videos are kept this many days and can be restored;
       # 0 deletes them at once.
       DELETED_FILE_RETENTION_DAYS: ${DELETED_FILE_RETENTION_DAYS:-30}
+      CAD_ZIP_MAX_FILES: ${CAD_ZIP_MAX_FILES:-1000}
+      CAD_ZIP_MAX_MB: ${CAD_ZIP_MAX_MB:-5120}
       # Admins are warned in the setup checklist when no good backup is newer than this many hours
       # (0 = never warn). Left empty it is 36 with R2 and off otherwise.
       BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-}

@@ -11,6 +11,14 @@
 # Environment (all optional):
 #   COMPOSE_FILE   compose file of the running stack   (default docker-compose.prod.yml)
 #   E2E_BASE_URL   where the web container listens     (default http://127.0.0.1:${WEB_PORT:-8080})
+#   E2E_A11Y_WORKERS  parallel workers for the accessibility scans (default 4)
+#
+# With no arguments it runs everything in two steps: the `main` project (tests that create data,
+# one worker, in file order), then the `a11y` project (read-only axe scans, in parallel). Arguments
+# are passed to `playwright test` as they are, for a subset:
+#   scripts/e2e.sh smoke.zip                       one file (needs the data smoke.e2e.ts creates)
+#   scripts/e2e.sh --project=main -g "job bag"     tests by title
+#   scripts/e2e.sh --project=a11y --no-deps        only the accessibility scans, on data already there
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -30,4 +38,12 @@ add_user "$E2E_ADMIN_EMAIL" admin "$E2E_ADMIN_PASSWORD"
 add_user "$E2E_PROD_EMAIL" production "$E2E_PROD_PASSWORD"
 
 cd frontend
-yarn playwright test "$@"
+if [ "$#" -gt 0 ]; then
+  exec yarn playwright test "$@"
+fi
+rc=0
+yarn playwright test --project=main || rc=$?
+# The scans run even after a failure above, so one run reports everything that is wrong.
+PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-a11y \
+  yarn playwright test --project=a11y --no-deps --workers="${E2E_A11Y_WORKERS:-4}" || rc=$?
+exit "$rc"
