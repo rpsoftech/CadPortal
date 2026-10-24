@@ -146,6 +146,49 @@ type Metal struct {
 	UpdatedAt       pgtype.Timestamptz  `json:"updated_at"`
 }
 
+type Order struct {
+	ID         int64              `json:"id"`
+	Seq        int32              `json:"seq"`
+	Number     string             `json:"number"`
+	Name       string             `json:"name"`
+	Notes      string             `json:"notes"`
+	Status     string             `json:"status"`
+	MetalCode  string             `json:"metal_code"`
+	StoneCode  string             `json:"stone_code"`
+	Criteria   []byte             `json:"criteria"`
+	ClonedFrom pgtype.Int8        `json:"cloned_from"`
+	CreatedBy  pgtype.Int8        `json:"created_by"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
+type OrderLine struct {
+	ID          int64              `json:"id"`
+	OrderID     int64              `json:"order_id"`
+	Position    int32              `json:"position"`
+	DesignID    pgtype.Int8        `json:"design_id"`
+	VariationID pgtype.Int8        `json:"variation_id"`
+	Quantity    int32              `json:"quantity"`
+	Snapshot    []byte             `json:"snapshot"`
+	Internal    []byte             `json:"internal"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type OrderNumbering struct {
+	ID      bool  `json:"id"`
+	NextSeq int32 `json:"next_seq"`
+}
+
+type OrderStatusHistory struct {
+	ID         int64              `json:"id"`
+	OrderID    int64              `json:"order_id"`
+	FromStatus pgtype.Text        `json:"from_status"`
+	ToStatus   string             `json:"to_status"`
+	ChangedBy  pgtype.Int8        `json:"changed_by"`
+	ChangedAt  pgtype.Timestamptz `json:"changed_at"`
+	Note       string             `json:"note"`
+}
+
 type PasswordReset struct {
 	ID        int64              `json:"id"`
 	UserID    int64              `json:"user_id"`

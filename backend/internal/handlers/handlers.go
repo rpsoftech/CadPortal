@@ -156,6 +156,16 @@ func (h *H) Register(r *gin.Engine) {
 	v1.DELETE("/costing-sheets/:id", editor, h.deleteCostingSheet)
 	v1.POST("/costing-sheets/:id/recost", editor, h.recostCostingSheet)
 	v1.GET("/exports/designs-csv", anyRole, h.designsCSV)
+
+	// Orders: a selection of catalog variations sent to production. Everyone signed in reads (production
+	// works from them); admin/designer write. Cancelled, never deleted.
+	v1.POST("/orders", editor, h.createOrder)
+	v1.GET("/orders", anyRole, h.listOrders)
+	v1.GET("/orders/:id", anyRole, h.getOrder)
+	v1.PUT("/orders/:id", editor, h.updateOrder)
+	v1.PUT("/orders/:id/lines", editor, h.setOrderLines)
+	v1.POST("/orders/:id/status", editor, h.setOrderStatus)
+	v1.POST("/orders/:id/clone", editor, h.cloneOrder)
 }
 
 func fail(c *gin.Context, err error) {
