@@ -77,9 +77,10 @@ test('all job bags of a design print into one PDF, one page each; selected ones 
 test('the catalog selection bar prints the job bags of the ticked designs', async ({ page }) => {
   await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
   await page.getByLabel('Search code or name').fill('Job bag test');
-  const card = page.getByRole('checkbox', { name: /^Select [A-Z]+\d+/ }).first();
-  await expect(card).toBeVisible();
-  await card.check();
+  // wait for the filtered list: only the one design may be ticked
+  const cards = page.getByRole('checkbox', { name: /^Select [A-Z]+\d+/ });
+  await expect(cards).toHaveCount(1);
+  await cards.check();
   await page.getByRole('button', { name: 'Print job bags' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('heading', { name: 'Print job bags for 1 design' })).toBeVisible();
