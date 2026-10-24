@@ -141,7 +141,31 @@ export interface DesignListItem {
   net_max: Dec | null;
   gross_min: Dec | null;
   gross_max: Dec | null;
+  /** The stone code the stone figures below were computed for. */
+  stone_code?: string;
+  /** The variation the figures below belong to (with a metal selected). */
+  shown_variation_id?: number | null;
+  shown_variation_code?: string;
+  net_g?: Dec | null;
+  stone_carats?: Dec | null;
+  stone_g?: Dec | null;
+  gross_g?: Dec | null;
+  /** Stone weight as a percentage of the gross weight; null when there is no data. */
+  stone_pct?: Dec | null;
+  /** "ok", or "no_data" when a stone matrix row is missing for the code (never shown as 0). */
+  stone_status?: '' | 'ok' | 'no_data';
+  stone_note?: string;
 }
+
+/** The catalog sort orders the API understands (weights and stone % need a metal). */
+export type DesignSort =
+  | 'code'
+  | 'net_asc'
+  | 'net_desc'
+  | 'gross_asc'
+  | 'gross_desc'
+  | 'stone_pct_asc'
+  | 'stone_pct_desc';
 
 export interface DesignFilter {
   /** Matches the design code or name (substring, case-insensitive). */
@@ -156,6 +180,12 @@ export interface DesignFilter {
   minGrossWt?: string | null;
   maxGrossWt?: string | null;
   maxStoneCts?: string | null;
+  /** The stone code the stone figures are computed for; empty is the baseline code. */
+  stoneCode?: string | null;
+  /** Stone weight as a percentage of gross weight (needs metalCode). */
+  minStonePct?: string | null;
+  maxStonePct?: string | null;
+  sort?: DesignSort | null;
 }
 
 export interface VariationWeight {
@@ -597,4 +627,142 @@ export interface AuthConfig {
 export interface ResetLink {
   path: string;
   expires_at: string;
+}
+
+// ----- Orders (a selection of variations sent to production; every line is an immutable snapshot) -----
+
+export type OrderStatus = 'draft' | 'placed' | 'in_production' | 'done' | 'cancelled';
+
+export interface OrderItem {
+  variation_id: number;
+  quantity: number;
+}
+
+export interface OrderBomLine {
+  size_mm: string;
+  stone_count: number;
+  stone_code: string;
+  locked: boolean;
+  carats_per_stone: string;
+  line_carats: string;
+  line_weight_g: string;
+}
+
+export interface OrderFileSnapshot {
+  name: string;
+  sha256: string;
+  size_bytes: number;
+}
+
+export interface OrderLineSnapshot {
+  snapshot_at: string;
+  design_code: string;
+  design_name: string;
+  category_name: string;
+  tags: string[];
+  variation_code: string;
+  metal_code: string;
+  stone_code: string;
+  specific_gravity: string;
+  base_input: { kind: 'volume' | 'weight'; volume_mm3?: string; ref_weight_g?: string; ref_metal_code?: string };
+  net_weight_g: string;
+  stone_weight_g: string;
+  stone_carats: string;
+  gross_weight_g: string;
+  /** Stone weight as a percentage of gross weight, 2 decimals. */
+  stone_pct: string;
+  total_pcs: number;
+  bom: OrderBomLine[];
+  file_3dm: OrderFileSnapshot | null;
+  file_stl: OrderFileSnapshot | null;
+  cover: { media_id: number; filename: string; content_type: string } | null;
+}
+
+export interface OrderLine {
+  id: number;
+  position: number;
+  /** Null once the design / variation has been purged; the snapshot is still complete. */
+  design_id: number | null;
+  variation_id: number | null;
+  quantity: number;
+  snapshot: OrderLineSnapshot;
+}
+
+export interface OrderHistoryEntry {
+  id: number;
+  from_status: OrderStatus | null;
+  to_status: OrderStatus;
+  changed_by: number | null;
+  changed_by_name: string;
+  changed_at: string;
+  note: string;
+}
+
+export interface OrderSummary {
+  id: number;
+  number: string;
+  name: string;
+  due_date: string | null;
+  status: OrderStatus;
+  metal_code: string;
+  stone_code: string;
+  cloned_from: number | null;
+  created_by: number | null;
+  created_by_name: string;
+  created_at: string;
+  updated_at: string;
+  line_count: number;
+  total_quantity: number;
+}
+
+export interface Order extends OrderSummary {
+  notes: string;
+  /** How the selection was found (optional, informational). */
+  criteria: Record<string, unknown> | null;
+  lines: OrderLine[];
+  history: OrderHistoryEntry[];
+}
+
+export interface CreateOrderRequest {
+  name?: string;
+  notes?: string;
+  due_date?: string;
+  metal_code: string;
+  stone_code: string;
+  items: OrderItem[];
+  criteria?: Record<string, unknown>;
+  /** Create it as "placed" instead of a draft. */
+  place?: boolean;
+}
+
+export interface OrderLineChange {
+  field: string;
+  old: string;
+  new: string;
+}
+
+export interface OrderLineDiff {
+  variation_id: number | null;
+  design_code: string;
+  variation_code: string;
+  quantity: number;
+  status: 'unchanged' | 'changed' | 'unavailable';
+  reason?: string;
+  changes: OrderLineChange[];
+}
+
+export interface OrderDiff {
+  source_id: number;
+  changed: number;
+  unchanged: number;
+  unavailable: number;
+  lines: OrderLineDiff[];
+}
+
+/** The 422 body when some variations cannot be ordered (for example missing stone data). */
+export interface OrderProblem {
+  variation_id: number;
+  variation_code?: string;
+  message: string;
+  missing?: { SizeMM: string; Code: string }[];
 }

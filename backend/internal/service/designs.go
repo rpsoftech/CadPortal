@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -331,8 +332,21 @@ type DesignFilter struct {
 	MinGrossWt  *decimal.Decimal
 	MaxGrossWt  *decimal.Decimal
 	MaxStoneCts *decimal.Decimal
-	Limit       int32
-	Offset      int32
+	// StoneCode picks the stone code the stone figures are computed for (flexible seats use it, locked
+	// seats keep their own); empty means the baseline code. MinStonePct/MaxStonePct are percentages of the
+	// gross weight and need a MetalCode.
+	StoneCode   string
+	MinStonePct *decimal.Decimal
+	MaxStonePct *decimal.Decimal
+	// Sort is "" (design code), or net/gross/stone_pct with _asc or _desc; those need a MetalCode.
+	Sort   string
+	Limit  int32
+	Offset int32
+}
+
+var validSorts = map[string]bool{
+	"": true, "code": true, "net_asc": true, "net_desc": true, "gross_asc": true, "gross_desc": true,
+	"stone_pct_asc": true, "stone_pct_desc": true,
 }
 
 func nullDec(d *decimal.Decimal) decimal.NullDecimal {
@@ -352,6 +366,42 @@ type DesignListItem struct {
 	NetMax   *decimal.Decimal `json:"net_max"`
 	GrossMin *decimal.Decimal `json:"gross_min"`
 	GrossMax *decimal.Decimal `json:"gross_max"`
+
+	// Shown hides the raw JSON column of the row (the fields below carry its content).
+	Shown *struct{} `json:"shown,omitempty"`
+	// With a metal selected: the figures of the shown variation for that metal and StoneCode. The stone
+	// figures are null with StoneStatus "no_data" when a matrix row is missing (never 0).
+	StoneCode          string           `json:"stone_code"`
+	ShownVariationID   *int64           `json:"shown_variation_id"`
+	ShownVariationCode string           `json:"shown_variation_code"`
+	NetG               *decimal.Decimal `json:"net_g"`
+	StoneCarats        *decimal.Decimal `json:"stone_carats"`
+	StoneG             *decimal.Decimal `json:"stone_g"`
+	GrossG             *decimal.Decimal `json:"gross_g"`
+	StonePct           *decimal.Decimal `json:"stone_pct"`
+	StoneStatus        string           `json:"stone_status"` // "", "ok" or "no_data"
+	StoneNote          string           `json:"stone_note"`   // e.g. "no data for 2HD"
+}
+
+// shownFigures is the JSON the list query builds for the shown variation.
+type shownFigures struct {
+	VariationID   int64            `json:"variation_id"`
+	VariationCode string           `json:"variation_code"`
+	NetG          decimal.Decimal  `json:"net_g"`
+	Carats        *decimal.Decimal `json:"carats"`
+	StoneG        *decimal.Decimal `json:"stone_g"`
+	GrossG        *decimal.Decimal `json:"gross_g"`
+	StonePct      *decimal.Decimal `json:"stone_pct"`
+}
+
+func checkStonePct(name string, d *decimal.Decimal) error {
+	if d == nil {
+		return nil
+	}
+	if d.IsNegative() || d.GreaterThan(hundred) || !d.Equal(d.Round(2)) {
+		return invalid("%s must be between 0 and 100 with at most 2 decimals", name)
+	}
+	return nil
 }
 
 // likeEscaper escapes LIKE wildcards with '!' (the ESCAPE character used in the query),
@@ -372,13 +422,52 @@ func (s *Service) ListDesigns(ctx context.Context, f DesignFilter) ([]DesignList
 	if f.Limit <= 0 || f.Limit > 200 {
 		f.Limit = 50
 	}
+	if !validSorts[f.Sort] {
+		return nil, invalid("sort must be one of net_asc, net_desc, gross_asc, gross_desc, stone_pct_asc, stone_pct_desc")
+	}
+	if f.Sort == "code" {
+		f.Sort = ""
+	}
+	if err := checkStonePct("min_stone_pct", f.MinStonePct); err != nil {
+		return nil, err
+	}
+	if err := checkStonePct("max_stone_pct", f.MaxStonePct); err != nil {
+		return nil, err
+	}
+	if f.MetalCode == "" && (f.MinStonePct != nil || f.MaxStonePct != nil || f.Sort != "") {
+		return nil, invalid("metal_code is required with min_stone_pct, max_stone_pct and sort")
+	}
+	// the stone code every figure is computed for: the chosen one, else the baseline
+	var stoneID pgtype.Int8
+	stoneCode := f.StoneCode
+	if stoneCode != "" {
+		sc, err := s.Q.GetStoneCodeByCode(ctx, stoneCode)
+		if err != nil {
+			if mapErr(err) == ErrNotFound {
+				return nil, invalid("unknown stone code %q", stoneCode)
+			}
+			return nil, err
+		}
+		stoneID = pgtype.Int8{Int64: sc.ID, Valid: true}
+	} else if bc, err := s.Q.GetBaselineStoneCode(ctx); err == nil {
+		stoneID, stoneCode = pgtype.Int8{Int64: bc.ID, Valid: true}, bc.Code
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
 	p := db.ListDesignsParams{
 		Q:      pgText(likePattern(f.Query)),
 		TagIds: f.TagIDs, MetalCode: pgText(f.MetalCode),
 		MinNetWt: nullDec(f.MinNetWt), MaxNetWt: nullDec(f.MaxNetWt),
 		MinGrossWt: nullDec(f.MinGrossWt), MaxGrossWt: nullDec(f.MaxGrossWt),
-		MaxStoneCts: nullDec(f.MaxStoneCts), Lim: f.Limit, Off: f.Offset,
+		MinStonePct: nullDec(f.MinStonePct), MaxStonePct: nullDec(f.MaxStonePct),
+		MaxStoneCts: nullDec(f.MaxStoneCts), StoneCodeID: stoneID, Sort: f.Sort,
+		Lim: f.Limit, Off: f.Offset,
 	}
+	// the stone sums are only needed for every variation when they decide the filter or the order
+	p.StoneNeeded = p.MinGrossWt.Valid || p.MaxGrossWt.Valid || p.MinStonePct.Valid || p.MaxStonePct.Valid ||
+		strings.HasPrefix(f.Sort, "gross") || strings.HasPrefix(f.Sort, "stone_pct")
+	p.CalcNeeded = f.MetalCode != "" || p.MinNetWt.Valid || p.MaxNetWt.Valid || p.MinGrossWt.Valid ||
+		p.MaxGrossWt.Valid || p.MaxStoneCts.Valid
 	if p.TagIds == nil {
 		p.TagIds = []int64{}
 	}
@@ -402,12 +491,14 @@ func (s *Service) ListDesigns(ctx context.Context, f DesignFilter) ([]DesignList
 				items[i].CoverURL = u
 			}
 		}
+		items[i].StoneCode = stoneCode
 		ids[i] = r.ID
 	}
 	if f.MetalCode == "" || len(items) == 0 {
 		return items, nil
 	}
-	ws, err := s.Q.ListDesignWeightsForMetal(ctx, db.ListDesignWeightsForMetalParams{Code: f.MetalCode, Column2: ids})
+	ws, err := s.Q.ListDesignVariationFigures(ctx, db.ListDesignVariationFiguresParams{
+		Code: f.MetalCode, DesignIds: ids, StoneCodeID: stoneID})
 	if err != nil {
 		return nil, err
 	}
@@ -415,14 +506,72 @@ func (s *Service) ListDesigns(ctx context.Context, f DesignFilter) ([]DesignList
 	for i := range items {
 		idx[items[i].ID] = &items[i]
 	}
+	byDesign := make(map[int64][]shownFigures, len(items))
 	for _, w := range ws {
+		var sf shownFigures
+		if err := json.Unmarshal(w.Figures, &sf); err != nil {
+			return nil, fmt.Errorf("decode variation figures: %w", err)
+		}
+		byDesign[w.DesignID] = append(byDesign[w.DesignID], sf)
 		it := idx[w.DesignID]
-		it.NetMin, it.NetMax = widen(it.NetMin, it.NetMax, w.NetWeightG)
-		if w.GrossWeightG.Valid {
-			it.GrossMin, it.GrossMax = widen(it.GrossMin, it.GrossMax, w.GrossWeightG.Decimal)
+		it.NetMin, it.NetMax = widen(it.NetMin, it.NetMax, sf.NetG)
+		if sf.GrossG != nil {
+			it.GrossMin, it.GrossMax = widen(it.GrossMin, it.GrossMax, *sf.GrossG)
+		}
+	}
+	for i := range items {
+		if pick := pickShown(byDesign[items[i].ID], rows[i].Shown, p.StoneNeeded, f); pick != nil {
+			applyShown(&items[i], pick, stoneCode)
 		}
 	}
 	return items, nil
+}
+
+// pickShown chooses the variation a card shows. When the stone sums decided the filter or the order, the
+// query already chose it (shown); otherwise it is the first variation passing the net filters, preferring
+// one that has stone data.
+func pickShown(vs []shownFigures, shown []byte, stoneDecided bool, f DesignFilter) *shownFigures {
+	if stoneDecided {
+		var sf shownFigures
+		if json.Unmarshal(shown, &sf) != nil {
+			return nil
+		}
+		for i := range vs {
+			if vs[i].VariationID == sf.VariationID {
+				return &vs[i]
+			}
+		}
+		return nil
+	}
+	var first *shownFigures
+	for i := range vs {
+		v := &vs[i]
+		if f.MinNetWt != nil && v.NetG.LessThan(*f.MinNetWt) || f.MaxNetWt != nil && v.NetG.GreaterThan(*f.MaxNetWt) {
+			continue
+		}
+		if v.Carats != nil {
+			return v
+		}
+		if first == nil {
+			first = v
+		}
+	}
+	return first
+}
+
+// applyShown copies a variation's figures onto the card and flags missing stone data.
+func applyShown(it *DesignListItem, sf *shownFigures, stoneCode string) {
+	it.ShownVariationID, it.ShownVariationCode = &sf.VariationID, sf.VariationCode
+	it.NetG, it.StoneCarats, it.StoneG, it.GrossG, it.StonePct = &sf.NetG, sf.Carats, sf.StoneG, sf.GrossG, sf.StonePct
+	if sf.Carats != nil {
+		it.StoneStatus = "ok"
+		return
+	}
+	it.StoneStatus = "no_data"
+	it.StoneNote = "no data for " + stoneCode
+	if stoneCode == "" {
+		it.StoneNote = "no stone code configured"
+	}
 }
 
 func widen(lo, hi *decimal.Decimal, v decimal.Decimal) (*decimal.Decimal, *decimal.Decimal) {

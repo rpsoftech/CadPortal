@@ -25,6 +25,21 @@ describe('designParams', () => {
   it('is empty for an empty filter', () => {
     expect(designParams({}).keys()).toEqual([]);
   });
+
+  it('sends the stone code, stone % range and sort', () => {
+    const p = designParams({
+      metalCode: '22KY',
+      stoneCode: '2HD',
+      minStonePct: '5',
+      maxStonePct: '6',
+      sort: 'stone_pct_asc',
+    });
+    expect(p.get('stone_code')).toBe('2HD');
+    expect(p.get('min_stone_pct')).toBe('5');
+    expect(p.get('max_stone_pct')).toBe('6');
+    expect(p.get('sort')).toBe('stone_pct_asc');
+    expect(designParams({ stoneCode: null, sort: null }).keys()).toEqual([]);
+  });
 });
 
 describe('ApiService', () => {
