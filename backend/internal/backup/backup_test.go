@@ -506,3 +506,15 @@ func TestAfterRunSeesTheOutcomeOfEveryRun(t *testing.T) {
 		t.Errorf("AfterRun outcomes = %v, want [true false]", seen)
 	}
 }
+
+func TestRetryDelayGrowsThenSettlesAtThirtyMinutes(t *testing.T) {
+	want := []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 16 * time.Minute, 30 * time.Minute, 30 * time.Minute}
+	for i, w := range want {
+		if got := RetryDelay(i + 1); got != w {
+			t.Errorf("after failure %d: %s, want %s", i+1, got, w)
+		}
+	}
+	if RetryDelay(0) != time.Minute || RetryDelay(-3) != time.Minute {
+		t.Error("a count below 1 is treated as the first failure")
+	}
+}

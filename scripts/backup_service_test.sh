@@ -19,7 +19,7 @@ PG_IMAGE=${PG_IMAGE:-postgres:18-alpine}
 net=bktest-$$
 tmp=$(mktemp)
 fail() { echo "FAIL: $*" >&2; exit 1; }
-cleanup() { rm -f "$tmp"; docker rm -f "$net-s3" "$net-pg" "$net-daemon" >/dev/null 2>&1 || true; docker network rm "$net" >/dev/null 2>&1 || true; }
+cleanup() { rm -f "$tmp"; docker rm -f "$net-s3" "$net-pg" "$net-daemon" "$net-late" "$net-pg2" >/dev/null 2>&1 || true; docker network rm "$net" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 docker network create "$net" >/dev/null
@@ -128,6 +128,33 @@ echo "$daemon_log" | tail -5
 grep -q "next backup at" <<<"$daemon_log" || fail "the service did not report its next scheduled run (BACKUP_AT list)"
 docker rm -f "$net-daemon" >/dev/null 2>&1
 [ "$picked" = "1" ] || fail "a requested backup was not picked up by the running service"
+
+# ---- a new server: the service starts BEFORE its database exists, and before the API has made the tables.
+# It must wait for both and then take its catch-up backup by itself (not leave it to the next night).
+docker run -d --name "$net-late" --network "$net" \
+  -e DATABASE_URL="postgres://cad:pw@$net-pg2:5432/cad_portal?sslmode=disable" \
+  -e S3_ENDPOINT="http://$net-s3:9000" -e S3_BUCKET=vault -e S3_ACCESS_KEY_ID=testkey -e S3_SECRET_ACCESS_KEY=testsecret123 \
+  -e BACKUP_S3_BUCKET=backups -e BACKUP_S3_ACCESS_KEY_ID=testkey -e BACKUP_S3_SECRET_ACCESS_KEY=testsecret123 \
+  -e BACKUP_S3_ENDPOINT="http://$net-s3:9000" -e BACKUP_AGE_RECIPIENT="$pub" "$IMAGE" >/dev/null
+sleep 8 # it is now looking for a database that is not there
+docker run -d --name "$net-pg2" --network "$net" -e POSTGRES_USER=cad -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=cad_portal "$PG_IMAGE" >/dev/null
+for _ in $(seq 1 60); do
+  docker exec "$net-pg2" pg_isready -U cad -d cad_portal >/dev/null 2>&1 && break
+  sleep 1
+done
+sleep 10 # the database answers, the tables are not there yet (the API creates them a little later)
+for m in 000011_backup_runs 000012_backup_requests; do
+  docker exec -i "$net-pg2" psql -v ON_ERROR_STOP=1 -q -U cad -d cad_portal <"backend/migrations/$m.up.sql"
+done
+late=0
+for _ in $(seq 1 60); do
+  late=$(docker exec "$net-pg2" psql -U cad -d cad_portal -At -c "SELECT count(*) FROM backup_runs WHERE ok" 2>/dev/null || echo 0)
+  [ "$late" = "1" ] && break
+  sleep 3
+done
+docker logs "$net-late" 2>&1 | tail -6
+docker rm -f "$net-late" "$net-pg2" >/dev/null 2>&1
+[ "$late" = "1" ] || fail "a service that started before its database never took its catch-up backup"
 
 # ---- a broken backup is recorded as a failure, and exits non-zero
 if docker run --rm --network "$net" \

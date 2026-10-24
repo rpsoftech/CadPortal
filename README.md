@@ -275,6 +275,10 @@ Both halves are independent (a failed file copy never stops the database dump), 
 and the setup checklist warns admins if no good backup is newer than 36 hours (`BACKUP_MAX_AGE_HOURS`).
 If the service was down, it takes a backup at start-up instead of waiting for the next run (when the last
 good one is older than the longest gap in the schedule plus two hours: 26 hours for one run a night).
+On a new server it first waits (up to 5 minutes, then keeps trying) until the database answers and the API
+has created its tables, and a backup that fails is tried again after 1, 2, 4, 8 and 16 minutes and then every
+30 minutes, not left until the next slot, so the first good backup does not wait for 02:00. (Found when
+staging was first deployed: the service started before the database and lost its catch-up run.)
 
 #### How often
 
@@ -489,7 +493,13 @@ records every call, so adding a `down` fails the build).
    `COMPOSE_PROJECT_NAME=cadportal-staging`. Never point staging at the production buckets: a staging
    bug could then damage real files.
 2. `docker login ghcr.io` once as the deploy user (token with `read:packages`).
-3. Run it once by hand: `scripts/deploy.sh staging`. Then create the first admin as in "Going live".
+3. Run it once by hand: `scripts/deploy.sh staging`. On a new server it first starts the database (only
+   *starts* it, with `--no-recreate`; a database that is already running is never touched), then the
+   application containers. Then create the first admin as in "Going live". To check a staging server with
+   the browser suite, run `E2E_STAGING=1 E2E_BASE_URL=https://staging.example.com scripts/e2e.sh` from a
+   checkout with the same `COMPOSE_FILE` and `.env` (it creates two throwaway users and some `E2E` designs
+   there, so use a staging database and a scratch bucket, never production); `E2E_STAGING=1` skips the one
+   test that needs a stack without a backup bucket.
 4. Let a timer do it from now on (every 5 minutes it pulls, and restarts only when an image changed):
 
 ```bash
