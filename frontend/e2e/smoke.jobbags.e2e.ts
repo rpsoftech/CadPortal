@@ -79,8 +79,10 @@ test('the catalog selection bar prints the job bags of the ticked designs', asyn
   await expect(dialog.getByRole('heading', { name: 'Print job bags for 1 design' })).toBeVisible();
   await dialog.getByLabel('Metal').click();
   await page.getByRole('option', { name: '18KR' }).click();
-  await dialog.getByLabel('Stone code').click();
+  await expect(page.getByRole('listbox')).toBeHidden();
+  await dialog.getByRole('combobox', { name: 'Stone code' }).click({ force: true });
   await page.getByRole('option', { name: '2HD' }).click();
+  await expect(page.getByRole('listbox')).toBeHidden();
   const download = page.waitForEvent('download');
   await dialog.getByRole('button', { name: 'Print', exact: true }).click();
   const file = await download;
