@@ -135,6 +135,7 @@ for (const scheme of SCHEMES) {
       await page.getByRole('checkbox', { name: /^Select [A-Z]+\d+/ }).first().check();
       await s.scan('catalog: selection bar');
       await s.overlay('catalog: download STL dialog', () => page.getByRole('button', { name: 'Download STL' }).click());
+      await s.overlay('catalog: print job bags dialog', () => page.getByRole('button', { name: 'Print job bags' }).click());
       await page.getByRole('button', { name: 'Clear', exact: true }).click();
       const filters = page.getByRole('button', { name: /^Filters/ });
       if (phone) {

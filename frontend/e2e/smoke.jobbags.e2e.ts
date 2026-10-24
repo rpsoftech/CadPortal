@@ -74,6 +74,27 @@ test('all job bags of a design print into one PDF, one page each; selected ones 
   await expect(page.getByRole('radio', { name: `${made.code}-V1`, checked: true })).toBeVisible();
 });
 
+test('the catalog selection bar prints the job bags of the ticked designs', async ({ page }) => {
+  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
+  await page.getByLabel('Search code or name').fill('Job bag test');
+  const card = page.getByRole('checkbox', { name: /^Select [A-Z]+\d+/ }).first();
+  await expect(card).toBeVisible();
+  await card.check();
+  await page.getByRole('button', { name: 'Print job bags' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: 'Print job bags for 1 design' })).toBeVisible();
+  await dialog.getByLabel('Metal').click();
+  await page.getByRole('option', { name: '18KR' }).click();
+  await dialog.getByLabel('Stone code').click();
+  await page.getByRole('option', { name: '2HD' }).click();
+  const download = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'Print', exact: true }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe('jobbags.pdf');
+  expect(await pdfPages((await file.path())!)).toBe(2);
+  await expect(dialog.getByText('The PDF has been saved.')).toBeVisible();
+});
+
 test('the production role may print several job bags', async ({ page }) => {
   await signIn(page, env('E2E_PROD_EMAIL'), env('E2E_PROD_PASSWORD'));
   const status = await page.evaluate(async () => {

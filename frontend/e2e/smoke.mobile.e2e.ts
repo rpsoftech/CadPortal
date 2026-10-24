@@ -199,6 +199,12 @@ test('every screen fits a phone without sideways scrolling', async ({ page }) =>
   await page.getByRole('checkbox', { name: 'Select LR0001' }).check();
   await expect(page.getByText('1 selected')).toBeVisible();
   await check(page, 'catalog-selection');
+  await page.getByRole('button', { name: 'Print job bags' }).click();
+  await expect(page.getByRole('dialog').getByRole('heading', { name: 'Print job bags for 1 design' })).toBeVisible();
+  await check(page, 'print-job-bags-dialog');
+  const bagsBox = await page.getByRole('dialog').boundingBox();
+  expect(bagsBox!.x + bagsBox!.width).toBeLessThanOrEqual(375 + 1);
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
   await page.getByRole('button', { name: 'Cost selected' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Metal').click();
