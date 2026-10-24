@@ -1,0 +1,223 @@
+<div class="page">
+  <p><a routerLink="/orders">← All orders</a></p>
+
+  @if (loading()) {
+    <mat-progress-bar mode="indeterminate" aria-label="Loading the order" />
+  }
+  @if (error()) {
+    <div class="error-box" role="alert">{{ error() }}</div>
+  }
+
+  @if (order(); as o) {
+    <header class="head">
+      <h1>
+        <span class="mono">{{ o.number }}</span>
+        @if (o.name) {
+          <span class="name"> · {{ o.name }}</span>
+        }
+      </h1>
+      <app-order-status [status]="o.status" />
+    </header>
+
+    <dl class="meta">
+      <div><dt>Metal · stone</dt><dd>{{ o.metal_code }} · {{ o.stone_code }}</dd></div>
+      <div><dt>Due</dt><dd>{{ o.due_date ? (o.due_date | date: 'mediumDate') : '–' }}</dd></div>
+      <div><dt>Lines · pieces</dt><dd>{{ o.line_count }} · {{ o.total_quantity }}</dd></div>
+      <div><dt>Total net / gross</dt><dd>{{ totalNet() }} g / {{ totalGross() }} g</dd></div>
+      <div>
+        <dt>Created</dt>
+        <dd>{{ o.created_at | date: 'medium' }}@if (o.created_by_name) { · {{ o.created_by_name }} }</dd>
+      </div>
+      @if (o.cloned_from) {
+        <div><dt>Made from</dt><dd><a [routerLink]="['/orders', o.cloned_from]">the order it was cloned from</a></dd></div>
+      }
+    </dl>
+
+    <p class="sr-only" role="status" aria-live="polite">{{ announce() }}</p>
+    @if (announce()) {
+      <p class="notice" aria-hidden="true">{{ announce() }}</p>
+    }
+    @if (actionError()) {
+      <div class="error-box" role="alert">{{ actionError() }}</div>
+    }
+    @if (busy()) {
+      <mat-progress-bar mode="indeterminate" aria-label="Working" />
+    }
+
+    <!-- ORDER ACTIONS. Status moves and Clone come first (admin / designer only; hidden, not disabled, for
+         production). Other features add their buttons inside .order-extra-actions below (CAD ZIP download,
+         summary, costing); keep one button per element so the row wraps on a phone. -->
+    <section class="actions" aria-label="Order actions">
+      @for (to of nextSteps(); track to) {
+        <button
+          [matButton]="to === 'cancelled' ? 'outlined' : 'filled'"
+          type="button"
+          [disabled]="busy()"
+          (click)="changeStatus(to)"
+        >
+          {{ step[to].label }}
+        </button>
+      }
+      @if (canWrite()) {
+        <button matButton="outlined" type="button" [disabled]="busy()" (click)="cloneOrder()">Order again</button>
+      }
+      <div class="order-extra-actions" data-slot="order-extra-actions">
+        <!-- extra order actions go here -->
+      </div>
+    </section>
+
+    <section aria-labelledby="h-details">
+      <h2 id="h-details">Details</h2>
+      @if (canWrite() && isOpen()) {
+        <form [formGroup]="header" (ngSubmit)="saveHeader()" class="col" aria-label="Order details">
+          <mat-form-field appearance="outline">
+            <mat-label>Title / buyer</mat-label>
+            <input matInput formControlName="name" maxlength="200" autocomplete="off" />
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="date">
+            <mat-label>Due date</mat-label>
+            <input matInput type="date" formControlName="dueDate" />
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Notes</mat-label>
+            <textarea matInput formControlName="notes" rows="3" maxlength="2000"></textarea>
+          </mat-form-field>
+          <div><button matButton type="submit" [disabled]="!canSaveHeader()">Save details</button></div>
+        </form>
+      } @else if (o.notes) {
+        <p class="notes">{{ o.notes }}</p>
+      } @else {
+        <p class="muted">No notes.</p>
+      }
+    </section>
+
+    <section aria-labelledby="h-lines">
+      <h2 id="h-lines">Lines</h2>
+      <p class="muted">
+        Weights and stones are the values saved when the line was added. Editing a design later does not
+        change them.
+      </p>
+      @if (canWrite() && isDraft()) {
+        <div class="row line-actions">
+          <button matButton="filled" type="button" [disabled]="!canSaveLines()" (click)="saveLines()">Save lines</button>
+          <button matButton type="button" [disabled]="!dirtyLines()" (click)="resetLines()">Undo changes</button>
+        </div>
+      }
+      <table class="plain stack" aria-label="Order lines">
+        <thead>
+          <tr>
+            <th scope="col">Design</th>
+            <th scope="col">Variation</th>
+            <th scope="col" class="num">Qty</th>
+            <th scope="col" class="num">Net g</th>
+            <th scope="col" class="num">Stone g</th>
+            <th scope="col" class="num">Gross g</th>
+            <th scope="col" class="num">Stone %</th>
+            <th scope="col" class="num">Stones</th>
+            <th scope="col">Files</th>
+            @if (canWrite() && isDraft()) {
+              <th scope="col"><span class="sr-only">Remove</span></th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (l of shownLines(); track l.id) {
+            <tr>
+              <td data-label="Design" class="design">
+                <span class="mono">{{ l.snapshot.design_code }}</span>
+                <span class="muted"> {{ l.snapshot.design_name }}</span>
+                @if (lv(l); as v) {
+                  @if (v.status === 'changed') {
+                    <div class="flag changed">
+                      Changed since this order was made
+                      <details>
+                        <summary>What changed</summary>
+                        <ul>
+                          @for (c of v.changes; track c.field) {
+                            <li>{{ field(c.field) }}: <del>{{ c.old }}</del> → <ins>{{ c.new }}</ins></li>
+                          }
+                        </ul>
+                      </details>
+                    </div>
+                  } @else if (v.status === 'unavailable') {
+                    <div class="flag gone">No longer in the catalog as ordered: {{ v.reason }}</div>
+                  }
+                }
+                @if (l.snapshot.bom.length) {
+                  <details class="bom">
+                    <summary>Stones ({{ l.snapshot.total_pcs }} pcs)</summary>
+                    <ul>
+                      @for (b of l.snapshot.bom; track $index) {
+                        <li>
+                          {{ b.stone_count }} × {{ fx(b.size_mm, 2) }} mm {{ b.stone_code }}@if (b.locked) { (locked) } =
+                          {{ fx(b.line_weight_g, 4) }} g
+                        </li>
+                      }
+                    </ul>
+                  </details>
+                }
+              </td>
+              <td data-label="Variation" class="mono">{{ l.snapshot.variation_code }}</td>
+              <td data-label="Qty" class="num">
+                @if (canWrite() && isDraft()) {
+                  <input
+                    class="qty-input"
+                    type="number"
+                    inputmode="numeric"
+                    min="1"
+                    step="1"
+                    [value]="qty(l)"
+                    (input)="setQty(l, $any($event.target).value)"
+                    [attr.aria-label]="'Quantity of ' + l.snapshot.variation_code"
+                    [attr.aria-invalid]="badQty().has(l.id) ? 'true' : null"
+                  />
+                  @if (badQty().has(l.id)) {
+                    <span class="err" role="alert">1 to 100000</span>
+                  }
+                } @else {
+                  {{ l.quantity }}
+                }
+              </td>
+              <td data-label="Net g" class="num">{{ fx(l.snapshot.net_weight_g, 3) }}</td>
+              <td data-label="Stone g" class="num">{{ fx(l.snapshot.stone_weight_g, 3) }}</td>
+              <td data-label="Gross g" class="num">{{ fx(l.snapshot.gross_weight_g, 3) }}</td>
+              <td data-label="Stone %" class="num">{{ fx(l.snapshot.stone_pct, 2) }}</td>
+              <td data-label="Stones" class="num">{{ l.snapshot.total_pcs }}</td>
+              <td data-label="Files" class="files">{{ filesText(l) || '–' }}</td>
+              @if (canWrite() && isDraft()) {
+                <td class="row-actions">
+                  <button
+                    matButton
+                    type="button"
+                    (click)="removeLine(l)"
+                    [disabled]="shownLines().length === 1"
+                    [attr.aria-label]="'Remove ' + l.snapshot.variation_code + ' from the order'"
+                  >
+                    Remove
+                  </button>
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </section>
+
+    <section aria-labelledby="h-history">
+      <h2 id="h-history">History</h2>
+      <ol class="history">
+        @for (h of o.history; track h.id) {
+          <li>
+            <strong>{{ statusLabel[h.to_status] }}</strong>
+            <span class="muted">
+              · {{ h.changed_at | date: 'medium' }}@if (h.changed_by_name) { · {{ h.changed_by_name }} }
+            </span>
+            @if (h.note) {
+              <div class="note">“{{ h.note }}”</div>
+            }
+          </li>
+        }
+      </ol>
+    </section>
+  }
+</div>

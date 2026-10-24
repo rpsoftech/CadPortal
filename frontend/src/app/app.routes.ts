@@ -55,6 +55,25 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'orders',
+        title: 'Orders',
+        loadComponent: () =>
+          import('./features/orders/orders.component').then((m) => m.OrdersComponent),
+      },
+      {
+        path: 'orders/new',
+        title: 'New order',
+        canActivate: [roleGuard('admin', 'designer')],
+        loadComponent: () =>
+          import('./features/orders/order-new.component').then((m) => m.OrderNewComponent),
+      },
+      {
+        path: 'orders/:id',
+        title: 'Order',
+        loadComponent: () =>
+          import('./features/orders/order-detail.component').then((m) => m.OrderDetailComponent),
+      },
+      {
         path: 'master-data',
         title: 'Master data',
         canActivate: [roleGuard('admin')],

@@ -135,6 +135,17 @@ for (const scheme of SCHEMES) {
       await page.getByRole('checkbox', { name: /^Select [A-Z]+\d+/ }).first().check();
       await s.scan('catalog: selection bar');
       await s.overlay('catalog: download STL dialog', () => page.getByRole('button', { name: 'Download STL' }).click());
+      // New order: the review step from the selection (SPA navigation keeps the selection), then back
+      await page.getByRole('button', { name: 'Create order' }).click();
+      await expect(page.getByRole('heading', { name: 'New order', level: 1 })).toBeVisible();
+      await expect(page.getByRole('table', { name: 'Order lines' })).toBeVisible();
+      await s.scan('new order: review');
+      await s.overlay('new order: metal list', async () => {
+        await page.getByRole('combobox', { name: 'Metal' }).click();
+        await page.getByRole('option').first().waitFor();
+      });
+      await page.goBack();
+      await expect(page.getByRole('heading', { name: 'Catalog', level: 1 })).toBeVisible();
       await page.getByRole('button', { name: 'Clear', exact: true }).click();
       const filters = page.getByRole('button', { name: /^Filters/ });
       if (phone) {
@@ -204,6 +215,24 @@ for (const scheme of SCHEMES) {
       await s.go('/master-data?tab=categories', 'master data: categories & tags');
       await s.overlay('category dialog', () => page.getByRole('button', { name: 'Add category' }).click());
       await s.overlay('tag dialog', () => page.getByRole('button', { name: 'Add tag' }).click());
+
+      // orders: list, one order, and its dialogs (what exists depends on the state the orders test left)
+      await s.go('/orders', 'orders list');
+      await s.overlay('orders: status list', async () => {
+        await page.getByRole('combobox', { name: 'Status' }).click();
+        await page.getByRole('option').first().waitFor();
+      });
+      await page.getByRole('link', { name: /^ORD-/ }).first().click();
+      await expect(page.getByRole('table', { name: 'Order lines' })).toBeVisible();
+      await s.scan('order detail');
+      await s.overlay('order: order again dialog', () => page.getByRole('button', { name: 'Order again' }).click());
+      const cancel = page.getByRole('button', { name: 'Cancel order' });
+      if (await cancel.count()) await s.overlay('order: cancel dialog', () => cancel.click());
+      await s.overlay('order: clone result', async () => {
+        await page.getByRole('button', { name: 'Order again' }).click();
+        await page.getByRole('button', { name: 'Make new draft' }).click();
+        await page.getByRole('button', { name: /^Open ORD-/ }).waitFor();
+      });
 
       // the rest
       await s.go('/removed', 'removed');
