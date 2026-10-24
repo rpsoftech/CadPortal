@@ -221,6 +221,7 @@ for (const scheme of SCHEMES) {
       await page.getByRole('link', { name: /^ORD-/ }).first().click();
       await expect(page.getByRole('table', { name: 'Order lines' })).toBeVisible();
       await s.scan('order detail');
+      await s.overlay('order: cost dialog', () => page.getByRole('button', { name: 'Cost this order' }).click());
       await s.overlay('order: order again dialog', () => page.getByRole('button', { name: 'Order again' }).click());
       const cancel = page.getByRole('button', { name: 'Cancel order' });
       if (await cancel.count()) await s.overlay('order: cancel dialog', () => cancel.click());

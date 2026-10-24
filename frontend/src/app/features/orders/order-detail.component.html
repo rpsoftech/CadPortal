@@ -63,6 +63,15 @@
       }
       <div class="order-extra-actions" data-slot="order-extra-actions">
         <!-- extra order actions go here -->
+        <button matButton="outlined" type="button" [disabled]="busy()" (click)="download('summary')">Summary PDF</button>
+        <button matButton="outlined" type="button" [disabled]="busy()" (click)="download('bags')">Job bags</button>
+        <button matButton="outlined" type="button" [disabled]="busy()" (click)="download('bags-piece')">
+          Job bags, one per piece
+        </button>
+        <button matButton="outlined" type="button" [disabled]="busy()" (click)="download('csv')">Order CSV</button>
+        @if (canWrite()) {
+          <button matButton="outlined" type="button" [disabled]="busy()" (click)="costOrder()">Cost this order</button>
+        }
       </div>
     </section>
 
@@ -202,6 +211,20 @@
         </tbody>
       </table>
     </section>
+
+    @if (canWrite() && sheets().length) {
+      <section aria-labelledby="h-sheets">
+        <h2 id="h-sheets">Costing sheets</h2>
+        <ul class="sheets">
+          @for (s of sheets(); track s.id) {
+            <li>
+              <a [routerLink]="['/costing-sheets', s.id]">{{ s.name }}</a>
+              · {{ s.created_at | date: 'yyyy-MM-dd HH:mm' }} · total {{ fx(s.total, 2) }}
+            </li>
+          }
+        </ul>
+      </section>
+    }
 
     <section aria-labelledby="h-history">
       <h2 id="h-history">History</h2>

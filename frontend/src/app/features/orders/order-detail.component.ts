@@ -11,8 +11,18 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { toApiError } from '../../core/errors';
 import { fixed } from '../../core/format';
-import { ORDER_NEXT, ORDER_STATUS_LABEL, Order, OrderLine, OrderLineLive, OrderStatus } from '../../core/models';
+import { saveBlob } from '../../shared/download';
+import {
+  CostingSheetSummary,
+  ORDER_NEXT,
+  ORDER_STATUS_LABEL,
+  Order,
+  OrderLine,
+  OrderLineLive,
+  OrderStatus,
+} from '../../core/models';
 import { OrderCloneData, OrderCloneDialogComponent } from './order-clone-dialog.component';
+import { OrderCostData, OrderCostDialogComponent } from './order-cost-dialog.component';
 import { parseQuantity } from './order-new.component';
 import { OrderStatusDialogComponent, OrderStatusDialogData } from './order-status-dialog.component';
 import { OrderStatusComponent } from './order-status.component';
@@ -73,6 +83,9 @@ export class OrderDetailComponent {
   /** Spoken to screen readers after a change (status moves, saves). */
   protected readonly announce = signal('');
   protected readonly actionError = signal('');
+
+  /** The costing sheets made from this order (admin / designer only; the API refuses production). */
+  protected readonly sheets = signal<CostingSheetSummary[]>([]);
 
   protected readonly statusLabel = ORDER_STATUS_LABEL;
 
@@ -161,6 +174,7 @@ export class OrderDetailComponent {
     this.qtyEdits.set(new Map());
     this.badQty.set(new Set());
     this.removed.set(new Set());
+    this.loadSheets();
   }
 
   protected lv(l: OrderLine): OrderLineLive | undefined {
@@ -266,6 +280,59 @@ export class OrderDetailComponent {
       .subscribe((newId) => {
         if (newId) void this.router.navigate(['/orders', newId]);
       });
+  }
+
+  /** Downloads one of the order's printable outputs; the API builds all of them from the order's snapshot. */
+  protected download(kind: 'summary' | 'bags' | 'bags-piece' | 'csv'): void {
+    const o = this.order();
+    if (!o) return;
+    const call = {
+      summary: () => this.api.orderSummaryPdf(o.id),
+      bags: () => this.api.orderJobBagsPdf(o.id, false),
+      'bags-piece': () => this.api.orderJobBagsPdf(o.id, true),
+      csv: () => this.api.orderCsv(o.id),
+    }[kind]();
+    const name = {
+      summary: `${o.number}-summary.pdf`,
+      bags: `${o.number}-jobbags.pdf`,
+      'bags-piece': `${o.number}-jobbags-per-piece.pdf`,
+      csv: `${o.number}.csv`,
+    }[kind];
+    this.busy.set(true);
+    this.actionError.set('');
+    call.subscribe({
+      next: (blob) => {
+        saveBlob(blob, name);
+        this.busy.set(false);
+        this.announce.set(`${name} saved`);
+      },
+      error: async (e) => {
+        this.actionError.set((await toApiError(e)).message);
+        this.busy.set(false);
+      },
+    });
+  }
+
+  protected costOrder(): void {
+    const o = this.order();
+    if (!o) return;
+    this.dialog
+      .open<OrderCostDialogComponent, OrderCostData, number>(OrderCostDialogComponent, {
+        data: { order: o },
+        width: '640px',
+        maxWidth: '95vw',
+      })
+      .afterClosed()
+      .subscribe((sheetId) => {
+        this.loadSheets();
+        if (sheetId) void this.router.navigate(['/costing-sheets', sheetId]);
+      });
+  }
+
+  private loadSheets(): void {
+    const o = this.order();
+    if (!o || !this.canWrite()) return;
+    this.api.orderCostingSheets(o.id).subscribe({ next: (s) => this.sheets.set(s), error: () => this.sheets.set([]) });
   }
 
   private run(call: ReturnType<ApiService['order']>, done: string): void {
