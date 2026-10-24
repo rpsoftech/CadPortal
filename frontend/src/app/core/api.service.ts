@@ -426,6 +426,10 @@ export function designParams(f: DesignFilter): HttpParams {
   set('min_gross_wt', f.minGrossWt);
   set('max_gross_wt', f.maxGrossWt);
   set('max_stone_cts', f.maxStoneCts);
+  set('stone_code', f.stoneCode);
+  set('min_stone_pct', f.minStonePct);
+  set('max_stone_pct', f.maxStonePct);
+  set('sort', f.sort);
   for (const id of f.tagIds ?? []) p = p.append('tag_ids[]', `${id}`);
   return p;
 }

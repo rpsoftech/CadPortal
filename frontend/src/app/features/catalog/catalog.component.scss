@@ -216,3 +216,7 @@ mat-card.picked {
   background: var(--mat-sys-surface);
   border-radius: 8px;
 }
+
+.stone-line.no-data {
+  color: var(--mat-sys-error);
+}

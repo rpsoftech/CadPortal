@@ -141,7 +141,31 @@ export interface DesignListItem {
   net_max: Dec | null;
   gross_min: Dec | null;
   gross_max: Dec | null;
+  /** The stone code the stone figures below were computed for. */
+  stone_code?: string;
+  /** The variation the figures below belong to (with a metal selected). */
+  shown_variation_id?: number | null;
+  shown_variation_code?: string;
+  net_g?: Dec | null;
+  stone_carats?: Dec | null;
+  stone_g?: Dec | null;
+  gross_g?: Dec | null;
+  /** Stone weight as a percentage of the gross weight; null when there is no data. */
+  stone_pct?: Dec | null;
+  /** "ok", or "no_data" when a stone matrix row is missing for the code (never shown as 0). */
+  stone_status?: '' | 'ok' | 'no_data';
+  stone_note?: string;
 }
+
+/** The catalog sort orders the API understands (weights and stone % need a metal). */
+export type DesignSort =
+  | 'code'
+  | 'net_asc'
+  | 'net_desc'
+  | 'gross_asc'
+  | 'gross_desc'
+  | 'stone_pct_asc'
+  | 'stone_pct_desc';
 
 export interface DesignFilter {
   /** Matches the design code or name (substring, case-insensitive). */
@@ -156,6 +180,12 @@ export interface DesignFilter {
   minGrossWt?: string | null;
   maxGrossWt?: string | null;
   maxStoneCts?: string | null;
+  /** The stone code the stone figures are computed for; empty is the baseline code. */
+  stoneCode?: string | null;
+  /** Stone weight as a percentage of gross weight (needs metalCode). */
+  minStonePct?: string | null;
+  maxStonePct?: string | null;
+  sort?: DesignSort | null;
 }
 
 export interface VariationWeight {
