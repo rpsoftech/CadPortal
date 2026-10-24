@@ -1,20 +1,13 @@
 import { deflateSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
 import { Page, expect, test } from '@playwright/test';
+import { signIn, signInViaForm } from './auth';
 
 const env = (name: string): string => {
   const v = process.env[name];
   if (!v) throw new Error(`${name} must be set (scripts/e2e.sh does this)`);
   return v;
 };
-
-async function signIn(page: Page, email: string, password: string): Promise<void> {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible();
-}
 
 // Uses the spec fixtures: volume 200 mm3 is 3.550 g in 22KY, 3.116 g in 18KY, 3.050 g in 18KR.
 // No codes: they are assigned from the category prefixes (LR0001, LE0001).
@@ -27,7 +20,8 @@ const IMPORT = [
 test.describe.configure({ mode: 'serial' });
 
 test('an empty catalog loads, and the admin is told setup is not finished', async ({ page }) => {
-  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
+  // The one place the suite signs in through the form for the admin (the rest use a saved session).
+  await signInViaForm(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
   await expect(page.getByText('No designs match')).toBeVisible();
   await expect(page.getByText('Setup is not finished')).toBeVisible();
 });
