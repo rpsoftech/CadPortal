@@ -1,0 +1,2029 @@
+openapi: 3.0.3
+info:
+  title: CadPortal API
+  version: "1.0.0"
+  description: |
+    REST API of the internal jewelry CAD vault and product management portal.
+
+    **Conventions**
+    - Everything under `/api/v1` needs `Authorization: Bearer <token>` (from `POST /auth/login`), except the
+      routes marked as public.
+    - Roles: `admin` (everything), `designer` (edit designs, seats, CAD, costing), `production` (read, job bags,
+      CAD downloads; never sees wastage % or stone rates).
+    - Weights and money are decimals. They are sent and returned as JSON numbers or strings; never rely on float
+      rounding. Grams are rounded to 3 dp, carats to 4 dp when stored.
+    - Errors are `{"error": "message"}`. A 500 also carries `request_id`, which finds the request in the logs.
+    - A missing stone matrix row is never treated as 0: the API answers 422 and lists the missing (size, code) pairs.
+    - Every call (except health checks) is written to the audit log; request bodies are never stored.
+  contact:
+    name: rpsoftech/cadportal
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: "{baseUrl}"
+    description: Any deployment
+    variables:
+      baseUrl:
+        default: https://portal.example.com
+tags:
+  - name: Health
+  - name: Auth
+  - name: Users
+  - name: Masters
+  - name: Designs
+  - name: Variations
+  - name: CAD vault
+  - name: Media
+  - name: Undo
+  - name: Exports
+  - name: Costing
+  - name: Backups
+  - name: Audit
+
+security:
+  - bearerAuth: []
+
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      description: The process is up. Never touches the database.
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Status"}
+              example: {status: ok}
+  /readyz:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      description: The database answers.
+      security: []
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Status"}
+              example: {status: ready}
+        "503":
+          description: Database unavailable
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Status"}
+              example: {status: unavailable}
+
+  # ---------------------------------------------------------------- Auth
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in
+      description: Public. Every failure (unknown user, wrong password, locked out) is the same 401.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LoginRequest"}
+            example: {email: admin@example.com, password: "change-me-please"}
+      responses:
+        "200": {$ref: "#/components/responses/Token"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user
+      responses:
+        "200":
+          description: The signed-in user
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/User"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /api/v1/auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change own password
+      description: Invalidates every earlier token and returns a fresh one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ChangePasswordRequest"}
+            example: {current_password: old-password, new_password: a-new-longer-password}
+      responses:
+        "200": {$ref: "#/components/responses/Token"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /api/v1/auth/config:
+    get:
+      tags: [Auth]
+      summary: Sign-in screen configuration
+      description: Public. Tells the web app whether reset emails work and the idle timeout.
+      security: []
+      responses:
+        "200":
+          description: Configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  password_reset_email: {type: boolean}
+                  idle_timeout_minutes: {type: integer, description: "0 = never"}
+              example: {password_reset_email: false, idle_timeout_minutes: 30}
+  /api/v1/auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request a password reset email
+      description: Public, rate limited. Answers 202 with the same text for every address.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties: {email: {type: string, format: email}}
+            example: {email: user@example.com}
+      responses:
+        "202":
+          description: Accepted (same answer whatever the address)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {message: {type: string}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /api/v1/auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Set a new password with a reset token
+      description: Public. The token is single use and valid for one hour.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: {type: string}
+                password: {type: string, format: password}
+            example: {token: "<token from the reset link>", password: a-new-longer-password}
+      responses:
+        "204": {description: Password changed}
+        "400": {$ref: "#/components/responses/BadRequest"}
+
+  # ---------------------------------------------------------------- Users (admin)
+  /api/v1/users:
+    get:
+      tags: [Users]
+      summary: List users (admin)
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/User"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Users]
+      summary: Create a user (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateUserRequest"}
+            example: {email: designer@example.com, name: A Designer, password: a-long-first-password, role: designer}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/User"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/users/{id}:
+    put:
+      tags: [Users]
+      summary: Update a user (admin)
+      description: "`active` is required: an omitted flag must not silently disable the user."
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, role, active]
+              properties:
+                name: {type: string}
+                role: {$ref: "#/components/schemas/Role"}
+                active: {type: boolean}
+            example: {name: A Designer, role: designer, active: true}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/User"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/users/{id}/password:
+    post:
+      tags: [Users]
+      summary: Set a user's password (admin)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_password]
+              properties: {new_password: {type: string, format: password}}
+            example: {new_password: a-new-longer-password}
+      responses:
+        "204": {description: Password set}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/users/{id}/reset-link:
+    post:
+      tags: [Users]
+      summary: Make a one-hour reset link (admin)
+      description: The token is shown once. Pass `path` on to the user.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200":
+          description: Link
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path: {type: string, example: "/reset-password?token=..."}
+                  expires_at: {type: string, format: date-time}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  # ---------------------------------------------------------------- Masters
+  /api/v1/masters/categories:
+    get:
+      tags: [Masters]
+      summary: List categories
+      responses:
+        "200":
+          description: Categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Category"}
+    post:
+      tags: [Masters]
+      summary: Create a category (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CategoryInput"}
+            example: {name: Rings, code_prefix: LR}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Category"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/masters/categories/{id}:
+    put:
+      tags: [Masters]
+      summary: Update a category (admin)
+      description: A prefix change restarts numbering for new designs.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CategoryInput"}
+            example: {name: Rings, code_prefix: LR}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Category"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/masters/tags:
+    get:
+      tags: [Masters]
+      summary: List tags
+      parameters:
+        - name: include_inactive
+          in: query
+          description: Admin only; includes deactivated tags.
+          schema: {type: boolean}
+      responses:
+        "200":
+          description: Tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Tag"}
+    post:
+      tags: [Masters]
+      summary: Create a tag (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, tag_group]
+              properties:
+                name: {type: string}
+                tag_group: {$ref: "#/components/schemas/TagGroup"}
+            example: {name: Bridal, tag_group: Audience}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Tag"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/masters/tags/{id}:
+    put:
+      tags: [Masters]
+      summary: Update a tag (admin)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, tag_group, active]
+              properties:
+                name: {type: string}
+                tag_group: {$ref: "#/components/schemas/TagGroup"}
+                active: {type: boolean}
+            example: {name: Bridal, tag_group: Audience, active: true}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Tag"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/masters/metals:
+    get:
+      tags: [Masters]
+      summary: List alloys
+      description: "`wastage_pct` is null for the production role."
+      responses:
+        "200":
+          description: Alloys
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Metal"}
+    post:
+      tags: [Masters]
+      summary: Create an alloy (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, specific_gravity]
+              properties:
+                code: {type: string}
+                specific_gravity: {$ref: "#/components/schemas/Decimal"}
+                wastage_pct: {$ref: "#/components/schemas/NullableDecimal"}
+                is_default_input: {type: boolean}
+                active: {type: boolean, default: true}
+            example: {code: 22KY, specific_gravity: 17.75, wastage_pct: 8, is_default_input: false, active: true}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Metal"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/masters/metals/{id}:
+    put:
+      tags: [Masters]
+      summary: Update an alloy (admin)
+      description: A change of specific gravity queues a full weight rebuild.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [specific_gravity, is_default_input, active]
+              properties:
+                specific_gravity: {$ref: "#/components/schemas/Decimal"}
+                wastage_pct: {$ref: "#/components/schemas/NullableDecimal"}
+                is_default_input: {type: boolean}
+                active: {type: boolean}
+            example: {specific_gravity: 17.75, wastage_pct: 8, is_default_input: false, active: true}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Metal"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/masters/stone-codes:
+    get:
+      tags: [Masters]
+      summary: List stone codes
+      responses:
+        "200":
+          description: Stone codes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/StoneCode"}
+    post:
+      tags: [Masters]
+      summary: Create a stone code (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties: {code: {type: string}}
+            example: {code: 2HD}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/StoneCode"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/masters/stone-codes/{id}:
+    put:
+      tags: [Masters]
+      summary: Activate or deactivate a stone code (admin)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties: {active: {type: boolean}}
+            example: {active: true}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/StoneCode"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/masters/stone-matrix:
+    get:
+      tags: [Masters]
+      summary: List stone size matrix rows
+      description: Rate fields are null for the production role.
+      responses:
+        "200":
+          description: Matrix rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/StoneMatrixRow"}
+    put:
+      tags: [Masters]
+      summary: Replace/upsert matrix rows and set the baseline code (admin)
+      description: A `g` rate basis needs `rate_per_g`. Weights are rebuilt asynchronously by the recalc worker.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                baseline_code: {type: string, description: The single default baseline stone code (e.g. 1HD)}
+                rows:
+                  type: array
+                  items: {$ref: "#/components/schemas/StoneMatrixRowInput"}
+            example:
+              baseline_code: 1HD
+              rows:
+                - {size_mm: 1.10, stone_code: 2HD, sieve: "+1.10", carats_per_stone: 0.0070, rate_per_pc: 12, rate_basis: pc}
+      responses:
+        "202":
+          description: Saved, recalculation queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, example: saved}
+                  recalc: {type: string, example: queued}
+        "400": {$ref: "#/components/responses/BadRequest"}
+    delete:
+      tags: [Masters]
+      summary: Delete one matrix row (admin)
+      parameters:
+        - {name: size_mm, in: query, required: true, schema: {type: number}, example: 1.10}
+        - {name: stone_code, in: query, required: true, schema: {type: string}, example: 2HD}
+      responses:
+        "204": {description: Deleted}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/masters/matrix-gaps:
+    get:
+      tags: [Masters]
+      summary: Seats that point at a missing matrix row (admin)
+      responses:
+        "200":
+          description: Gaps (from `v_seat_matrix_gaps`)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    variation_id: {type: integer, format: int64}
+                    seat_id: {type: integer, format: int64}
+                    size_mm: {$ref: "#/components/schemas/Decimal"}
+                    stone_code_id: {type: integer, format: int64}
+                    stone_code: {type: string}
+  /api/v1/masters/recalc-status:
+    get:
+      tags: [Masters]
+      summary: Weight recalculation queue (admin)
+      responses:
+        "200":
+          description: Queue state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pending: {type: integer}
+                  running: {type: integer}
+                  failed: {type: integer}
+                  last_error: {type: string}
+  /api/v1/masters/setup-status:
+    get:
+      tags: [Masters]
+      summary: Master data still missing (admin)
+      responses:
+        "200":
+          description: Checklist
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  complete: {type: boolean}
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: {type: string}
+                        severity: {type: string, enum: [required, recommended]}
+                        title: {type: string}
+                        detail: {type: string}
+                        tab: {type: string, enum: [alloys, matrix, categories]}
+  /api/v1/masters/export:
+    get:
+      tags: [Masters]
+      summary: Export all master data as a zip of CSVs (admin, audited)
+      description: Alloys, stone codes, stone matrix, categories, tags.
+      responses:
+        "200":
+          description: Zip archive
+          content:
+            application/zip:
+              schema: {type: string, format: binary}
+
+  # ---------------------------------------------------------------- Designs
+  /api/v1/designs:
+    get:
+      tags: [Designs]
+      summary: Search and filter the catalog
+      description: Total matches before paging are returned in `X-Total-Count`.
+      parameters:
+        - {name: q, in: query, description: Text search on code or name, schema: {type: string}}
+        - {name: category_id, in: query, schema: {type: integer, format: int64}}
+        - name: tag_ids[]
+          in: query
+          style: form
+          explode: true
+          schema: {type: array, items: {type: integer, format: int64}}
+        - {name: metal_code, in: query, description: Purity to show net/gross for, schema: {type: string}, example: 18KY}
+        - {name: min_net_wt, in: query, schema: {type: number}}
+        - {name: max_net_wt, in: query, schema: {type: number}}
+        - {name: min_gross_wt, in: query, schema: {type: number}}
+        - {name: max_gross_wt, in: query, schema: {type: number}}
+        - {name: max_stone_cts, in: query, schema: {type: number}}
+        - {$ref: "#/components/parameters/Limit"}
+        - {$ref: "#/components/parameters/Offset"}
+      responses:
+        "200":
+          description: Catalog cards
+          headers:
+            X-Total-Count: {$ref: "#/components/headers/TotalCount"}
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/DesignListItem"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+    post:
+      tags: [Designs]
+      summary: Create a design (designer, admin)
+      description: The code is assigned automatically (category prefix + 4-digit number). Sending `code` is a 400.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DesignInput"}
+            example: {name: Solitaire band, category_id: 1, tag_ids: [1, 4]}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Design"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /api/v1/designs/import:
+    post:
+      tags: [Designs]
+      summary: Bulk-create designs from CSV rows (designer, admin)
+      description: |
+        All-or-nothing. `dry_run: true` validates only. Never changes existing designs.
+        Any problem returns 422 with every error and nothing is written.
+        Give either `volume_mm3`, or `ref_weight_g` together with `ref_metal`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dry_run: {type: boolean}
+                rows:
+                  type: array
+                  items: {$ref: "#/components/schemas/ImportRow"}
+            example:
+              dry_run: true
+              rows:
+                - {line: 2, code: "", name: Solitaire band, category: Rings, tags: "Audience:Bridal;Motif:Floral", volume_mm3: "200", ref_weight_g: "", ref_metal: ""}
+      responses:
+        "200": {description: Dry run passed, content: {application/json: {schema: {$ref: "#/components/schemas/ImportResult"}}}}
+        "201": {description: Import carried out, content: {application/json: {schema: {$ref: "#/components/schemas/ImportResult"}}}}
+        "422": {description: Validation problems, content: {application/json: {schema: {$ref: "#/components/schemas/ImportResult"}}}}
+  /api/v1/designs/{code}:
+    get:
+      tags: [Designs]
+      summary: Design detail by code
+      description: With tags, variations (each with its weight matrix across metals) and media.
+      parameters:
+        - {name: code, in: path, required: true, schema: {type: string}, example: LR0001}
+      responses:
+        "200":
+          description: Design detail
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DesignDetail"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/designs/{id}:
+    put:
+      tags: [Designs]
+      summary: Update a design (designer, admin)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DesignInput"}
+            example: {name: Solitaire band, category_id: 1, tag_ids: [1, 4]}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Design"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    delete:
+      tags: [Designs]
+      summary: Delete a design (soft delete; the code stays reserved)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "204": {description: Deleted}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/designs/{id}/duplicate:
+    post:
+      tags: [Designs]
+      summary: Duplicate a design (designer, admin)
+      description: |
+        New design with the next automatic code. Variations keep their base input and seats.
+        CAD files and photos are never copied. One transaction.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                variation_ids: {type: array, items: {type: integer, format: int64}, description: Default all live variations}
+                copy_tags: {type: boolean, default: true}
+            example: {name: Solitaire band (copy), copy_tags: true}
+      responses:
+        "201":
+          description: The new design
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Design"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/designs/{id}/variations:
+    post:
+      tags: [Variations]
+      summary: Add a CAD variation (designer, admin)
+      description: Give either `volume_mm3`, or `ref_weight_g` with `ref_metal_code`.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BaseInput"}
+            example: {volume_mm3: 200}
+      responses:
+        "201":
+          description: Created (the weights are computed in the same transaction)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Variation"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/designs/{id}/restore:
+    post:
+      tags: [Undo]
+      summary: Restore a deleted design
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "204": {description: Restored}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  # ---------------------------------------------------------------- Variations
+  /api/v1/variations/{id}:
+    delete:
+      tags: [Variations]
+      summary: Delete a variation (soft delete)
+      description: Hidden everywhere; its code and CAD checksums stay reserved until purged.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "204": {description: Deleted}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/variations/{id}/base-input:
+    put:
+      tags: [Variations]
+      summary: Change the base input (designer, admin)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BaseInput"}
+            example: {ref_weight_g: 3.116, ref_metal_code: 18KY}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Variation"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /api/v1/variations/{id}/seats:
+    get:
+      tags: [Variations]
+      summary: List stone seats
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200":
+          description: Seats
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Seat"}
+    put:
+      tags: [Variations]
+      summary: Replace all stone seats (designer, admin)
+      description: Recalculates the variation's weights synchronously. A locked seat must match a matrix row.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seats:
+                  type: array
+                  items:
+                    type: object
+                    required: [size_mm, stone_count]
+                    properties:
+                      size_mm: {$ref: "#/components/schemas/Decimal"}
+                      stone_count: {type: integer, format: int32}
+                      locked_stone_code: {type: string, description: Only when the seat needs a lock}
+            example:
+              seats:
+                - {size_mm: 1.10, stone_count: 24}
+                - {size_mm: 1.20, stone_count: 12}
+                - {size_mm: 2.50, stone_count: 1, locked_stone_code: 2HD}
+      responses:
+        "200":
+          description: Seats as saved
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Seat"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /api/v1/variations/{id}/clone-seats:
+    post:
+      tags: [Variations]
+      summary: Copy the seats of another variation (designer, admin)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_variation_id]
+              properties: {source_variation_id: {type: integer, format: int64}}
+            example: {source_variation_id: 1}
+      responses:
+        "200":
+          description: Seats as saved
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Seat"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /api/v1/variations/{id}/simulate-bom:
+    get:
+      tags: [Variations]
+      summary: Simulate the stone bill of materials
+      description: |
+        Flexible seats use the chosen stone `code`; locked seats keep their own. Nothing is persisted.
+        A missing matrix row gives 422 with the missing (size, code) pairs, never a zero.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - {name: code, in: query, required: true, schema: {type: string}, example: 2HD}
+      responses:
+        "200":
+          description: BOM
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BOM"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "422": {$ref: "#/components/responses/MissingMatrix"}
+  /api/v1/variations/{id}/restore:
+    post:
+      tags: [Undo]
+      summary: Restore a deleted variation
+      description: Refused (409) while its design is deleted.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "204": {description: Restored}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+
+  # ---------------------------------------------------------------- CAD vault
+  /api/v1/variations/{id}/upload-cad:
+    post:
+      tags: [CAD vault]
+      summary: Upload a .3dm or .stl file (designer, admin)
+      description: |
+        Multipart with one `file` part; the kind comes from the file name. The SHA-256 is taken over the original
+        bytes, then the file is gzipped while it streams to storage. A duplicate checksum is a 409 that names the
+        existing variation. Returns 503 when file storage is off.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "201":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  variation_code: {type: string, example: LR0001-V1}
+                  kind: {type: string, enum: ["3dm", stl]}
+                  filename: {type: string}
+                  sha256: {type: string}
+                  size_bytes: {type: integer, format: int64}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "503": {$ref: "#/components/responses/StorageOff"}
+  /api/v1/variations/{id}/download:
+    get:
+      tags: [CAD vault]
+      summary: Short-lived download link for a CAD file
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - {name: kind, in: query, schema: {type: string, enum: ["3dm", stl], default: "3dm"}}
+      responses:
+        "200":
+          description: Presigned link
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: {type: string, format: uri}
+                  filename: {type: string}
+                  expires_in_seconds: {type: integer}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "503": {$ref: "#/components/responses/StorageOff"}
+  /api/v1/variations/{id}/cad:
+    delete:
+      tags: [CAD vault]
+      summary: Remove a CAD file (designer, admin)
+      description: Frees the checksum. The object is kept in the trash for the retention period.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - {name: kind, in: query, required: true, schema: {type: string, enum: ["3dm", stl]}}
+      responses:
+        "204": {description: Removed}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/local-files/{key}:
+    get:
+      tags: [CAD vault]
+      summary: Serve a stored object (development storage only)
+      description: |
+        Registered only with `STORAGE=local`. Authenticated by the signed `expires` and `sig` query values of a
+        link the API issued, not by the bearer token.
+      security: []
+      parameters:
+        - {name: key, in: path, required: true, schema: {type: string}, description: "Storage key (may contain slashes)"}
+        - {name: filename, in: query, schema: {type: string}}
+        - {name: expires, in: query, schema: {type: string}}
+        - {name: sig, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: File bytes
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  # ---------------------------------------------------------------- Media
+  /api/v1/designs/{id}/media:
+    post:
+      tags: [Media]
+      summary: Add a photo or video (designer, admin)
+      description: |
+        Multipart. Max 5 per design or variation. The optional `variation_id` field must come **before** `file`,
+        because the file is streamed to storage as it arrives.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                variation_id: {type: integer, format: int64}
+                file: {type: string, format: binary}
+      responses:
+        "201":
+          description: Stored
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaItem"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "503": {$ref: "#/components/responses/StorageOff"}
+  /api/v1/media/{id}:
+    delete:
+      tags: [Media]
+      summary: Delete a photo or video (designer, admin)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "204": {description: Deleted}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/media/{id}/cover:
+    put:
+      tags: [Media]
+      summary: Make a photo the cover of its design (designer, admin)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "204": {description: Cover set}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  # ---------------------------------------------------------------- Undo
+  /api/v1/trash:
+    get:
+      tags: [Undo]
+      summary: Everything that can still be brought back (designer, admin)
+      description: Kept for `DELETED_FILE_RETENTION_DAYS` (default 30) before an hourly purge.
+      responses:
+        "200":
+          description: Trash
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Trash"}
+  /api/v1/trash/files/{id}/restore:
+    post:
+      tags: [Undo]
+      summary: Restore a removed or replaced file
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "204": {description: Restored}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+
+  # ---------------------------------------------------------------- Exports
+  /api/v1/exports/job-bag-pdf:
+    post:
+      tags: [Exports]
+      summary: Job-bag PDF for one variation
+      description: The planner picks the metal and the stone code. Includes the design photo and a QR code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [variation_id, metal_code, stone_code]
+              properties:
+                variation_id: {type: integer, format: int64}
+                metal_code: {type: string}
+                stone_code: {type: string}
+            example: {variation_id: 1, metal_code: 18KR, stone_code: 2HD}
+      responses:
+        "200":
+          description: PDF
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "422": {$ref: "#/components/responses/MissingMatrix"}
+  /api/v1/exports/job-bags-pdf:
+    post:
+      tags: [Exports]
+      summary: Many job bags in one PDF (max 200)
+      description: |
+        Give `items` and/or `design_ids` (every live variation of those designs) with shared
+        `metal_code`/`stone_code`. If any bag lacks stone data the answer is 422 listing every affected
+        variation; with `skip_incomplete` the rest is printed, the skipped codes are in `X-Skipped` and on a last page.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      variation_id: {type: integer, format: int64}
+                      metal_code: {type: string}
+                      stone_code: {type: string}
+                design_ids: {type: array, items: {type: integer, format: int64}}
+                metal_code: {type: string}
+                stone_code: {type: string}
+                skip_incomplete: {type: boolean}
+            example: {design_ids: [1, 2], metal_code: 18KR, stone_code: 2HD, skip_incomplete: false}
+      responses:
+        "200":
+          description: PDF
+          headers:
+            X-Skipped: {description: Comma separated codes of skipped variations, schema: {type: string}}
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "422":
+          description: Bags with missing stone data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: {type: string}
+                  failures:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        variation_id: {type: integer, format: int64}
+                        design_code: {type: string}
+                        variation_code: {type: string}
+                        stone_code: {type: string}
+                        missing: {type: array, items: {$ref: "#/components/schemas/MissingPair"}}
+  /api/v1/exports/designs-csv:
+    get:
+      tags: [Exports]
+      summary: Export the catalog as CSV in the import format
+      description: Any role. Holds no wastage or rates. Round-trips into a fresh install.
+      responses:
+        "200":
+          description: CSV
+          content:
+            text/csv:
+              schema: {type: string}
+
+  # ---------------------------------------------------------------- Costing
+  /api/v1/exports/costing-csv:
+    post:
+      tags: [Costing]
+      summary: Costing CSV (designer, admin)
+      description: |
+        Two shapes. **Items**: `items[]` with `gold_rate_per_g` and `setting_rate_per_pc` (one row per item).
+        **Selection**: `design_ids` and/or `variation_ids` (max 500) with a single `metal_code`/`stone_code`:
+        one row per variation plus a total row; all-or-nothing unless `skip_incomplete`.
+        The last column `stone_pricing` says how each stone line was priced.
+        `X-Costing-Incomplete` holds the number of variations not costed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/CostingItemsRequest"
+                - $ref: "#/components/schemas/CostingSelectionRequest"
+            examples:
+              selection:
+                value: {design_ids: [1, 2], metal_code: 18KR, stone_code: 2HD, gold_rate_per_g: 6200, setting_rate_per_pc: 15, skip_incomplete: false}
+              items:
+                value:
+                  gold_rate_per_g: 6200
+                  setting_rate_per_pc: 15
+                  items: [{variation_id: 1, metal_code: 18KR, stone_code: 2HD}]
+      responses:
+        "200":
+          description: CSV
+          headers:
+            X-Costing-Incomplete: {schema: {type: integer}}
+          content:
+            text/csv:
+              schema: {type: string}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "422": {$ref: "#/components/responses/IncompleteCosting"}
+  /api/v1/exports/costing-preview:
+    post:
+      tags: [Costing]
+      summary: Cost a selection as JSON without failing on incomplete data (designer, admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CostingSelectionRequest"}
+            example: {design_ids: [1], metal_code: 18KR, stone_code: 2HD, gold_rate_per_g: 6200, setting_rate_per_pc: 15}
+      responses:
+        "200":
+          description: Rows, totals and problems
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows: {type: array, items: {$ref: "#/components/schemas/CostRow"}}
+                  totals: {$ref: "#/components/schemas/CostTotals"}
+                  problems: {type: array, items: {$ref: "#/components/schemas/DesignProblem"}}
+                  complete: {type: boolean}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /api/v1/costing-sheets:
+    get:
+      tags: [Costing]
+      summary: Saved costing sheets, newest first (designer, admin)
+      parameters:
+        - {$ref: "#/components/parameters/Limit"}
+        - {$ref: "#/components/parameters/Offset"}
+      responses:
+        "200":
+          description: Sheets
+          headers:
+            X-Total-Count: {$ref: "#/components/headers/TotalCount"}
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/CostingSheetSummary"}
+    post:
+      tags: [Costing]
+      summary: Compute and save an immutable costing sheet (designer, admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CostingSelectionRequest"
+                - type: object
+                  properties: {name: {type: string, maxLength: 100}}
+            example: {name: October ring quote, design_ids: [1, 2], metal_code: 18KR, stone_code: 2HD, gold_rate_per_g: 6200, setting_rate_per_pc: 15}
+      responses:
+        "201":
+          description: Saved sheet
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CostingSheetDetail"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "422": {$ref: "#/components/responses/IncompleteCosting"}
+  /api/v1/costing-sheets/{id}:
+    get:
+      tags: [Costing]
+      summary: One saved sheet with its rows, totals, problems and rates
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200":
+          description: Sheet
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CostingSheetDetail"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    delete:
+      tags: [Costing]
+      summary: Delete a sheet (admin, or the designer who saved it)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "204": {description: Deleted}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/costing-sheets/{id}/csv:
+    get:
+      tags: [Costing]
+      summary: The stored CSV, byte-identical to the first download (audited)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200":
+          description: CSV
+          headers:
+            X-Costing-Incomplete: {schema: {type: integer}}
+          content:
+            text/csv:
+              schema: {type: string}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/costing-sheets/{id}/recost:
+    post:
+      tags: [Costing]
+      summary: New sheet from a saved one with the current masters, plus the difference
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string, description: Default "<old name> (re-cost)"}
+                gold_rate_per_g: {$ref: "#/components/schemas/Decimal"}
+                setting_rate_per_pc: {$ref: "#/components/schemas/Decimal"}
+                skip_incomplete: {type: boolean}
+            example: {gold_rate_per_g: 6400}
+      responses:
+        "201":
+          description: New sheet and comparison
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sheet: {$ref: "#/components/schemas/CostingSheetDetail"}
+                  comparison: {$ref: "#/components/schemas/SheetComparison"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/IncompleteCosting"}
+
+  # ---------------------------------------------------------------- Backups
+  /api/v1/backups:
+    get:
+      tags: [Backups]
+      summary: Backup run history and stored dumps (admin)
+      responses:
+        "200":
+          description: Backups
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Backups"}
+  /api/v1/backups/run:
+    post:
+      tags: [Backups]
+      summary: "\"Back up now\" (admin)"
+      description: Queues one request for the backup service, which picks it up within a minute. 409 if one is waiting or running.
+      responses:
+        "202": {description: Queued}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/backups/download:
+    get:
+      tags: [Backups]
+      summary: Signed link to one encrypted dump (admin, audited)
+      parameters:
+        - {name: key, in: query, required: true, schema: {type: string}, description: Key of a dump from the list}
+      responses:
+        "200":
+          description: Link
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: {type: string, format: uri}
+                  filename: {type: string}
+                  expires_in_seconds: {type: integer}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "503": {$ref: "#/components/responses/StorageOff"}
+
+  # ---------------------------------------------------------------- Audit
+  /api/v1/audit:
+    get:
+      tags: [Audit]
+      summary: Audit log, newest first (admin)
+      parameters:
+        - {name: action, in: query, description: Action prefix, schema: {type: string}, example: "POST /api/v1/designs"}
+        - {name: user_id, in: query, schema: {type: integer, format: int64}}
+        - {name: from, in: query, description: RFC 3339 timestamp or YYYY-MM-DD, schema: {type: string}}
+        - {name: to, in: query, description: "RFC 3339 timestamp or YYYY-MM-DD (a plain date includes that whole day)", schema: {type: string}}
+        - {$ref: "#/components/parameters/Limit"}
+        - {$ref: "#/components/parameters/Offset"}
+      responses:
+        "200":
+          description: Entries
+          headers:
+            X-Total-Count: {$ref: "#/components/headers/TotalCount"}
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/AuditRecord"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token from `POST /api/v1/auth/login`.
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: {type: integer, format: int64, minimum: 1}
+    Limit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1}
+    Offset:
+      name: offset
+      in: query
+      schema: {type: integer, minimum: 0}
+
+  headers:
+    TotalCount:
+      description: Total matches before paging
+      schema: {type: integer, format: int64}
+
+  responses:
+    Token:
+      description: Signed in
+      headers:
+        Cache-Control: {schema: {type: string, example: no-store}}
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/TokenResponse"}
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+          example: {error: invalid JSON body}
+    Unauthorized:
+      description: Missing, expired or invalid token (or wrong credentials)
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Forbidden:
+      description: The role may not do this
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Conflict:
+      description: Conflict (duplicate code or checksum, state does not allow it)
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    TooLarge:
+      description: Request or file too large
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    StorageOff:
+      description: File storage is not configured
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    MissingMatrix:
+      description: Stone matrix rows are missing for the chosen stone code
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: {type: string}
+              missing: {type: array, items: {$ref: "#/components/schemas/MissingPair"}}
+    IncompleteCosting:
+      description: Costing data is incomplete (no wastage %, no stone rate, or no matrix row)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: {type: string}
+              problems: {type: array, items: {$ref: "#/components/schemas/DesignProblem"}}
+              metals_missing_wastage: {type: array, items: {type: string}}
+              stone_rates_missing: {type: array, items: {$ref: "#/components/schemas/MissingPair"}}
+              missing: {type: array, items: {$ref: "#/components/schemas/MissingPair"}}
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: {type: string}
+        request_id: {type: string, description: Only on a 500}
+    Status:
+      type: object
+      properties: {status: {type: string}}
+    Decimal:
+      description: Exact decimal; sent as a number or a numeric string.
+      oneOf: [{type: number}, {type: string}]
+      example: "3.116"
+    NullableDecimal:
+      description: A decimal, or null when unset.
+      nullable: true
+      oneOf: [{type: number}, {type: string}]
+    Role:
+      type: string
+      enum: [admin, designer, production]
+    TagGroup:
+      type: string
+      enum: [Audience, Sub-Style, Motif, Attribute]
+    MissingPair:
+      type: object
+      properties:
+        size_mm: {$ref: "#/components/schemas/Decimal"}
+        code: {type: string}
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, format: password}
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: {type: string, format: password}
+        new_password: {type: string, format: password}
+    TokenResponse:
+      type: object
+      properties:
+        token: {type: string}
+        expires_at: {type: string, format: date-time}
+        user: {$ref: "#/components/schemas/User"}
+    User:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        email: {type: string, format: email}
+        name: {type: string}
+        role: {$ref: "#/components/schemas/Role"}
+        active: {type: boolean}
+        last_login_at: {type: string, format: date-time, nullable: true}
+        created_at: {type: string, format: date-time}
+    CreateUserRequest:
+      type: object
+      required: [email, name, password, role]
+      properties:
+        email: {type: string, format: email}
+        name: {type: string}
+        password: {type: string, format: password}
+        role: {$ref: "#/components/schemas/Role"}
+    Category:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string}
+        code_prefix: {type: string, nullable: true, description: 1 to 6 letters; a category without one cannot take designs}
+        next_seq: {type: integer}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    CategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string}
+        code_prefix: {type: string}
+    Tag:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string}
+        tag_group: {$ref: "#/components/schemas/TagGroup"}
+        active: {type: boolean}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    Metal:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        code: {type: string, example: 18KY}
+        specific_gravity: {$ref: "#/components/schemas/Decimal"}
+        wastage_pct: {$ref: "#/components/schemas/NullableDecimal"}
+        is_default_input: {type: boolean}
+        active: {type: boolean}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    StoneCode:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        code: {type: string, example: 2HD}
+        is_default_baseline: {type: boolean}
+        active: {type: boolean}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    StoneMatrixRow:
+      type: object
+      properties:
+        size_mm: {$ref: "#/components/schemas/Decimal"}
+        stone_code_id: {type: integer, format: int64}
+        stone_code: {type: string}
+        sieve: {type: string, nullable: true}
+        carats_per_stone: {$ref: "#/components/schemas/Decimal"}
+        rate_basis: {type: string, enum: [pc, ct, g]}
+        rate_per_pc: {$ref: "#/components/schemas/NullableDecimal"}
+        rate_per_ct: {$ref: "#/components/schemas/NullableDecimal"}
+        rate_per_g: {$ref: "#/components/schemas/NullableDecimal"}
+    StoneMatrixRowInput:
+      type: object
+      required: [size_mm, stone_code, carats_per_stone]
+      properties:
+        size_mm: {$ref: "#/components/schemas/Decimal"}
+        stone_code: {type: string}
+        sieve: {type: string}
+        carats_per_stone: {$ref: "#/components/schemas/Decimal"}
+        rate_basis: {type: string, enum: [pc, ct, g], default: pc}
+        rate_per_pc: {$ref: "#/components/schemas/NullableDecimal"}
+        rate_per_ct: {$ref: "#/components/schemas/NullableDecimal"}
+        rate_per_g: {$ref: "#/components/schemas/NullableDecimal"}
+    DesignInput:
+      type: object
+      required: [name, category_id]
+      properties:
+        code: {type: string, description: Must be left out on create}
+        name: {type: string}
+        category_id: {type: integer, format: int64}
+        tag_ids: {type: array, items: {type: integer, format: int64}}
+    Design:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        code: {type: string, example: LR0001}
+        name: {type: string}
+        category_id: {type: integer, format: int64}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    DesignListItem:
+      description: A catalog card.
+      allOf:
+        - $ref: "#/components/schemas/Design"
+        - type: object
+          properties:
+            category_name: {type: string}
+            tag_names: {type: array, items: {type: string}}
+            variation_count: {type: integer}
+            total_count: {type: integer, format: int64, description: Same as X-Total-Count}
+            cover_url: {type: string, description: "Signed link to the cover thumbnail (empty when no photo)"}
+            net_min: {$ref: "#/components/schemas/NullableDecimal"}
+            net_max: {$ref: "#/components/schemas/NullableDecimal"}
+            gross_min: {$ref: "#/components/schemas/NullableDecimal"}
+            gross_max: {$ref: "#/components/schemas/NullableDecimal"}
+    DesignDetail:
+      allOf:
+        - $ref: "#/components/schemas/Design"
+        - type: object
+          properties:
+            tags: {type: array, items: {$ref: "#/components/schemas/Tag"}}
+            variations:
+              type: array
+              items:
+                allOf:
+                  - $ref: "#/components/schemas/Variation"
+                  - type: object
+                    properties:
+                      weights:
+                        type: array
+                        description: One pre-computed row per active metal
+                        items:
+                          type: object
+                          properties:
+                            variation_id: {type: integer, format: int64}
+                            metal_id: {type: integer, format: int64}
+                            metal_code: {type: string}
+                            net_weight_g: {$ref: "#/components/schemas/Decimal"}
+                            gross_weight_g: {$ref: "#/components/schemas/NullableDecimal"}
+            media: {type: array, items: {$ref: "#/components/schemas/MediaItem"}}
+    BaseInput:
+      type: object
+      description: Either `volume_mm3`, or `ref_weight_g` with `ref_metal_code`.
+      properties:
+        volume_mm3: {$ref: "#/components/schemas/NullableDecimal"}
+        ref_weight_g: {$ref: "#/components/schemas/NullableDecimal"}
+        ref_metal_code: {type: string}
+    Variation:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        design_id: {type: integer, format: int64}
+        seq: {type: integer}
+        code: {type: string, example: LR0001-V1}
+        base_volume_mm3: {$ref: "#/components/schemas/NullableDecimal"}
+        base_ref_weight_g: {$ref: "#/components/schemas/NullableDecimal"}
+        base_ref_metal_id: {type: integer, format: int64, nullable: true}
+        file_3dm_sha256: {type: string, nullable: true}
+        file_3dm_name: {type: string, nullable: true}
+        file_3dm_size_bytes: {type: integer, format: int64, nullable: true}
+        file_stl_sha256: {type: string, nullable: true}
+        file_stl_name: {type: string, nullable: true}
+        file_stl_size_bytes: {type: integer, format: int64, nullable: true}
+        baseline_stone_carats: {$ref: "#/components/schemas/Decimal"}
+        baseline_gross_weight_g: {$ref: "#/components/schemas/NullableDecimal"}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    Seat:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        variation_id: {type: integer, format: int64}
+        position: {type: integer}
+        size_mm: {$ref: "#/components/schemas/Decimal"}
+        stone_count: {type: integer}
+        locked_stone_code_id: {type: integer, format: int64, nullable: true}
+        locked_code: {type: string, nullable: true}
+    BOM:
+      type: object
+      properties:
+        variation_code: {type: string}
+        stone_code: {type: string}
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              size_mm: {$ref: "#/components/schemas/Decimal"}
+              stone_count: {type: integer}
+              stone_code: {type: string}
+              locked: {type: boolean}
+              carats_per_stone: {$ref: "#/components/schemas/Decimal"}
+              line_carats: {$ref: "#/components/schemas/Decimal"}
+              line_weight_g: {$ref: "#/components/schemas/Decimal"}
+        total_pcs: {type: integer}
+        total_carats: {$ref: "#/components/schemas/Decimal"}
+        stone_weight_g: {$ref: "#/components/schemas/Decimal"}
+        metals:
+          type: array
+          items:
+            type: object
+            properties:
+              metal_code: {type: string}
+              net_weight_g: {$ref: "#/components/schemas/Decimal"}
+              gross_weight_g: {$ref: "#/components/schemas/Decimal"}
+    ImportRow:
+      type: object
+      properties:
+        line: {type: integer, description: "Line number in the CSV (used in error messages)"}
+        code: {type: string, description: Optional; must be the category prefix plus digits}
+        name: {type: string}
+        category: {type: string}
+        tags: {type: string, description: "Names separated by ';', or Group:Name"}
+        volume_mm3: {type: string}
+        ref_weight_g: {type: string}
+        ref_metal: {type: string}
+    ImportResult:
+      type: object
+      properties:
+        dry_run: {type: boolean}
+        designs: {type: integer}
+        variations: {type: integer}
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              line: {type: integer}
+              message: {type: string}
+        codes: {type: array, items: {type: string}, description: Codes of an import that was carried out}
+    MediaItem:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        design_id: {type: integer, format: int64}
+        variation_id: {type: integer, format: int64, nullable: true}
+        kind: {type: string, enum: [image, video]}
+        content_type: {type: string}
+        filename: {type: string}
+        size_bytes: {type: integer, format: int64}
+        width: {type: integer, nullable: true}
+        height: {type: integer, nullable: true}
+        position: {type: integer}
+        is_cover: {type: boolean}
+        url: {type: string, description: "Signed link that expires"}
+        thumb_url: {type: string}
+    Trash:
+      type: object
+      properties:
+        designs:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: integer, format: int64}
+              code: {type: string}
+              name: {type: string}
+              category_name: {type: string}
+              deleted_at: {type: string, format: date-time}
+              variation_count: {type: integer}
+        variations:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: integer, format: int64}
+              code: {type: string}
+              design_code: {type: string}
+              design_name: {type: string}
+              deleted_at: {type: string, format: date-time}
+              purge_after: {type: string, format: date-time, nullable: true}
+              has_files: {type: boolean}
+              design_deleted: {type: boolean, description: When true it cannot be restored yet}
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: integer, format: int64}
+              kind: {type: string}
+              label: {type: string}
+              reason: {type: string}
+              deleted_at: {type: string, format: date-time}
+              purge_after: {type: string, format: date-time}
+              restorable: {type: boolean}
+              has_thumbnail: {type: boolean}
+    CostingSelectionRequest:
+      type: object
+      description: Give `design_ids` and/or `variation_ids` (max 500).
+      required: [metal_code, stone_code, gold_rate_per_g, setting_rate_per_pc]
+      properties:
+        design_ids: {type: array, items: {type: integer, format: int64}}
+        variation_ids: {type: array, items: {type: integer, format: int64}}
+        metal_code: {type: string}
+        stone_code: {type: string}
+        gold_rate_per_g: {$ref: "#/components/schemas/Decimal"}
+        setting_rate_per_pc: {$ref: "#/components/schemas/Decimal"}
+        skip_incomplete: {type: boolean}
+    CostingItemsRequest:
+      type: object
+      required: [items]
+      properties:
+        gold_rate_per_g: {$ref: "#/components/schemas/Decimal"}
+        setting_rate_per_pc: {$ref: "#/components/schemas/Decimal"}
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              variation_id: {type: integer, format: int64}
+              metal_code: {type: string}
+              stone_code: {type: string}
+    CostRow:
+      type: object
+      properties:
+        design_id: {type: integer, format: int64}
+        design_code: {type: string}
+        design_name: {type: string}
+        variation_id: {type: integer, format: int64}
+        variation_code: {type: string}
+        metal_code: {type: string}
+        stone_code: {type: string}
+        net_g: {$ref: "#/components/schemas/Decimal"}
+        gross_g: {$ref: "#/components/schemas/Decimal"}
+        wastage_pct: {$ref: "#/components/schemas/Decimal"}
+        gold_g: {$ref: "#/components/schemas/Decimal"}
+        gold_rate_per_g: {$ref: "#/components/schemas/Decimal"}
+        gold_cost: {$ref: "#/components/schemas/Decimal"}
+        stone_ct: {$ref: "#/components/schemas/Decimal"}
+        stone_g: {$ref: "#/components/schemas/Decimal"}
+        stone_cost: {$ref: "#/components/schemas/Decimal"}
+        setting_pcs: {type: integer}
+        setting_rate_per_pc: {$ref: "#/components/schemas/Decimal"}
+        setting_cost: {$ref: "#/components/schemas/Decimal"}
+        total: {$ref: "#/components/schemas/Decimal"}
+    CostTotals:
+      type: object
+      properties:
+        designs: {type: integer}
+        variations: {type: integer}
+        net_g: {$ref: "#/components/schemas/Decimal"}
+        gross_g: {$ref: "#/components/schemas/Decimal"}
+        gold_g: {$ref: "#/components/schemas/Decimal"}
+        gold_cost: {$ref: "#/components/schemas/Decimal"}
+        stone_ct: {$ref: "#/components/schemas/Decimal"}
+        stone_g: {$ref: "#/components/schemas/Decimal"}
+        stone_cost: {$ref: "#/components/schemas/Decimal"}
+        setting_pcs: {type: integer}
+        setting_cost: {$ref: "#/components/schemas/Decimal"}
+        total: {$ref: "#/components/schemas/Decimal"}
+    DesignProblem:
+      type: object
+      properties:
+        design_id: {type: integer, format: int64}
+        design_code: {type: string}
+        design_name: {type: string}
+        message: {type: string, description: Set when the design has no variations at all}
+        variations:
+          type: array
+          items:
+            type: object
+            properties:
+              variation_id: {type: integer, format: int64}
+              variation_code: {type: string}
+              message: {type: string}
+              metals_missing_wastage: {type: array, items: {type: string}}
+              stone_rates_missing: {type: array, items: {$ref: "#/components/schemas/MissingPair"}}
+              matrix_missing: {type: array, items: {$ref: "#/components/schemas/MissingPair"}}
+    CostingSheetSummary:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string}
+        created_at: {type: string, format: date-time}
+        created_by: {type: integer, format: int64, nullable: true}
+        created_by_name: {type: string}
+        recost_of: {type: integer, format: int64, nullable: true}
+        metal_code: {type: string}
+        stone_code: {type: string}
+        gold_rate_per_g: {$ref: "#/components/schemas/Decimal"}
+        setting_rate_per_pc: {$ref: "#/components/schemas/Decimal"}
+        design_count: {type: integer}
+        variation_count: {type: integer}
+        incomplete_count: {type: integer}
+        total: {$ref: "#/components/schemas/Decimal"}
+    CostingSheetDetail:
+      allOf:
+        - $ref: "#/components/schemas/CostingSheetSummary"
+        - type: object
+          properties:
+            inputs:
+              allOf:
+                - $ref: "#/components/schemas/CostingSelectionRequest"
+                - type: object
+                  properties:
+                    resolved_variation_ids: {type: array, items: {type: integer, format: int64}}
+            rows: {type: array, items: {$ref: "#/components/schemas/CostRow"}}
+            totals: {$ref: "#/components/schemas/CostTotals"}
+            problems: {type: array, items: {$ref: "#/components/schemas/DesignProblem"}}
+            rates:
+              type: object
+              description: Pricing data the sheet was computed with (immutable snapshot)
+              properties:
+                gold_rate_per_g: {$ref: "#/components/schemas/Decimal"}
+                setting_rate_per_pc: {$ref: "#/components/schemas/Decimal"}
+                metals:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      metal_code: {type: string}
+                      specific_gravity: {$ref: "#/components/schemas/Decimal"}
+                      wastage_pct: {$ref: "#/components/schemas/Decimal"}
+                stone_rates:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      size_mm: {$ref: "#/components/schemas/Decimal"}
+                      stone_code: {type: string}
+                      rate_basis: {type: string, enum: [pc, ct, g]}
+                      price: {$ref: "#/components/schemas/Decimal"}
+                      carats_per_stone: {$ref: "#/components/schemas/Decimal"}
+    SheetComparison:
+      type: object
+      properties:
+        previous_id: {type: integer, format: int64}
+        previous_total: {$ref: "#/components/schemas/Decimal"}
+        total: {$ref: "#/components/schemas/Decimal"}
+        difference: {$ref: "#/components/schemas/Decimal"}
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              variation_id: {type: integer, format: int64}
+              variation_code: {type: string}
+              design_code: {type: string}
+              previous_total: {$ref: "#/components/schemas/NullableDecimal"}
+              total: {$ref: "#/components/schemas/NullableDecimal"}
+              difference: {$ref: "#/components/schemas/NullableDecimal"}
+    Backups:
+      type: object
+      properties:
+        runs:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: integer, format: int64}
+              started_at: {type: string, format: date-time}
+              finished_at: {type: string, format: date-time, nullable: true}
+              ok: {type: boolean, nullable: true, description: Null while running}
+              db_bytes: {type: integer, format: int64}
+              files_copied: {type: integer}
+              files_bytes: {type: integer, format: int64}
+              files_total: {type: integer}
+              files_skipped: {type: boolean}
+              error: {type: string}
+        dumps:
+          type: array
+          items:
+            type: object
+            properties:
+              key: {type: string}
+              name: {type: string}
+              taken_at: {type: string, format: date-time}
+              bytes: {type: integer, format: int64}
+              encrypted: {type: boolean}
+        dumps_note: {type: string}
+        can_download: {type: boolean}
+        pending: {type: boolean}
+        running: {type: boolean}
+    AuditRecord:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        at: {type: string, format: date-time}
+        user_id: {type: integer, format: int64, nullable: true}
+        user_email: {type: string}
+        action: {type: string}
+        entity_type: {type: string}
+        entity_id: {type: string}
+        status: {type: integer}
+        detail: {type: string}

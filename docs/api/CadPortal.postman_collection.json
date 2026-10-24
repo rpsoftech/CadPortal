@@ -1,0 +1,2414 @@
+{
+  "info": {
+    "name": "CadPortal API",
+    "description": "REST API of the internal jewelry CAD vault and product management portal.\n\n**Conventions**\n- Everything under `/api/v1` needs `Authorization: Bearer <token>` (from `POST /auth/login`), except the\n  routes marked as public.\n- Roles: `admin` (everything), `designer` (edit designs, seats, CAD, costing), `production` (read, job bags,\n  CAD downloads; never sees wastage % or stone rates).\n- Weights and money are decimals. They are sent and returned as JSON numbers or strings; never rely on float\n  rounding. Grams are rounded to 3 dp, carats to 4 dp when stored.\n- Errors are `{\"error\": \"message\"}`. A 500 also carries `request_id`, which finds the request in the logs.\n- A missing stone matrix row is never treated as 0: the API answers 422 and lists the missing (size, code) pairs.\n- Every call (except health checks) is written to the audit log; request bodies are never stored.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "designCode",
+      "value": "LR0001"
+    },
+    {
+      "key": "categoryId",
+      "value": "1"
+    },
+    {
+      "key": "designId",
+      "value": "1"
+    },
+    {
+      "key": "id",
+      "value": "1"
+    },
+    {
+      "key": "mediaId",
+      "value": "1"
+    },
+    {
+      "key": "metalId",
+      "value": "1"
+    },
+    {
+      "key": "sheetId",
+      "value": "1"
+    },
+    {
+      "key": "stoneCodeId",
+      "value": "1"
+    },
+    {
+      "key": "tagId",
+      "value": "1"
+    },
+    {
+      "key": "trashedFileId",
+      "value": "1"
+    },
+    {
+      "key": "userId",
+      "value": "1"
+    },
+    {
+      "key": "variationId",
+      "value": "1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Liveness probe",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/healthz",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "healthz"
+              ],
+              "query": []
+            },
+            "description": "The process is up. Never touches the database.\n\nResponses: 200: OK",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Readiness probe",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/readyz",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "readyz"
+              ],
+              "query": []
+            },
+            "description": "The database answers.\n\nResponses: 200: Ready; 503: Database unavailable",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Sign in",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ],
+              "query": []
+            },
+            "description": "Public. Every failure (unknown user, wrong password, locked out) is the same 401.\n\nResponses: 200: Signed in; 400: Invalid input; 401: Missing, expired or invalid token (or wrong credentials); 413: Request or file too large",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"change-me-please\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Keep the bearer token for the other requests.",
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('token', pm.response.json().token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: The signed-in user; 401: Missing, expired or invalid token (or wrong credentials)"
+          },
+          "response": []
+        },
+        {
+          "name": "Change own password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "change-password"
+              ],
+              "query": []
+            },
+            "description": "Invalidates every earlier token and returns a fresh one.\n\nResponses: 200: Signed in; 400: Invalid input; 401: Missing, expired or invalid token (or wrong credentials)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"old-password\",\n  \"new_password\": \"a-new-longer-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Keep the bearer token for the other requests.",
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('token', pm.response.json().token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign-in screen configuration",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "config"
+              ],
+              "query": []
+            },
+            "description": "Public. Tells the web app whether reset emails work and the idle timeout.\n\nResponses: 200: Configuration",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Request a password reset email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "forgot-password"
+              ],
+              "query": []
+            },
+            "description": "Public, rate limited. Answers 202 with the same text for every address.\n\nResponses: 202: Accepted (same answer whatever the address); 400: Invalid input",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Set a new password with a reset token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "reset-password"
+              ],
+              "query": []
+            },
+            "description": "Public. The token is single use and valid for one hour.\n\nResponses: 204: Password changed; 400: Invalid input",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"<token from the reset link>\",\n  \"password\": \"a-new-longer-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List users (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Users; 403: The role may not do this"
+          },
+          "response": []
+        },
+        {
+          "name": "Create a user (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users"
+              ],
+              "query": []
+            },
+            "description": "Responses: 201: Created; 400: Invalid input; 409: Conflict (duplicate code or checksum, state does not allow it)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"designer@example.com\",\n  \"name\": \"A Designer\",\n  \"password\": \"a-long-first-password\",\n  \"role\": \"designer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update a user (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}"
+              ],
+              "query": []
+            },
+            "description": "`active` is required: an omitted flag must not silently disable the user.\n\nResponses: 200: Updated; 400: Invalid input; 404: Not found",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"A Designer\",\n  \"role\": \"designer\",\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Set a user's password (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "password"
+              ],
+              "query": []
+            },
+            "description": "Responses: 204: Password set; 400: Invalid input; 404: Not found",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_password\": \"a-new-longer-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Make a one-hour reset link (admin)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/users/{{userId}}/reset-link",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{userId}}",
+                "reset-link"
+              ],
+              "query": []
+            },
+            "description": "The token is shown once. Pass `path` on to the user.\n\nResponses: 200: Link; 404: Not found"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Masters",
+      "item": [
+        {
+          "name": "List categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "categories"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Categories"
+          },
+          "response": []
+        },
+        {
+          "name": "Create a category (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "categories"
+              ],
+              "query": []
+            },
+            "description": "Responses: 201: Created; 400: Invalid input; 409: Conflict (duplicate code or checksum, state does not allow it)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rings\",\n  \"code_prefix\": \"LR\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update a category (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/categories/{{categoryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "categories",
+                "{{categoryId}}"
+              ],
+              "query": []
+            },
+            "description": "A prefix change restarts numbering for new designs.\n\nResponses: 200: Updated; 404: Not found",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rings\",\n  \"code_prefix\": \"LR\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List tags",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "tags"
+              ],
+              "query": [
+                {
+                  "key": "include_inactive",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Admin only; includes deactivated tags."
+                }
+              ]
+            },
+            "description": "Responses: 200: Tags"
+          },
+          "response": []
+        },
+        {
+          "name": "Create a tag (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "tags"
+              ],
+              "query": []
+            },
+            "description": "Responses: 201: Created; 400: Invalid input; 409: Conflict (duplicate code or checksum, state does not allow it)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bridal\",\n  \"tag_group\": \"Audience\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update a tag (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/tags/{{tagId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "tags",
+                "{{tagId}}"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Updated; 404: Not found",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bridal\",\n  \"tag_group\": \"Audience\",\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List alloys",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/metals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "metals"
+              ],
+              "query": []
+            },
+            "description": "`wastage_pct` is null for the production role.\n\nResponses: 200: Alloys"
+          },
+          "response": []
+        },
+        {
+          "name": "Create an alloy (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/metals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "metals"
+              ],
+              "query": []
+            },
+            "description": "Responses: 201: Created; 409: Conflict (duplicate code or checksum, state does not allow it)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"22KY\",\n  \"specific_gravity\": 17.75,\n  \"wastage_pct\": 8,\n  \"is_default_input\": false,\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update an alloy (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/metals/{{metalId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "metals",
+                "{{metalId}}"
+              ],
+              "query": []
+            },
+            "description": "A change of specific gravity queues a full weight rebuild.\n\nResponses: 200: Updated; 404: Not found",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"specific_gravity\": 17.75,\n  \"wastage_pct\": 8,\n  \"is_default_input\": false,\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List stone codes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/stone-codes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "stone-codes"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Stone codes"
+          },
+          "response": []
+        },
+        {
+          "name": "Create a stone code (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/stone-codes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "stone-codes"
+              ],
+              "query": []
+            },
+            "description": "Responses: 201: Created; 409: Conflict (duplicate code or checksum, state does not allow it)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"2HD\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Activate or deactivate a stone code (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/stone-codes/{{stoneCodeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "stone-codes",
+                "{{stoneCodeId}}"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Updated; 404: Not found",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List stone size matrix rows",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/stone-matrix",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "stone-matrix"
+              ],
+              "query": []
+            },
+            "description": "Rate fields are null for the production role.\n\nResponses: 200: Matrix rows"
+          },
+          "response": []
+        },
+        {
+          "name": "Replace/upsert matrix rows and set the baseline code (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/stone-matrix",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "stone-matrix"
+              ],
+              "query": []
+            },
+            "description": "A `g` rate basis needs `rate_per_g`. Weights are rebuilt asynchronously by the recalc worker.\n\nResponses: 202: Saved, recalculation queued; 400: Invalid input",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseline_code\": \"1HD\",\n  \"rows\": [\n    {\n      \"size_mm\": 1.1,\n      \"stone_code\": \"2HD\",\n      \"sieve\": \"+1.10\",\n      \"carats_per_stone\": 0.007,\n      \"rate_per_pc\": 12,\n      \"rate_basis\": \"pc\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete one matrix row (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/stone-matrix?size_mm=1.1&stone_code=2HD",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "stone-matrix"
+              ],
+              "query": [
+                {
+                  "key": "size_mm",
+                  "value": "1.1",
+                  "disabled": false,
+                  "description": ""
+                },
+                {
+                  "key": "stone_code",
+                  "value": "2HD",
+                  "disabled": false,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Responses: 204: Deleted; 400: Invalid input; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "Seats that point at a missing matrix row (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/matrix-gaps",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "matrix-gaps"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Gaps (from `v_seat_matrix_gaps`)"
+          },
+          "response": []
+        },
+        {
+          "name": "Weight recalculation queue (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/recalc-status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "recalc-status"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Queue state"
+          },
+          "response": []
+        },
+        {
+          "name": "Master data still missing (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/setup-status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "setup-status"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Checklist"
+          },
+          "response": []
+        },
+        {
+          "name": "Export all master data as a zip of CSVs (admin, audited)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/masters/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "masters",
+                "export"
+              ],
+              "query": []
+            },
+            "description": "Alloys, stone codes, stone matrix, categories, tags.\n\nResponses: 200: Zip archive"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Designs",
+      "item": [
+        {
+          "name": "Search and filter the catalog",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/designs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "designs"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Text search on code or name"
+                },
+                {
+                  "key": "category_id",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tag_ids[]",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "metal_code",
+                  "value": "18KY",
+                  "disabled": true,
+                  "description": "Purity to show net/gross for"
+                },
+                {
+                  "key": "min_net_wt",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "max_net_wt",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "min_gross_wt",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "max_gross_wt",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "max_stone_cts",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "offset",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Total matches before paging are returned in `X-Total-Count`.\n\nResponses: 200: Catalog cards; 400: Invalid input"
+          },
+          "response": []
+        },
+        {
+          "name": "Create a design (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/designs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "designs"
+              ],
+              "query": []
+            },
+            "description": "The code is assigned automatically (category prefix + 4-digit number). Sending `code` is a 400.\n\nResponses: 201: Created; 400: Invalid input",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Solitaire band\",\n  \"category_id\": 1,\n  \"tag_ids\": [\n    1,\n    4\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Bulk-create designs from CSV rows (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/designs/import",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "designs",
+                "import"
+              ],
+              "query": []
+            },
+            "description": "All-or-nothing. `dry_run: true` validates only. Never changes existing designs.\nAny problem returns 422 with every error and nothing is written.\nGive either `volume_mm3`, or `ref_weight_g` together with `ref_metal`.\n\nResponses: 200: Dry run passed; 201: Import carried out; 422: Validation problems",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dry_run\": true,\n  \"rows\": [\n    {\n      \"line\": 2,\n      \"code\": \"\",\n      \"name\": \"Solitaire band\",\n      \"category\": \"Rings\",\n      \"tags\": \"Audience:Bridal;Motif:Floral\",\n      \"volume_mm3\": \"200\",\n      \"ref_weight_g\": \"\",\n      \"ref_metal\": \"\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Design detail by code",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/designs/{{designCode}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "designs",
+                "{{designCode}}"
+              ],
+              "query": []
+            },
+            "description": "With tags, variations (each with its weight matrix across metals) and media.\n\nResponses: 200: Design detail; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "Update a design (designer, admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/designs/{{designId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "designs",
+                "{{designId}}"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Updated; 404: Not found",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Solitaire band\",\n  \"category_id\": 1,\n  \"tag_ids\": [\n    1,\n    4\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete a design (soft delete; the code stays reserved)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/designs/{{designId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "designs",
+                "{{designId}}"
+              ],
+              "query": []
+            },
+            "description": "Responses: 204: Deleted; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "Duplicate a design (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/designs/{{designId}}/duplicate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "designs",
+                "{{designId}}",
+                "duplicate"
+              ],
+              "query": []
+            },
+            "description": "New design with the next automatic code. Variations keep their base input and seats.\nCAD files and photos are never copied. One transaction.\n\nResponses: 201: The new design; 404: Not found",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Solitaire band (copy)\",\n  \"copy_tags\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Variations",
+      "item": [
+        {
+          "name": "Add a CAD variation (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/designs/{{designId}}/variations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "designs",
+                "{{designId}}",
+                "variations"
+              ],
+              "query": []
+            },
+            "description": "Give either `volume_mm3`, or `ref_weight_g` with `ref_metal_code`.\n\nResponses: 201: Created (the weights are computed in the same transaction); 400: Invalid input; 404: Not found",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"volume_mm3\": 200\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete a variation (soft delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/variations/{{variationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "variations",
+                "{{variationId}}"
+              ],
+              "query": []
+            },
+            "description": "Hidden everywhere; its code and CAD checksums stay reserved until purged.\n\nResponses: 204: Deleted; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "Change the base input (designer, admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/variations/{{variationId}}/base-input",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "variations",
+                "{{variationId}}",
+                "base-input"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Updated; 400: Invalid input",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ref_weight_g\": 3.116,\n  \"ref_metal_code\": \"18KY\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List stone seats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/variations/{{variationId}}/seats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "variations",
+                "{{variationId}}",
+                "seats"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Seats"
+          },
+          "response": []
+        },
+        {
+          "name": "Replace all stone seats (designer, admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/variations/{{variationId}}/seats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "variations",
+                "{{variationId}}",
+                "seats"
+              ],
+              "query": []
+            },
+            "description": "Recalculates the variation's weights synchronously. A locked seat must match a matrix row.\n\nResponses: 200: Seats as saved; 400: Invalid input",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seats\": [\n    {\n      \"size_mm\": 1.1,\n      \"stone_count\": 24\n    },\n    {\n      \"size_mm\": 1.2,\n      \"stone_count\": 12\n    },\n    {\n      \"size_mm\": 2.5,\n      \"stone_count\": 1,\n      \"locked_stone_code\": \"2HD\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Copy the seats of another variation (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/variations/{{variationId}}/clone-seats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "variations",
+                "{{variationId}}",
+                "clone-seats"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Seats as saved; 400: Invalid input",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_variation_id\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Simulate the stone bill of materials",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/variations/{{variationId}}/simulate-bom?code=2HD",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "variations",
+                "{{variationId}}",
+                "simulate-bom"
+              ],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "2HD",
+                  "disabled": false,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Flexible seats use the chosen stone `code`; locked seats keep their own. Nothing is persisted.\nA missing matrix row gives 422 with the missing (size, code) pairs, never a zero.\n\nResponses: 200: BOM; 400: Invalid input; 422: Stone matrix rows are missing for the chosen stone code"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "CAD vault",
+      "item": [
+        {
+          "name": "Upload a .3dm or .stl file (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/variations/{{variationId}}/upload-cad",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "variations",
+                "{{variationId}}",
+                "upload-cad"
+              ],
+              "query": []
+            },
+            "description": "Multipart with one `file` part; the kind comes from the file name. The SHA-256 is taken over the original\nbytes, then the file is gzipped while it streams to storage. A duplicate checksum is a 409 that names the\nexisting variation. Returns 503 when file storage is off.\n\nResponses: 201: Stored; 400: Invalid input; 409: Conflict (duplicate code or checksum, state does not allow it); 413: Request or file too large; 503: File storage is not configured",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Short-lived download link for a CAD file",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/variations/{{variationId}}/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "variations",
+                "{{variationId}}",
+                "download"
+              ],
+              "query": [
+                {
+                  "key": "kind",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Responses: 200: Presigned link; 404: Not found; 503: File storage is not configured"
+          },
+          "response": []
+        },
+        {
+          "name": "Remove a CAD file (designer, admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/variations/{{variationId}}/cad?kind=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "variations",
+                "{{variationId}}",
+                "cad"
+              ],
+              "query": [
+                {
+                  "key": "kind",
+                  "value": "",
+                  "disabled": false,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Frees the checksum. The object is kept in the trash for the retention period.\n\nResponses: 204: Removed; 400: Invalid input; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "Serve a stored object (development storage only)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/local-files/{{key}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "local-files",
+                "{{key}}"
+              ],
+              "query": [
+                {
+                  "key": "filename",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "expires",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "sig",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Registered only with `STORAGE=local`. Authenticated by the signed `expires` and `sig` query values of a\nlink the API issued, not by the bearer token.\n\nResponses: 200: File bytes; 403: The role may not do this; 404: Not found",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Media",
+      "item": [
+        {
+          "name": "Add a photo or video (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/designs/{{designId}}/media",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "designs",
+                "{{designId}}",
+                "media"
+              ],
+              "query": []
+            },
+            "description": "Multipart. Max 5 per design or variation. The optional `variation_id` field must come **before** `file`,\nbecause the file is streamed to storage as it arrives.\n\nResponses: 201: Stored; 400: Invalid input; 413: Request or file too large; 503: File storage is not configured",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "variation_id",
+                  "type": "text",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete a photo or video (designer, admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/media/{{mediaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "media",
+                "{{mediaId}}"
+              ],
+              "query": []
+            },
+            "description": "Responses: 204: Deleted; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "Make a photo the cover of its design (designer, admin)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/media/{{mediaId}}/cover",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "media",
+                "{{mediaId}}",
+                "cover"
+              ],
+              "query": []
+            },
+            "description": "Responses: 204: Cover set; 404: Not found"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Undo",
+      "item": [
+        {
+          "name": "Restore a deleted design",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/designs/{{designId}}/restore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "designs",
+                "{{designId}}",
+                "restore"
+              ],
+              "query": []
+            },
+            "description": "Responses: 204: Restored; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "Restore a deleted variation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/variations/{{variationId}}/restore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "variations",
+                "{{variationId}}",
+                "restore"
+              ],
+              "query": []
+            },
+            "description": "Refused (409) while its design is deleted.\n\nResponses: 204: Restored; 404: Not found; 409: Conflict (duplicate code or checksum, state does not allow it)"
+          },
+          "response": []
+        },
+        {
+          "name": "Everything that can still be brought back (designer, admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/trash",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trash"
+              ],
+              "query": []
+            },
+            "description": "Kept for `DELETED_FILE_RETENTION_DAYS` (default 30) before an hourly purge.\n\nResponses: 200: Trash"
+          },
+          "response": []
+        },
+        {
+          "name": "Restore a removed or replaced file",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/trash/files/{{trashedFileId}}/restore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "trash",
+                "files",
+                "{{trashedFileId}}",
+                "restore"
+              ],
+              "query": []
+            },
+            "description": "Responses: 204: Restored; 404: Not found; 409: Conflict (duplicate code or checksum, state does not allow it)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Exports",
+      "item": [
+        {
+          "name": "Job-bag PDF for one variation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/job-bag-pdf",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "job-bag-pdf"
+              ],
+              "query": []
+            },
+            "description": "The planner picks the metal and the stone code. Includes the design photo and a QR code.\n\nResponses: 200: PDF; 400: Invalid input; 422: Stone matrix rows are missing for the chosen stone code",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"variation_id\": 1,\n  \"metal_code\": \"18KR\",\n  \"stone_code\": \"2HD\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Many job bags in one PDF (max 200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/job-bags-pdf",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "job-bags-pdf"
+              ],
+              "query": []
+            },
+            "description": "Give `items` and/or `design_ids` (every live variation of those designs) with shared\n`metal_code`/`stone_code`. If any bag lacks stone data the answer is 422 listing every affected\nvariation; with `skip_incomplete` the rest is printed, the skipped codes are in `X-Skipped` and on a last page.\n\nResponses: 200: PDF; 400: Invalid input; 422: Bags with missing stone data",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"design_ids\": [\n    1,\n    2\n  ],\n  \"metal_code\": \"18KR\",\n  \"stone_code\": \"2HD\",\n  \"skip_incomplete\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Export the catalog as CSV in the import format",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/designs-csv",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "designs-csv"
+              ],
+              "query": []
+            },
+            "description": "Any role. Holds no wastage or rates. Round-trips into a fresh install.\n\nResponses: 200: CSV"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Costing",
+      "item": [
+        {
+          "name": "Costing CSV (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/costing-csv",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "costing-csv"
+              ],
+              "query": []
+            },
+            "description": "Two shapes. **Items**: `items[]` with `gold_rate_per_g` and `setting_rate_per_pc` (one row per item).\n**Selection**: `design_ids` and/or `variation_ids` (max 500) with a single `metal_code`/`stone_code`:\none row per variation plus a total row; all-or-nothing unless `skip_incomplete`.\nThe last column `stone_pricing` says how each stone line was priced.\n`X-Costing-Incomplete` holds the number of variations not costed.\n\nResponses: 200: CSV; 400: Invalid input; 422: Costing data is incomplete (no wastage %, no stone rate, or no matrix row)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"design_ids\": [\n    1,\n    2\n  ],\n  \"metal_code\": \"18KR\",\n  \"stone_code\": \"2HD\",\n  \"gold_rate_per_g\": 6200,\n  \"setting_rate_per_pc\": 15,\n  \"skip_incomplete\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cost a selection as JSON without failing on incomplete data (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/costing-preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "costing-preview"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Rows, totals and problems; 400: Invalid input",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"design_ids\": [\n    1\n  ],\n  \"metal_code\": \"18KR\",\n  \"stone_code\": \"2HD\",\n  \"gold_rate_per_g\": 6200,\n  \"setting_rate_per_pc\": 15\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Saved costing sheets, newest first (designer, admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/costing-sheets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "costing-sheets"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "offset",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Responses: 200: Sheets"
+          },
+          "response": []
+        },
+        {
+          "name": "Compute and save an immutable costing sheet (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/costing-sheets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "costing-sheets"
+              ],
+              "query": []
+            },
+            "description": "Responses: 201: Saved sheet; 400: Invalid input; 422: Costing data is incomplete (no wastage %, no stone rate, or no matrix row)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"October ring quote\",\n  \"design_ids\": [\n    1,\n    2\n  ],\n  \"metal_code\": \"18KR\",\n  \"stone_code\": \"2HD\",\n  \"gold_rate_per_g\": 6200,\n  \"setting_rate_per_pc\": 15\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "One saved sheet with its rows, totals, problems and rates",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/costing-sheets/{{sheetId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "costing-sheets",
+                "{{sheetId}}"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Sheet; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete a sheet (admin, or the designer who saved it)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/costing-sheets/{{sheetId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "costing-sheets",
+                "{{sheetId}}"
+              ],
+              "query": []
+            },
+            "description": "Responses: 204: Deleted; 403: The role may not do this; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "The stored CSV, byte-identical to the first download (audited)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/costing-sheets/{{sheetId}}/csv",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "costing-sheets",
+                "{{sheetId}}",
+                "csv"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: CSV; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "New sheet from a saved one with the current masters, plus the difference",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/costing-sheets/{{sheetId}}/recost",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "costing-sheets",
+                "{{sheetId}}",
+                "recost"
+              ],
+              "query": []
+            },
+            "description": "Responses: 201: New sheet and comparison; 404: Not found; 422: Costing data is incomplete (no wastage %, no stone rate, or no matrix row)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gold_rate_per_g\": 6400\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Backups",
+      "item": [
+        {
+          "name": "Backup run history and stored dumps (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backups"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Backups"
+          },
+          "response": []
+        },
+        {
+          "name": "\"Back up now\" (admin)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backups/run",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backups",
+                "run"
+              ],
+              "query": []
+            },
+            "description": "Queues one request for the backup service, which picks it up within a minute. 409 if one is waiting or running.\n\nResponses: 202: Queued; 409: Conflict (duplicate code or checksum, state does not allow it)"
+          },
+          "response": []
+        },
+        {
+          "name": "Signed link to one encrypted dump (admin, audited)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backups/download?key=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backups",
+                "download"
+              ],
+              "query": [
+                {
+                  "key": "key",
+                  "value": "",
+                  "disabled": false,
+                  "description": "Key of a dump from the list"
+                }
+              ]
+            },
+            "description": "Responses: 200: Link; 400: Invalid input; 503: File storage is not configured"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Audit",
+      "item": [
+        {
+          "name": "Audit log, newest first (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "action",
+                  "value": "POST /api/v1/designs",
+                  "disabled": true,
+                  "description": "Action prefix"
+                },
+                {
+                  "key": "user_id",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "from",
+                  "value": "",
+                  "disabled": true,
+                  "description": "RFC 3339 timestamp or YYYY-MM-DD"
+                },
+                {
+                  "key": "to",
+                  "value": "",
+                  "disabled": true,
+                  "description": "RFC 3339 timestamp or YYYY-MM-DD (a plain date includes that whole day)"
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "offset",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Responses: 200: Entries; 400: Invalid input"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
