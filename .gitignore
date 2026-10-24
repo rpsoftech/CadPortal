@@ -40,3 +40,7 @@ Thumbs.db
 # Playwright output
 /frontend/test-results/
 /frontend/playwright-report/
+
+# Saved test sessions (frontend/e2e/auth.ts)
+/frontend/e2e/.auth/
+/frontend/playwright-report-a11y/

@@ -22,7 +22,9 @@ Target: default branch (`main`). Enforcement: **Active**.
   - [ ] Require conversation resolution before merging
 - [ ] Require status checks to pass, and require branches to be up to date:
   `changes`, `test`, `sqlc`, `frontend`, `docker`, `vulncheck` (these names come from `.github/workflows/ci.yml`; run the
-  workflow once first so GitHub offers them in the list)
+  workflow once first so GitHub offers them in the list). `docker` is an aggregate that always runs and
+  fails when any of its parts (`docker-stack`, `docker-backup`, `docker-multi`) failed or was skipped; require only
+  `docker`, not the parts
 - [ ] Require signed commits (optional; needs everyone to set up signing)
 
 > **Solo owner:** you cannot approve your own pull request. Either keep approvals at 1

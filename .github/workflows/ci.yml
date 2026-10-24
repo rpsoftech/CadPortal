@@ -148,8 +148,12 @@ jobs:
       - name: Unit tests
         run: yarn ng test --watch=false
 
-  docker:
-    name: docker
+  # The docker checks are three jobs that run in parallel (each on its own runner, so their ports,
+  # containers and compose projects cannot collide), plus `docker`, which reports on all of them.
+  # Images are built with buildx and a GitHub Actions layer cache (a cache hit skips the Go and
+  # Angular builds), loaded into the runner's Docker, and started with --no-build.
+  docker-stack:
+    name: docker-stack
     needs: changes
     if: needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
@@ -167,6 +171,21 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the api and web images (layer cache)
+        uses: docker/bake-action@v7
+        with:
+          source: .
+          files: docker-compose.prod.yml
+          targets: api,web
+          load: true
+          set: |
+            api.tags=cadportal-prod-api
+            web.tags=cadportal-prod-web
+            api.cache-from=type=gha,scope=api
+            api.cache-to=type=gha,scope=api,mode=max,ignore-error=true
+            web.cache-from=type=gha,scope=web
+            web.cache-to=type=gha,scope=web,mode=max,ignore-error=true
       - name: Validate the production compose file
         run: docker compose -f docker-compose.prod.yml config -q
       - name: Validate the published-images override
@@ -175,9 +194,9 @@ jobs:
         run: scripts/deploy_test.sh
       - name: Lint the workflow files
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
-      - name: Build images and start the stack
+      - name: Start the stack
         # --wait blocks until every service with a health check reports healthy.
-        run: docker compose -f docker-compose.prod.yml up -d --build --wait --wait-timeout 180
+        run: docker compose -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 180
       - name: Smoke test
         run: |
           set -eu
@@ -190,12 +209,32 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
+      - name: Cache the Yarn packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.yarn/berry/cache
+          key: yarn-${{ runner.os }}-${{ hashFiles('frontend/yarn.lock') }}
+          restore-keys: yarn-${{ runner.os }}-
       - name: Install browser test tooling
         working-directory: frontend
         run: |
           yarn install --immutable
-          yarn playwright install --with-deps chromium
-      - name: Browser smoke tests
+          echo "PLAYWRIGHT_VERSION=$(yarn playwright --version | awk '{print $2}')" >> "$GITHUB_ENV"
+      - name: Cache the Playwright browser
+        id: browser
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+      - name: Install the browser
+        working-directory: frontend
+        run: |
+          if [ "${{ steps.browser.outputs.cache-hit }}" = "true" ]; then
+            yarn playwright install-deps chromium
+          else
+            yarn playwright install --with-deps chromium
+          fi
+      - name: Browser smoke tests (data tests, then the accessibility scans in parallel)
         run: scripts/e2e.sh
       - name: Sign-in rate limit
         run: scripts/ratelimit_test.sh
@@ -206,23 +245,120 @@ jobs:
           name: playwright-report
           path: |
             frontend/playwright-report
+            frontend/playwright-report-a11y
             frontend/test-results
           retention-days: 7
           if-no-files-found: ignore
-      - name: Backup and restore round trip
-        run: scripts/backup_restore_test.sh
-      - name: Backup service (nightly dump and file copy to a second bucket)
-        run: |
-          docker build --target backup -t cadportal-backup:test backend
-          scripts/backup_service_test.sh
-      - name: Tear down the main stack (the next test starts its own, with two API instances)
-        if: always()
-        run: docker compose -f docker-compose.prod.yml down -v
-      - name: More than one API instance
-        run: scripts/multi_instance_test.sh
       - name: Show logs on failure
         if: failure()
         run: docker compose -f docker-compose.prod.yml logs --no-color --tail 80
+
+  docker-backup:
+    name: docker-backup
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: .
+    env:
+      POSTGRES_PASSWORD: ci-postgres-password-0123456789ab
+      JWT_SECRET: ci-jwt-secret-0123456789-0123456789-ab
+      STORAGE: local
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the api and backup images (layer cache)
+        uses: docker/bake-action@v7
+        with:
+          source: .
+          files: docker-compose.prod.yml
+          targets: api,backup
+          load: true
+          set: |
+            api.tags=cadportal-prod-api
+            api.cache-from=type=gha,scope=api
+            api.cache-to=type=gha,scope=api,mode=max,ignore-error=true
+            backup.tags=cadportal-backup:test
+            backup.cache-from=type=gha,scope=backup
+            backup.cache-to=type=gha,scope=backup,mode=max,ignore-error=true
+      # The round trip needs the database, and the api running so that the restore stops and restarts it.
+      - name: Start the database and the api
+        run: docker compose -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 180 db api
+      - name: Backup and restore round trip
+        run: scripts/backup_restore_test.sh
+      - name: Backup service (nightly dump and file copy to a second bucket)
+        run: scripts/backup_service_test.sh
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.prod.yml down -v
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.prod.yml logs --no-color --tail 80
+
+  docker-multi:
+    name: docker-multi
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: .
+    env:
+      POSTGRES_PASSWORD: ci-postgres-password-0123456789ab
+      JWT_SECRET: ci-jwt-secret-0123456789-0123456789-ab
+      CADPORTAL_NO_BUILD: "1"   # the images are built below, with the layer cache
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the api and web images (layer cache)
+        uses: docker/bake-action@v7
+        with:
+          source: .
+          files: docker-compose.prod.yml
+          targets: api,web
+          load: true
+          set: |
+            api.tags=cadportal-multi-api
+            web.tags=cadportal-multi-web
+            api.cache-from=type=gha,scope=api
+            api.cache-to=type=gha,scope=api,mode=max,ignore-error=true
+            web.cache-from=type=gha,scope=web
+            web.cache-to=type=gha,scope=web,mode=max,ignore-error=true
+      - name: More than one API instance
+        run: scripts/multi_instance_test.sh
+
+  # The one status for "the docker checks": it always runs, and it fails when any part failed, was
+  # cancelled or was skipped although this change needed it. A change that needs no docker checks
+  # passes. Branch protection requires this job by its name, `docker`; the parts above need not be listed.
+  docker:
+    name: docker
+    needs: [changes, docker-stack, docker-backup, docker-multi]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    env:
+      WANTED: ${{ needs.changes.outputs.docker }}
+      RESULTS: ${{ needs.changes.result }} ${{ needs.docker-stack.result }} ${{ needs.docker-backup.result }} ${{ needs.docker-multi.result }}
+    steps:
+      - name: Check every part
+        run: |
+          echo "changes stack backup multi: $RESULTS"
+          read -r -a parts <<< "$RESULTS"
+          [ "${parts[0]}" = "success" ] || { echo "the change detection did not succeed" >&2; exit 1; }
+          if [ "$WANTED" != "true" ]; then echo "no docker checks needed for this change"; exit 0; fi
+          for r in "${parts[@]:1}"; do
+            [ "$r" = "success" ] || { echo "a docker part did not succeed ($r)" >&2; exit 1; }
+          done
 
   vulncheck:
     name: vulncheck

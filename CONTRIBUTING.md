@@ -37,7 +37,7 @@ CI runs only the jobs a change needs (`.github/scripts/changes.sh`):
 |---|---|
 | `backend/**` | `test`, plus `vulncheck` for non-test Go code or `go.mod`/`go.sum`, `sqlc` for queries, migrations or `sqlc.yaml` |
 | `frontend/**` | `frontend` |
-| image sources (non-test files in `backend/` or `frontend/`) or `docker-compose.prod.yml` | `docker` |
+| image sources (non-test files in `backend/` or `frontend/`) or `docker-compose.prod.yml` | `docker` (parts `docker-stack`, `docker-backup`, `docker-multi`) |
 | docs, README, `.github/dependabot.yml`, the dev `docker-compose.yml` | none |
 | `.github/workflows/ci.yml` or `.github/scripts/` | everything |
 
