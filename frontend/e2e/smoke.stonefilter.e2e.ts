@@ -125,7 +125,7 @@ test('catalog: stone code and stone % filters, figures on the cards, shareable l
 
   // the selection (and the filters) survive going to a design and back
   await card(s.x).getByRole('checkbox').check();
-  await card(s.x).getByRole('link', { name: 'Open' }).click();
+  await card(s.x).getByRole('link', { name: 'Open', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/designs/${s.x}`));
   await page.goBack();
   await expect(page.getByLabel('Stone % min')).toHaveValue('1');

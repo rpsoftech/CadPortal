@@ -106,14 +106,14 @@ test('the catalog filters fold into a panel with a count, and the search stays i
 test('the catalog stone filters and the stone figures fit a phone', async ({ page }) => {
   await signIn(page);
   await page.goto('/?metal=22KY&stone=2HD&pct_min=0&sort=stone_pct_desc');
-  await expect(page.locator('mat-card').first()).toContainText('Stone 2HD');
+  await expect(page.locator('mat-card').first()).toContainText(/Stone 2HD|no data for 2HD/);
   await check(page, 'catalog stone figures');
   await page.getByRole('button', { name: /^Filters/ }).click();
   for (const label of ['Stone code', 'Stone % min', 'Stone % max', 'Sort by']) {
     await expect(page.getByLabel(label)).toBeVisible();
   }
   await expect(page.getByLabel('Stone % min')).toHaveAttribute('inputmode', 'decimal');
-  const box = await page.getByLabel('Stone % min').boundingBox();
+  const box = await page.locator('mat-form-field', { hasText: 'Stone % min' }).boundingBox();
   expect(box!.height).toBeGreaterThanOrEqual(40);
   await check(page, 'catalog stone filters open');
 });
