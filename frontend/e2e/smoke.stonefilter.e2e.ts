@@ -1,4 +1,5 @@
 import { Page, expect, test } from '@playwright/test';
+import { signIn } from './auth';
 
 // Catalog: stone code, stone % range and sort, computed on the fly for the chosen metal. Runs after
 // smoke.e2e.ts (category prefixes) and smoke.sheets.e2e.ts; uses its own stone sizes (1.40, 1.60).
@@ -8,14 +9,6 @@ const env = (name: string): string => {
   if (!v) throw new Error(`${name} must be set (scripts/e2e.sh does this)`);
   return v;
 };
-
-async function signIn(page: Page, email: string, password: string): Promise<void> {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Catalog' })).toBeVisible();
-}
 
 async function api(page: Page, method: string, path: string, body?: unknown) {
   return page.evaluate(
