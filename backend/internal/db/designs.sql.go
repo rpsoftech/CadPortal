@@ -670,37 +670,56 @@ func (q *Queries) ListDesignTags(ctx context.Context, designID int64) ([]Tag, er
 	return items, nil
 }
 
-const listDesignWeightsForMetal = `-- name: ListDesignWeightsForMetal :many
-SELECT sv.design_id, w.net_weight_g, w.gross_weight_g
+const listDesignVariationFigures = `-- name: ListDesignVariationFigures :many
+SELECT sv.design_id,
+       jsonb_build_object('variation_id', sv.id, 'variation_code', sv.code, 'net_g', w.net_weight_g,
+           'carats', st.carats, 'stone_g', g.stone_g, 'gross_g', g.gross_g, 'stone_pct', p.stone_pct) AS figures
 FROM cad_variations sv
 JOIN variation_metal_weights w ON w.variation_id = sv.id
 JOIN metals m ON m.id = w.metal_id
-WHERE m.code = $1 AND sv.design_id = ANY($2::bigint[]) AND sv.deleted_at IS NULL
+CROSS JOIN LATERAL (
+    SELECT CASE WHEN $1::bigint IS NULL THEN NULL::numeric
+                WHEN bool_or(sm.size_mm IS NULL) THEN NULL
+                ELSE round(COALESCE(sum(s.stone_count * sm.carats_per_stone), 0), 4) END AS carats
+    FROM variation_stone_seats s
+    LEFT JOIN stone_size_matrix sm ON sm.size_mm = s.size_mm
+         AND sm.stone_code_id = COALESCE(s.locked_stone_code_id, $1::bigint)
+    WHERE s.variation_id = sv.id
+) st
+CROSS JOIN LATERAL (
+    SELECT round(st.carats * 0.200, 3) AS stone_g, round(w.net_weight_g + st.carats * 0.200, 3) AS gross_g
+) g
+CROSS JOIN LATERAL (
+    SELECT CASE WHEN g.gross_g > 0 THEN round(st.carats * 0.200 / g.gross_g * 100, 2) ELSE NULL::numeric END AS stone_pct
+) p
+WHERE m.code = $2::text AND sv.design_id = ANY($3::bigint[]) AND sv.deleted_at IS NULL
+ORDER BY sv.design_id, sv.seq
 `
 
-type ListDesignWeightsForMetalParams struct {
-	Code    string  `json:"code"`
-	Column2 []int64 `json:"column_2"`
+type ListDesignVariationFiguresParams struct {
+	StoneCodeID pgtype.Int8 `json:"stone_code_id"`
+	Code        string      `json:"code"`
+	DesignIds   []int64     `json:"design_ids"`
 }
 
-type ListDesignWeightsForMetalRow struct {
-	DesignID     int64               `json:"design_id"`
-	NetWeightG   decimal.Decimal     `json:"net_weight_g"`
-	GrossWeightG decimal.NullDecimal `json:"gross_weight_g"`
+type ListDesignVariationFiguresRow struct {
+	DesignID int64  `json:"design_id"`
+	Figures  []byte `json:"figures"`
 }
 
-// Per-variation weights of one metal for the given designs; the service folds
-// them into min/max ranges for the catalog cards.
-func (q *Queries) ListDesignWeightsForMetal(ctx context.Context, arg ListDesignWeightsForMetalParams) ([]ListDesignWeightsForMetalRow, error) {
-	rows, err := q.db.Query(ctx, listDesignWeightsForMetal, arg.Code, arg.Column2)
+// Per-variation figures of one metal for the given designs, with the stone weight of the chosen stone code
+// computed as in ListDesigns (stone figures null when a matrix row is missing, or no code is chosen). The
+// service folds them into the card figures and min/max ranges.
+func (q *Queries) ListDesignVariationFigures(ctx context.Context, arg ListDesignVariationFiguresParams) ([]ListDesignVariationFiguresRow, error) {
+	rows, err := q.db.Query(ctx, listDesignVariationFigures, arg.StoneCodeID, arg.Code, arg.DesignIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListDesignWeightsForMetalRow
+	var items []ListDesignVariationFiguresRow
 	for rows.Next() {
-		var i ListDesignWeightsForMetalRow
-		if err := rows.Scan(&i.DesignID, &i.NetWeightG, &i.GrossWeightG); err != nil {
+		var i ListDesignVariationFiguresRow
+		if err := rows.Scan(&i.DesignID, &i.Figures); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -720,49 +739,81 @@ SELECT d.id, d.code, d.name, d.category_id, d.deleted_at, d.created_at, d.update
     (SELECT m.thumb_key FROM design_media m WHERE m.design_id = d.id AND m.kind = 'image'
        AND (m.variation_id IS NULL OR EXISTS (SELECT 1 FROM cad_variations mv WHERE mv.id = m.variation_id AND mv.deleted_at IS NULL))
      ORDER BY m.is_cover DESC, m.variation_id NULLS FIRST, m.position, m.id LIMIT 1) AS cover_thumb_key,
+    to_jsonb(rep) AS shown,   -- the shown variation's figures as JSON; NULL when no variation qualifies
     count(*) OVER ()::bigint AS total_count   -- matches before LIMIT/OFFSET, for pagination
 FROM master_designs d
 JOIN categories c ON c.id = d.category_id
+LEFT JOIN LATERAL (
+    SELECT v.id AS variation_id, v.code AS variation_code, w.net_weight_g AS net_g,
+           st.carats, g.stone_g, g.gross_g, p.stone_pct
+    FROM cad_variations v
+    JOIN variation_metal_weights w ON w.variation_id = v.id
+    JOIN metals m ON m.id = w.metal_id
+    CROSS JOIN LATERAL (
+        SELECT CASE WHEN NOT $1::bool OR $2::bigint IS NULL THEN NULL
+                    WHEN bool_or(sm.size_mm IS NULL) THEN NULL
+                    ELSE round(COALESCE(sum(s.stone_count * sm.carats_per_stone), 0), 4) END AS carats
+        FROM variation_stone_seats s
+        LEFT JOIN stone_size_matrix sm ON sm.size_mm = s.size_mm
+             AND sm.stone_code_id = COALESCE(s.locked_stone_code_id, $2::bigint)
+        WHERE $1::bool AND s.variation_id = v.id
+    ) st
+    CROSS JOIN LATERAL (
+        SELECT round(st.carats * 0.200, 3) AS stone_g, round(w.net_weight_g + st.carats * 0.200, 3) AS gross_g
+    ) g
+    CROSS JOIN LATERAL (
+        SELECT CASE WHEN g.gross_g > 0 THEN round(st.carats * 0.200 / g.gross_g * 100, 2) END AS stone_pct
+    ) p
+    WHERE $3::bool
+      AND v.design_id = d.id AND v.deleted_at IS NULL
+      AND ($4::text IS NULL OR m.code = $4)
+      AND ($5::numeric IS NULL OR w.net_weight_g >= $5)
+      AND ($6::numeric IS NULL OR w.net_weight_g <= $6)
+      AND ($7::numeric IS NULL OR g.gross_g >= $7)
+      AND ($8::numeric IS NULL OR g.gross_g <= $8)
+      AND ($9::numeric IS NULL OR p.stone_pct >= $9)
+      AND ($10::numeric IS NULL OR p.stone_pct <= $10)
+      AND ($11::numeric IS NULL OR v.baseline_stone_carats <= $11)
+    ORDER BY (st.carats IS NOT NULL) DESC, v.seq, m.id
+    LIMIT 1
+) rep ON true
 WHERE d.deleted_at IS NULL
   -- q is pre-escaped by the service with '!' as the LIKE escape character
-  AND ($1::text IS NULL
-       OR d.code ILIKE '%' || $1 || '%' ESCAPE '!'
-       OR d.name ILIKE '%' || $1 || '%' ESCAPE '!')
-  AND ($2::bigint IS NULL OR d.category_id = $2)
-  AND (cardinality($3::bigint[]) = 0 OR NOT EXISTS (
-        SELECT 1 FROM unnest($3::bigint[]) AS want(id)
+  AND ($12::text IS NULL
+       OR d.code ILIKE '%' || $12 || '%' ESCAPE '!'
+       OR d.name ILIKE '%' || $12 || '%' ESCAPE '!')
+  AND ($13::bigint IS NULL OR d.category_id = $13)
+  AND (cardinality($14::bigint[]) = 0 OR NOT EXISTS (
+        SELECT 1 FROM unnest($14::bigint[]) AS want(id)
         WHERE NOT EXISTS (SELECT 1 FROM design_tags dt WHERE dt.design_id = d.id AND dt.tag_id = want.id)))
-  AND (
-    ($4::text IS NULL
-        AND $5::numeric IS NULL AND $6::numeric IS NULL
-        AND $7::numeric IS NULL AND $8::numeric IS NULL
-        AND $9::numeric IS NULL)
-    OR EXISTS (
-        SELECT 1 FROM cad_variations v
-        JOIN variation_metal_weights w ON w.variation_id = v.id
-        JOIN metals m ON m.id = w.metal_id
-        WHERE v.design_id = d.id AND v.deleted_at IS NULL
-          AND ($4::text IS NULL OR m.code = $4)
-          AND ($5::numeric IS NULL OR w.net_weight_g >= $5)
-          AND ($6::numeric IS NULL OR w.net_weight_g <= $6)
-          AND ($7::numeric IS NULL OR w.gross_weight_g >= $7)
-          AND ($8::numeric IS NULL OR w.gross_weight_g <= $8)
-          AND ($9::numeric IS NULL OR v.baseline_stone_carats <= $9)
-    ))
-ORDER BY d.code
-LIMIT $11 OFFSET $10
+  AND (NOT $3::bool OR rep.variation_id IS NOT NULL)
+ORDER BY
+  (CASE WHEN $15::text = 'net_asc' THEN rep.net_g END) ASC NULLS LAST,
+  (CASE WHEN $15::text = 'net_desc' THEN rep.net_g END) DESC NULLS LAST,
+  (CASE WHEN $15::text = 'gross_asc' THEN rep.gross_g END) ASC NULLS LAST,
+  (CASE WHEN $15::text = 'gross_desc' THEN rep.gross_g END) DESC NULLS LAST,
+  (CASE WHEN $15::text = 'stone_pct_asc' THEN rep.stone_pct END) ASC NULLS LAST,
+  (CASE WHEN $15::text = 'stone_pct_desc' THEN rep.stone_pct END) DESC NULLS LAST,
+  d.code
+LIMIT $17 OFFSET $16
 `
 
 type ListDesignsParams struct {
-	Q           pgtype.Text         `json:"q"`
-	CategoryID  pgtype.Int8         `json:"category_id"`
-	TagIds      []int64             `json:"tag_ids"`
+	StoneNeeded bool                `json:"stone_needed"`
+	StoneCodeID pgtype.Int8         `json:"stone_code_id"`
+	CalcNeeded  bool                `json:"calc_needed"`
 	MetalCode   pgtype.Text         `json:"metal_code"`
 	MinNetWt    decimal.NullDecimal `json:"min_net_wt"`
 	MaxNetWt    decimal.NullDecimal `json:"max_net_wt"`
 	MinGrossWt  decimal.NullDecimal `json:"min_gross_wt"`
 	MaxGrossWt  decimal.NullDecimal `json:"max_gross_wt"`
+	MinStonePct decimal.NullDecimal `json:"min_stone_pct"`
+	MaxStonePct decimal.NullDecimal `json:"max_stone_pct"`
 	MaxStoneCts decimal.NullDecimal `json:"max_stone_cts"`
+	Q           pgtype.Text         `json:"q"`
+	CategoryID  pgtype.Int8         `json:"category_id"`
+	TagIds      []int64             `json:"tag_ids"`
+	Sort        string              `json:"sort"`
 	Off         int32               `json:"off"`
 	Lim         int32               `json:"lim"`
 }
@@ -779,22 +830,38 @@ type ListDesignsRow struct {
 	TagNames       []string           `json:"tag_names"`
 	VariationCount int32              `json:"variation_count"`
 	CoverThumbKey  pgtype.Text        `json:"cover_thumb_key"`
+	Shown          []byte             `json:"shown"`
 	TotalCount     int64              `json:"total_count"`
 }
 
-// Weight filters apply to the selected metal (metal_code). A design matches if
-// at least one of its variations satisfies every weight filter.
+// Weight and stone filters apply to the selected metal (metal_code) and stone code (stone_code_id) and are
+// computed here, on the fly, from the seats and the stone size matrix (the cache only holds the baseline
+// code): carats = round(sum(count x carats_per_stone), 4); stone_g = round(carats x 0.200, 3);
+// gross = round(net + carats x 0.200, 3); stone % = round(carats x 0.200 / gross x 100, 2).
+// Flexible seats use the chosen code, locked seats their own; a missing matrix row makes carats, stone_g,
+// gross and stone % NULL (never 0). A design matches if at least one of its variations satisfies every
+// filter; the card shows the first such variation (one with stone data preferred).
+// calc_needed is true when any metal, weight or stone filter or sort is requested; stone_needed when the
+// stone figures are needed to filter or order (gross range, stone %, sort by gross or stone %): otherwise
+// the stone sums are only computed for the page rows (ListDesignVariationFigures), which keeps a plain
+// metal selection cheap. Without stone_needed the shown variation is the first one passing the net filters.
 func (q *Queries) ListDesigns(ctx context.Context, arg ListDesignsParams) ([]ListDesignsRow, error) {
 	rows, err := q.db.Query(ctx, listDesigns,
-		arg.Q,
-		arg.CategoryID,
-		arg.TagIds,
+		arg.StoneNeeded,
+		arg.StoneCodeID,
+		arg.CalcNeeded,
 		arg.MetalCode,
 		arg.MinNetWt,
 		arg.MaxNetWt,
 		arg.MinGrossWt,
 		arg.MaxGrossWt,
+		arg.MinStonePct,
+		arg.MaxStonePct,
 		arg.MaxStoneCts,
+		arg.Q,
+		arg.CategoryID,
+		arg.TagIds,
+		arg.Sort,
 		arg.Off,
 		arg.Lim,
 	)
@@ -817,6 +884,7 @@ func (q *Queries) ListDesigns(ctx context.Context, arg ListDesignsParams) ([]Lis
 			&i.TagNames,
 			&i.VariationCount,
 			&i.CoverThumbKey,
+			&i.Shown,
 			&i.TotalCount,
 		); err != nil {
 			return nil, err

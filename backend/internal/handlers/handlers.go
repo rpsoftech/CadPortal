@@ -464,7 +464,8 @@ func (h *H) getDesign(c *gin.Context) {
 }
 
 func (h *H) listDesigns(c *gin.Context) {
-	f := service.DesignFilter{MetalCode: c.Query("metal_code"), Query: c.Query("q")}
+	f := service.DesignFilter{MetalCode: c.Query("metal_code"), Query: c.Query("q"),
+		StoneCode: c.Query("stone_code"), Sort: c.Query("sort")}
 	var err error
 	if f.CategoryID, err = optInt(c, "category_id"); err != nil {
 		badRequest(c, err.Error())
@@ -482,6 +483,7 @@ func (h *H) listDesigns(c *gin.Context) {
 		"min_net_wt": &f.MinNetWt, "max_net_wt": &f.MaxNetWt,
 		"min_gross_wt": &f.MinGrossWt, "max_gross_wt": &f.MaxGrossWt,
 		"max_stone_cts": &f.MaxStoneCts,
+		"min_stone_pct": &f.MinStonePct, "max_stone_pct": &f.MaxStonePct,
 	} {
 		if s := c.Query(name); s != "" {
 			d, perr := decimal.NewFromString(s)
