@@ -221,6 +221,17 @@ for (const scheme of SCHEMES) {
       await page.getByRole('link', { name: /^ORD-/ }).first().click();
       await expect(page.getByRole('table', { name: 'Order lines' })).toBeVisible();
       await s.scan('order detail');
+      await s.overlay('order: download package dialog', async () => {
+        await page.getByRole('button', { name: 'Download package' }).click();
+        await page.getByRole('dialog').locator('.summary').waitFor();
+      });
+      const stl = page.getByRole('button', { name: 'Download STL' });
+      if (await stl.isEnabled()) {
+        await s.overlay('order: download STL dialog', async () => {
+          await stl.click();
+          await page.getByRole('dialog').locator('.summary').waitFor();
+        });
+      }
       await s.overlay('order: cost dialog', () => page.getByRole('button', { name: 'Cost this order' }).click());
       await s.overlay('order: order again dialog', () => page.getByRole('button', { name: 'Order again' }).click());
       const cancel = page.getByRole('button', { name: 'Cancel order' });

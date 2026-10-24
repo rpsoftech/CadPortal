@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { signIn } from './auth';
+import { seedOrder } from './order-seed';
 import { readZip } from './zip';
 
-// The ZIP and the package of an order, through the real production stack. API level: the order-detail
-// buttons are added with the orders screens. Runs after smoke.e2e.ts (category prefixes) like smoke.zip.e2e.ts.
+// The ZIP and the package of an order, through the real production stack: API level first, then the
+// order-detail buttons. Runs after smoke.e2e.ts (category prefixes) like smoke.zip.e2e.ts.
 
 const env = (name: string): string => {
   const v = process.env[name];
@@ -92,4 +94,73 @@ test('an order downloads as a ZIP of the files it recorded, and as a package', a
   const downloads = (result.audit as { detail: string }[]).filter((a) => a.detail.includes(number));
   expect(downloads.length).toBeGreaterThanOrEqual(2);
   expect(downloads.some((a) => a.detail.includes('package=true'))).toBe(true);
+});
+
+test('the order screen downloads the STL ZIP and the package, after showing what they hold', async ({ page }) => {
+  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
+  const o = await seedOrder(page, 'OZipUI');
+  await page.goto(`/orders/${o.id}`);
+  await expect(page.getByRole('table', { name: 'Order lines' })).toBeVisible();
+
+  // No line has a 3dm file: the button is off and the page says why.
+  await expect(page.getByRole('button', { name: 'Download 3dm' })).toBeDisabled();
+  await expect(page.getByText('No line of this order has a 3dm file.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Download STL' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Download STL files' });
+  await expect(dialog.getByText(/^2 CAD files \(STL files\), .* from 2 lines\.$/)).toBeVisible();
+  const [dl] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: 'Download ZIP' }).click(),
+  ]);
+  expect(dl.suggestedFilename()).toContain(`${o.number}-stl-`);
+  await expect(dialog.getByText(/The download has started/)).toBeVisible();
+  const { files } = readZip(readFileSync(await dl.path()));
+  expect([...files.keys()].sort()).toEqual([`${o.codes[0]}.stl`, `${o.codes[1]}.stl`, 'MANIFEST.csv'].sort());
+  expect(files.get(`${o.codes[0]}.stl`)!.toString()).toBe(o.stl[0]);
+  expect(files.get(`${o.codes[1]}.stl`)!.toString()).toBe(o.stl[1]);
+  const manifest = files.get('MANIFEST.csv')!.toString();
+  expect(manifest).toMatch(new RegExp(`${o.codes[0]}.*same`));
+  expect(manifest).toMatch(new RegExp(`${o.codes[1]}.*same`));
+  await dialog.getByRole('button', { name: 'Close' }).click();
+
+  await page.getByRole('button', { name: 'Download package' }).click();
+  const pdialog = page.getByRole('dialog', { name: 'Download order package' });
+  await expect(pdialog.getByText(/^2 CAD files \(STL and 3dm files\), /)).toBeVisible();
+  await expect(pdialog.getByText(/2 requested files are not on the order/)).toBeVisible();
+  const [pdl] = await Promise.all([
+    page.waitForEvent('download'),
+    pdialog.getByRole('button', { name: 'Download ZIP' }).click(),
+  ]);
+  expect(pdl.suggestedFilename()).toContain(`${o.number}-package-`);
+  const pkg = readZip(readFileSync(await pdl.path())).files;
+  expect(pkg.get(`${o.number}-job-bags.pdf`)!.subarray(0, 4).toString()).toBe('%PDF');
+  expect(pkg.get(`${o.number}-summary.csv`)!.toString()).toContain(`${o.number},`);
+  expect(pkg.get(`${o.codes[0]}.stl`)!.toString()).toBe(o.stl[0]);
+  expect(pkg.has('MANIFEST.csv')).toBe(true);
+});
+
+test("the order download dialog shows the server's words when it refuses, and production may download", async ({ page, browser }) => {
+  await signIn(page, env('E2E_ADMIN_EMAIL'), env('E2E_ADMIN_PASSWORD'));
+  const o = await seedOrder(page, 'OZipErr');
+
+  const ctx = await browser.newContext({ baseURL: process.env['E2E_BASE_URL'] ?? 'http://127.0.0.1:18080' });
+  const prod = await ctx.newPage();
+  await signIn(prod, env('E2E_PROD_EMAIL'), env('E2E_PROD_PASSWORD'));
+  await prod.goto(`/orders/${o.id}`);
+  await expect(prod.getByRole('table', { name: 'Order lines' })).toBeVisible();
+  await expect(prod.getByRole('button', { name: 'Cost this order' })).toHaveCount(0);
+  await expect(prod.getByRole('button', { name: 'Download STL' })).toBeEnabled();
+
+  await prod.route('**/orders/*/download/link*', (r) =>
+    r.fulfill({
+      status: 429,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'You already have a download running. Wait for it to finish.' }),
+    }),
+  );
+  await prod.getByRole('button', { name: 'Download STL' }).click();
+  await expect(prod.getByRole('alert').filter({ hasText: 'You already have a download running' })).toBeVisible();
+  await expect(prod.getByRole('dialog').getByRole('button', { name: 'Download ZIP' })).toBeDisabled();
+  await ctx.close();
 });

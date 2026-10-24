@@ -72,7 +72,32 @@
         @if (canWrite()) {
           <button matButton="outlined" type="button" [disabled]="busy()" (click)="costOrder()">Cost this order</button>
         }
+        <!-- CAD downloads (any role): the files the order recorded, as one ZIP. -->
+        <button
+          matButton="outlined"
+          type="button"
+          [disabled]="busy() || !hasStl()"
+          [attr.aria-describedby]="hasStl() ? null : 'no-cad-note'"
+          (click)="openDownload('stl')"
+        >
+          Download STL
+        </button>
+        <button
+          matButton="outlined"
+          type="button"
+          [disabled]="busy() || !has3dm()"
+          [attr.aria-describedby]="has3dm() ? null : 'no-cad-note'"
+          (click)="openDownload('3dm')"
+        >
+          Download 3dm
+        </button>
+        <button matButton="outlined" type="button" [disabled]="busy()" (click)="openDownload('package')">
+          Download package
+        </button>
       </div>
+      @if (!hasStl() || !has3dm()) {
+        <p id="no-cad-note" class="muted cad-note">{{ noCadNote() }}</p>
+      }
     </section>
 
     <section aria-labelledby="h-details">

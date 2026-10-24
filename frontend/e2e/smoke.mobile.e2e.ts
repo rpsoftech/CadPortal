@@ -1,5 +1,6 @@
 import { Page, expect, test } from '@playwright/test';
 import { admin } from './auth';
+import { seedOrder } from './order-seed';
 
 // A phone (375 px wide). Runs after smoke.e2e.ts, so the catalog has designs to open.
 test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
@@ -228,4 +229,30 @@ test('every screen fits a phone without sideways scrolling', async ({ page }) =>
   page.once('dialog', (d) => void d.accept());
   await page.getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByRole('heading', { name: 'Costing sheets' })).toBeVisible();
+});
+
+test('the order download buttons wrap on a phone and their dialog fits', async ({ page }) => {
+  await signIn(page);
+  const o = await seedOrder(page, 'OMobile');
+  await page.goto(`/orders/${o.id}`);
+  await expect(page.getByRole('table', { name: 'Order lines' })).toBeVisible();
+  await check(page, 'order-detail-downloads');
+  for (const name of ['Download STL', 'Download 3dm', 'Download package']) {
+    const box = await page.getByRole('button', { name }).boundingBox();
+    expect(box!.x, name).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width, name).toBeLessThanOrEqual(375 + 1);
+    expect(box!.height, name).toBeGreaterThanOrEqual(40);
+  }
+  await page.getByRole('button', { name: 'Download package' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText(/^2 CAD files /)).toBeVisible();
+  const dbox = await dialog.boundingBox();
+  expect(dbox!.x).toBeGreaterThanOrEqual(0);
+  expect(dbox!.x + dbox!.width).toBeLessThanOrEqual(375 + 1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  const [dl] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: 'Download ZIP' }).click(),
+  ]);
+  expect(dl.suggestedFilename()).toContain(`${o.number}-package-`);
 });
