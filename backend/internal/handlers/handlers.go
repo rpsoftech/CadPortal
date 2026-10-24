@@ -170,6 +170,7 @@ func (h *H) Register(r *gin.Engine) {
 	v1.POST("/orders", editor, h.createOrder)
 	v1.GET("/orders", anyRole, h.listOrders)
 	v1.GET("/orders/:id", anyRole, h.getOrder)
+	v1.GET("/orders/:id/live", anyRole, h.orderLive)
 	v1.PUT("/orders/:id", editor, h.updateOrder)
 	v1.PUT("/orders/:id/lines", editor, h.setOrderLines)
 	v1.POST("/orders/:id/status", editor, h.setOrderStatus)

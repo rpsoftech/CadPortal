@@ -6,6 +6,7 @@ import {
   Order,
   OrderDiff,
   OrderItem,
+  OrderLineLive,
   OrderStatus,
   OrderSummary,
   AuditRecord,
@@ -455,6 +456,10 @@ export class ApiService {
         total: Number(r.headers.get('X-Total-Count') ?? r.body?.length ?? 0),
       })),
     );
+  }
+  /** Each line compared with the catalog today: unchanged, changed (what) or unavailable (why). */
+  orderLive(id: number): Observable<OrderLineLive[]> {
+    return this.http.get<{ lines: OrderLineLive[] }>(`${BASE}/orders/${id}/live`).pipe(map((r) => r.lines));
   }
   order(id: number): Observable<Order> {
     return this.http.get<Order>(`${BASE}/orders/${id}`);

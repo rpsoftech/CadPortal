@@ -51,6 +51,8 @@ const SCREENS: [string, string][] = [
   ['master-data-matrix', '/master-data?tab=matrix'],
   ['master-data-categories', '/master-data?tab=categories'],
   ['removed', '/removed'],
+  ['orders', '/orders'],
+  ['order-new-empty', '/orders/new'],
   ['audit', '/audit'],
   ['backups', '/backups'],
   ['users', '/users'],

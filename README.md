@@ -792,8 +792,7 @@ designer their own. Creating, downloading, re-costing and deleting are in the au
 
 ### Orders
 
-An order is a selection of catalog variations (a quantity each) in one metal and one stone code, sent
-to production. Not a customer order: no prices, payments or invoicing are stored. The API is built;
+to production. Not a customer order: no prices, payments or invoicing are stored. The screens are described under "Order screens" below.
 the screens come later.
 
 `POST /orders` takes `{metal_code, stone_code, items: [{variation_id, quantity}], name?, notes?, due_date?,
@@ -826,6 +825,29 @@ failed create gives its number back. Up to 500 lines, quantity 1 to 100000, a va
 - **Roles.** Everyone signed in may read (`GET /orders` with `status`, `q`, `from`, `to`, `limit`, `offset`,
   total in `X-Total-Count`; `GET /orders/:id`); admin and designer write. Creating, editing, changing lines,
   status changes and clones are in the audit log (`order.*`).
+- **Live check.** `GET /orders/:id/live` (any role) compares every line's stored snapshot with a fresh one from
+  the catalog today, in the line's own metal and stone code: `{lines: [{line_id, status, reason?, changes}]}` with
+  `status` `unchanged`, `changed` (the fields, old and new) or `unavailable` (design or variation deleted or purged,
+  stone data missing; `reason` says which). It only reads; the order is never touched.
+
+#### Order screens
+
+- **Make one.** In the **Catalog**, filter (category, tags, weights, metal, stone code, stone %), tick designs (the
+  selection survives filter changes and paging; the bar shows the count) and choose **Create order**. The review
+  step (`/orders/new`) lists every variation of the ticked designs as a line with a quantity (default 1) and a
+  Remove button, starts with the catalog's current metal and stone code, and takes a title / buyer (free text), a
+  due date and notes. **Save as draft** or **Create and place**. If the server refuses lines (missing stone data,
+  a deleted design) it names them in its own words and **Leave out** moves them to a "Left out" list with the
+  reasons. The catalog filter in use is stored with the order as an informational note.
+- **Orders list** (`/orders`, everyone): number, title, status, metal · stone, lines, pieces, due date, creator;
+  filter by status and text; cards on a phone.
+- **One order** (`/orders/:id`): the lines as saved (net, stone, gross, stone %, stones, file names; the stone list
+  folds open), the history of status changes with who and when, and, for admin and designer, the status buttons
+  (each asks for an optional note; cancel says it cannot be reopened), **Order again** (a new draft from today's
+  designs, then a list of what differs), and editing of title, due date and notes (until the order is done or
+  cancelled) and of quantities and lines (draft only). A line whose design was edited since is marked **Changed
+  since this order was made** with the fields; a deleted or purged one is marked **No longer in the catalog as
+  ordered** with the reason; the snapshot is shown either way. Production sees all of it and none of the buttons.
 
 ### Downloading many CAD files at once
 

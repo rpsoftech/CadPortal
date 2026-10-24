@@ -107,6 +107,13 @@ func TestOrdersOverHTTP(t *testing.T) {
 	if w := do(r, "GET", "/api/v1/orders/999", prod, "", nil); w.Code != 404 {
 		t.Errorf("missing order: %d", w.Code)
 	}
+	// The live check is readable by production and says "unchanged" for a fresh order.
+	if w := do(r, "GET", path+"/live", prod, "", nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"unchanged"`) {
+		t.Errorf("live: %d %s", w.Code, w.Body)
+	}
+	if w := do(r, "GET", "/api/v1/orders/999/live", prod, "", nil); w.Code != 404 {
+		t.Errorf("live of a missing order: %d", w.Code)
+	}
 
 	// Production cannot write anything else either.
 	for _, c := range []struct{ method, path string }{

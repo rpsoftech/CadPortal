@@ -56,3 +56,22 @@ describe('toApiError', () => {
     expect((await toApiError(new Error('boom'))).message).toBe('Unexpected error');
   });
 });
+
+describe('toApiError for orders', () => {
+  it('keeps order problems apart from costing problems', async () => {
+    const e = await toApiError(
+      err(422, {
+        error: 'cannot add to the order: LR0001-V2: stone data missing',
+        problems: [{ variation_id: 7, variation_code: 'LR0001-V2', message: 'stone data missing' }],
+      }),
+    );
+    expect(e.orderProblems).toEqual([{ variation_id: 7, variation_code: 'LR0001-V2', message: 'stone data missing' }]);
+    expect(e.problems).toEqual([]);
+  });
+
+  it('still reads costing problems as before', async () => {
+    const e = await toApiError(err(422, { error: 'x', problems: [{ design_id: 1, design_code: 'A', design_name: '', variations: [] }] }));
+    expect(e.problems.length).toBe(1);
+    expect(e.orderProblems).toEqual([]);
+  });
+});

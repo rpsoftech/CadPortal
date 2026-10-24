@@ -24,6 +24,7 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
       </a>
       @if (auth.user(); as u) {
         <nav class="links" aria-label="Main">
+          <a matButton routerLink="/orders">Orders</a>
           @if (auth.canEdit()) {
             <a matButton routerLink="/costing-sheets">Costing sheets</a>
             <a matButton routerLink="/removed">Removed</a>
@@ -35,20 +36,21 @@ import { ChangePasswordDialogComponent } from './shared/change-password-dialog.c
             <a matButton routerLink="/backups">Backups</a>
           }
         </nav>
-        @if (auth.canEdit()) {
-          <!-- On a phone the links do not fit beside the account button, so they live in a menu. -->
-          <button matButton class="nav-menu" [matMenuTriggerFor]="nav">Menu</button>
-          <mat-menu #nav="matMenu">
+        <!-- On a phone the links do not fit beside the account button, so they live in a menu. -->
+        <button matButton class="nav-menu" [matMenuTriggerFor]="nav">Menu</button>
+        <mat-menu #nav="matMenu">
+          <a mat-menu-item routerLink="/orders">Orders</a>
+          @if (auth.canEdit()) {
             <a mat-menu-item routerLink="/costing-sheets">Costing sheets</a>
             <a mat-menu-item routerLink="/removed">Removed</a>
-            @if (auth.isAdmin()) {
-              <a mat-menu-item routerLink="/master-data">Master data</a>
-              <a mat-menu-item routerLink="/users">Users</a>
-              <a mat-menu-item routerLink="/audit">Audit</a>
-              <a mat-menu-item routerLink="/backups">Backups</a>
-            }
-          </mat-menu>
-        }
+          }
+          @if (auth.isAdmin()) {
+            <a mat-menu-item routerLink="/master-data">Master data</a>
+            <a mat-menu-item routerLink="/users">Users</a>
+            <a mat-menu-item routerLink="/audit">Audit</a>
+            <a mat-menu-item routerLink="/backups">Backups</a>
+          }
+        </mat-menu>
         <span class="spacer"></span>
         <button
           matButton="outlined"
