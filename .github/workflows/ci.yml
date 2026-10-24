@@ -353,11 +353,10 @@ jobs:
       - name: Check every part
         run: |
           echo "changes stack backup multi: $RESULTS"
-          set -- $RESULTS
-          [ "$1" = "success" ] || { echo "the change detection did not succeed" >&2; exit 1; }
+          read -r -a parts <<< "$RESULTS"
+          [ "${parts[0]}" = "success" ] || { echo "the change detection did not succeed" >&2; exit 1; }
           if [ "$WANTED" != "true" ]; then echo "no docker checks needed for this change"; exit 0; fi
-          shift
-          for r in "$@"; do
+          for r in "${parts[@]:1}"; do
             [ "$r" = "success" ] || { echo "a docker part did not succeed ($r)" >&2; exit 1; }
           done
 
