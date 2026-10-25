@@ -136,15 +136,9 @@ for (const scheme of SCHEMES) {
       await page.getByRole('dialog').waitFor();
       await s.scan('catalog: cost selected dialog');
       const dlg = page.getByRole('dialog');
-      for (const name of ['Metal', 'Stone code']) {
-        const box = dlg.getByRole('combobox', { name });
-        if (!(await box.innerText()).trim()) {
-          await box.click();
-          await page.getByRole('option').first().click();
-        }
-      }
       await dlg.getByLabel('Gold rate / g').fill('60');
       await dlg.getByLabel('Setting rate / pc').fill('2');
+      await expect(page.getByRole('button', { name: 'Preview' })).toBeEnabled();
       await page.getByRole('button', { name: 'Preview' }).click();
       await page.getByRole('table', { name: 'Costing preview' }).or(page.getByRole('alert')).first().waitFor();
       await s.scan('catalog: cost selected preview');
