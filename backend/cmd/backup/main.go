@@ -26,6 +26,7 @@ import (
 	_ "time/tzdata"
 
 	"filippo.io/age"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rpsoftech/cad-portal/backend/internal/backup"
@@ -257,16 +258,35 @@ func runDaemon(ctx context.Context) error {
 	}
 	q := db.New(pool)
 
+	// On a new server the database, and the tables the API creates when it starts, appear a little after this
+	// service does: wait for them instead of failing the first backup.
+	if !waitForDatabase(ctx, q, 5*time.Minute) {
+		log.Print("the database is still not ready: will keep trying")
+	}
+
 	// After a restart or an outage, do not wait for the next slot if the last good backup is old: older than
 	// the longest gap in the schedule plus two hours (26 hours for one run a night).
 	stale := backup.CatchUpAfter(times)
 	last, err := q.LastGoodBackupRun(ctx)
+	failures := 0
+	var retryAt time.Time // when to try again after a run that did not succeed
+	// done records how a run went: a failed one is tried again soon (1, 2, 4, 8, 16, then every 30 minutes),
+	// not left until the next slot, which could be a whole night away.
+	done := func(res backup.Result) {
+		if res.OK {
+			failures, retryAt = 0, time.Time{}
+			return
+		}
+		failures++
+		d := backup.RetryDelay(failures)
+		retryAt = time.Now().Add(d)
+		log.Printf("that backup did not succeed (attempt %d): trying again in %s", failures, d)
+	}
 	if err != nil || !last.FinishedAt.Valid || time.Since(last.FinishedAt.Time) >= stale {
 		log.Printf("no backup in the last %s: taking one now", stale)
-		time.Sleep(10 * time.Second) // let the database finish starting
-		r.Run(ctx)
+		done(r.Run(ctx))
 	}
-	// Every half minute look for a "Back up now" from the portal; otherwise wait for the night.
+	// Every half minute look for a "Back up now" from the portal, a retry that is due, or the next slot.
 	poll := time.NewTicker(30 * time.Second)
 	defer poll.Stop()
 	next := backup.NextRun(time.Now(), times, loc)
@@ -276,21 +296,46 @@ func runDaemon(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-poll.C:
-			ran := false
+			due := false
 			if n, err := q.ClaimBackupRequests(ctx); err != nil {
 				log.Printf("checking for a requested backup: %v", err)
 			} else if n > 0 {
 				log.Print("backup requested from the portal: taking one now")
-				r.Run(ctx)
-				ran = true
+				due = true
+			}
+			if !retryAt.IsZero() && !time.Now().Before(retryAt) {
+				due = true
 			}
 			if !time.Now().Before(next) {
-				if !ran { // a backup requested a moment ago already covers tonight
-					r.Run(ctx)
-				}
+				due = true // a backup taken a moment ago for another reason also covers this slot
 				next = backup.NextRun(time.Now(), times, loc)
 				log.Printf("next backup at %s", next.In(loc).Format("2006-01-02 15:04 MST"))
 			}
+			if due {
+				done(r.Run(ctx))
+			}
+		}
+	}
+}
+
+// waitForDatabase waits until the database answers and has the backup tables. It gives up after limit.
+func waitForDatabase(ctx context.Context, q *db.Queries, limit time.Duration) bool {
+	deadline := time.Now().Add(limit)
+	for tries := 0; ; tries++ {
+		_, err := q.LastGoodBackupRun(ctx)
+		if err == nil || errors.Is(err, pgx.ErrNoRows) {
+			return true // no good run yet is the normal state of a new server
+		}
+		if ctx.Err() != nil || time.Now().After(deadline) {
+			return false
+		}
+		if tries%10 == 0 {
+			log.Printf("waiting for the database: %v", err)
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(3 * time.Second):
 		}
 	}
 }

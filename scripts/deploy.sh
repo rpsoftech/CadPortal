@@ -61,6 +61,13 @@ if [ "$target" != staging ] && [ "$skip_backup" = false ]; then
   fi
 fi
 
+# A new server has no database yet, and a crashed one may be stopped: start it, and only that. --no-recreate
+# means it is never recreated or replaced here, and a database that is already running is not touched at all.
+if [ -z "$(dc ps -q --status running db 2>/dev/null)" ]; then
+  echo "deploy: the database is not running: starting it (first deployment, or it had stopped)"
+  dc up -d --no-recreate --wait db || fail "the database did not start; nothing else was changed"
+fi
+
 dc pull "${services[@]}"
 # Compose recreates only the services whose image changed; the others, and the database, stay up.
 dc up -d --no-deps --wait "${services[@]}"
