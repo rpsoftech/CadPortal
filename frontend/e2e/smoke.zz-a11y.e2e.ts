@@ -136,6 +136,11 @@ for (const scheme of SCHEMES) {
       await page.getByRole('dialog').waitFor();
       await s.scan('catalog: cost selected dialog');
       const dlg = page.getByRole('dialog');
+      await dlg.getByLabel('Metal').click();
+      await page.getByRole('option').first().click();
+      await expect(page.locator('.cdk-overlay-backdrop-showing')).toHaveCount(1);
+      await dlg.getByLabel('Stone code').click({ force: true }); // the empty field's label sits over it
+      await page.getByRole('option').first().click();
       await dlg.getByLabel('Gold rate / g').fill('60');
       await dlg.getByLabel('Setting rate / pc').fill('2');
       await expect(page.getByRole('button', { name: 'Preview' })).toBeEnabled();
