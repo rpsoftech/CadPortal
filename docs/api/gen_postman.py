@@ -33,6 +33,8 @@ VAR_FOR = {
 def var_name(path):
     if path in VAR_FOR:
         return VAR_FOR[path]
+    if path.startswith("/api/v1/orders/"):
+        return "orderId"
     return "variationId" if "/variations/" in path else "id"
 
 
@@ -172,7 +174,7 @@ def main():
             {"key": "baseUrl", "value": "http://localhost:8080"},
             {"key": "token", "value": ""},
             {"key": "designCode", "value": "LR0001"},
-        ] + [{"key": k, "value": "1"} for k in sorted(set(VAR_FOR.values()) | {"variationId", "id"})],
+        ] + [{"key": k, "value": "1"} for k in sorted(set(VAR_FOR.values()) | {"variationId", "orderId", "id"})],
         "item": [{"name": name, "item": items} for name, items in folders.items() if items],
     }
     (HERE / "CadPortal.postman_collection.json").write_text(json.dumps(coll, indent=2) + "\n")

@@ -48,6 +48,10 @@
       "value": "1"
     },
     {
+      "key": "orderId",
+      "value": "1"
+    },
+    {
       "key": "sheetId",
       "value": "1"
     },
@@ -1159,6 +1163,30 @@
                   "description": ""
                 },
                 {
+                  "key": "stone_code",
+                  "value": "2HD",
+                  "disabled": true,
+                  "description": "Stone code the stone figures and gross range are computed for (default is the baseline code)"
+                },
+                {
+                  "key": "min_stone_pct",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Stone weight as a percent of gross, 0 to 100, 2 dp. Needs metal_code."
+                },
+                {
+                  "key": "max_stone_pct",
+                  "value": "",
+                  "disabled": true,
+                  "description": "As min_stone_pct"
+                },
+                {
+                  "key": "sort",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
                   "key": "limit",
                   "value": "",
                   "disabled": true,
@@ -1172,7 +1200,7 @@
                 }
               ]
             },
-            "description": "Total matches before paging are returned in `X-Total-Count`.\n\nResponses: 200: Catalog cards; 400: Invalid input"
+            "description": "Total matches before paging are returned in `X-Total-Count`. With `metal_code`, each card carries the net,\nstone and gross grams and stone % of the shown variation; when a stone matrix row is missing the stone\nfigures are null with `stone_status: no_data` and a `stone_note` (never 0).\n\nResponses: 200: Catalog cards; 400: Invalid input"
           },
           "response": []
         },
@@ -2015,6 +2043,745 @@
               "query": []
             },
             "description": "Any role. Holds no wastage or rates. Round-trips into a fresh install.\n\nResponses: 200: CSV"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "List orders, newest first (any role)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Text search on number or name"
+                },
+                {
+                  "key": "from",
+                  "value": "",
+                  "disabled": true,
+                  "description": "RFC 3339 timestamp or YYYY-MM-DD"
+                },
+                {
+                  "key": "to",
+                  "value": "",
+                  "disabled": true,
+                  "description": "RFC 3339 timestamp or YYYY-MM-DD (a plain date includes that whole day)"
+                },
+                {
+                  "key": "limit",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Default 50, max 200"
+                },
+                {
+                  "key": "offset",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Responses: 200: Orders; 400: Invalid input"
+          },
+          "response": []
+        },
+        {
+          "name": "Create an order (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ],
+              "query": []
+            },
+            "description": "A selection of variations (a quantity each) in one metal and one stone code. Every line keeps an immutable\nsnapshot of its weights, stone BOM, CAD file names and hashes and cover photo. Numbers are sequential and\ngap-free (`ORD-0001`). No prices are stored. If any variation cannot be ordered (for example missing stone\ndata) the answer is 422 listing every one, and nothing is saved.\n\nResponses: 201: Created; 400: Invalid input; 422: Variations that cannot be put on the order (every one is listed, nothing is saved)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Diwali rings\",\n  \"notes\": \"Rush\",\n  \"due_date\": \"2026-11-05\",\n  \"metal_code\": \"18KY\",\n  \"stone_code\": \"2HD\",\n  \"items\": [\n    {\n      \"variation_id\": 1,\n      \"quantity\": 10\n    },\n    {\n      \"variation_id\": 2,\n      \"quantity\": 4\n    }\n  ],\n  \"place\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "One order with its line snapshots and status history (any role)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Order; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "Change name, notes or due date (designer, admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Updated; 400: Invalid input; 404: Not found",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Diwali rings\",\n  \"notes\": \"Rush\",\n  \"due_date\": \"2026-11-05\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Replace all lines of a draft order (designer, admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/lines",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "lines"
+              ],
+              "query": []
+            },
+            "description": "Draft only (409 otherwise). Every line is re-snapshotted. Max 500 lines, quantity 1 to 100000.\n\nResponses: 200: Updated; 404: Not found; 409: Conflict (duplicate code or checksum, state does not allow it); 422: Variations that cannot be put on the order (every one is listed, nothing is saved)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"variation_id\": 1,\n      \"quantity\": 12\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Move an order through its status flow (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "status"
+              ],
+              "query": []
+            },
+            "description": "Allowed moves: draft to placed or cancelled; placed to in_production or cancelled; in_production to done or\ncancelled. `done` and `cancelled` are final. An order is cancelled, never deleted. Who and when is recorded\nin `history`.\n\nResponses: 200: Updated; 400: Invalid input; 404: Not found; 409: Conflict (duplicate code or checksum, state does not allow it)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"placed\",\n  \"note\": \"Approved by the owner\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Re-order - new order from an old one, with a diff (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/clone",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "clone"
+              ],
+              "query": []
+            },
+            "description": "Every line is re-snapshotted from the current catalog. The source order is untouched. The diff lists, per\nline, what changed since the old snapshot. Metal and stone code default to the source order's. Without\n`skip_unavailable`, a line whose variation is gone or lacks stone data fails the clone.\n\nResponses: 201: New order and the differences; 404: Not found; 422: Variations that cannot be put on the order (every one is listed, nothing is saved)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skip_unavailable\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Compare each line with the catalog today (any role)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/live",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "live"
+              ],
+              "query": []
+            },
+            "description": "Read only. Marks a line `changed`, `unchanged` or `unavailable` (design or variation gone, data missing).\n\nResponses: 200: Per-line state; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "Order summary PDF with QR code (any role)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/summary.pdf",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "summary.pdf"
+              ],
+              "query": []
+            },
+            "description": "Built from the order's snapshot. Audited.\n\nResponses: 200: PDF; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "Job bags for every line of the order, from its snapshot (any role)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/job-bags.pdf",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "job-bags.pdf"
+              ],
+              "query": [
+                {
+                  "key": "per_piece",
+                  "value": "",
+                  "disabled": true,
+                  "description": "One bag per piece instead of one per line"
+                }
+              ]
+            },
+            "description": "Responses: 200: PDF; 400: Invalid input; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "One order as CSV (any role)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/csv",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "csv"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: CSV; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "The orders list as CSV, with the list's own filters (any role)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/exports/orders-csv",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "exports",
+                "orders-csv"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "from",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "to",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Capped at 5000 orders; the total is in `X-Total-Count`.\n\nResponses: 200: CSV; 400: Invalid input"
+          },
+          "response": []
+        },
+        {
+          "name": "Cost an order and save it as a costing sheet (designer, admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/costing",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "costing"
+              ],
+              "query": []
+            },
+            "description": "Costs the order's variations for their quantities in the order's metal and stone code from the **current**\nmasters and designs (not the snapshot), and saves an immutable costing sheet linked to the order.\nMissing data fails the run with the grouped list (422) unless `skip_incomplete`. `drift` shows how far the\nlive designs have moved from the order's snapshots.\n\nResponses: 201: Saved sheet and drift; 400: Invalid input; 404: Not found; 422: Costing data is incomplete (no wastage %, no stone rate, or no matrix row)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gold_rate_per_g\": 6200,\n  \"setting_rate_per_pc\": 15\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Costing sheets saved for an order (designer, admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/costing-sheets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "costing-sheets"
+              ],
+              "query": []
+            },
+            "description": "Responses: 200: Sheets; 404: Not found"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Downloads",
+      "item": [
+        {
+          "name": "Stream one ZIP of CAD files for a selection (any role)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/downloads/cad-zip",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "downloads",
+                "cad-zip"
+              ],
+              "query": []
+            },
+            "description": "Streams a ZIP of the original STL / 3dm files of the chosen variations, or of all live variations of the\nchosen designs, followed by `MANIFEST.csv` (ok / missing / hash-mismatch / error per file). Nothing is\nheld in memory and hashes are verified on the fly. For scripts: a browser should use `/link` instead,\nbecause a plain navigation cannot send the bearer token.\n\nLimits: 413 over `CAD_ZIP_MAX_FILES` (default 1000) or `CAD_ZIP_MAX_MB` (default 5 GB); 429 with\n`Retry-After` while the same user already has a ZIP running. Audited as `download.cad_zip`.\n\nResponses: 200: ZIP stream; 400: Invalid input; 413: Request or file too large; 429: The same user already has a ZIP running; 503: File storage is not configured",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"design_ids\": [\n    1,\n    2\n  ],\n  \"kinds\": [\n    \"stl\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check a CAD ZIP selection and get a two-minute signed link (any role)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/downloads/cad-zip/link",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "downloads",
+                "cad-zip",
+                "link"
+              ],
+              "query": []
+            },
+            "description": "Same body as `/downloads/cad-zip`. Tells what the ZIP would hold (files, bytes, missing) before it starts.\n\nResponses: 200: Plan and link; 400: Invalid input; 413: Request or file too large",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"variation_ids\": [\n    1,\n    2\n  ],\n  \"kinds\": [\n    \"stl\",\n    \"3dm\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Open a signed CAD ZIP link (no bearer token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/downloads/cad-zip/file?ticket=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "downloads",
+                "cad-zip",
+                "file"
+              ],
+              "query": [
+                {
+                  "key": "ticket",
+                  "value": "",
+                  "disabled": false,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "The `url` returned by `/downloads/cad-zip/link`. Authenticated by the signed ticket, valid for two minutes,\nand refused if the person it was made for was deactivated or changed their password since. The plan is\nmade again from live data, so a file replaced in the meantime is the current one.\n\nResponses: 200: ZIP stream; 403: The role may not do this; 429: The same user already has a ZIP running",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Open a signed order ZIP link (no bearer token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/downloads/order-zip/file?ticket=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "downloads",
+                "order-zip",
+                "file"
+              ],
+              "query": [
+                {
+                  "key": "ticket",
+                  "value": "",
+                  "disabled": false,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "The `url` returned by `/orders/{id}/download/link` or `/orders/{id}/package/link`. Valid for two minutes.\n\nResponses: 200: ZIP stream; 403: The role may not do this; 429: The same user already has a ZIP running",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Stream a ZIP of the CAD files an order recorded (any role)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "download"
+              ],
+              "query": [
+                {
+                  "key": "files",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Which CAD files to include"
+                }
+              ]
+            },
+            "description": "For scripts; a browser uses `/download/link`. Files that were replaced since the order was made are flagged `changed`. Audited.\n\nResponses: 200: ZIP stream; 400: Invalid input; 404: Not found; 413: Request or file too large; 429: The same user already has a ZIP running"
+          },
+          "response": []
+        },
+        {
+          "name": "Check an order ZIP and get a two-minute signed link (any role)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/download/link",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "download",
+                "link"
+              ],
+              "query": [
+                {
+                  "key": "files",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Which CAD files to include"
+                }
+              ]
+            },
+            "description": "Responses: 200: Plan and link; 400: Invalid input; 404: Not found"
+          },
+          "response": []
+        },
+        {
+          "name": "Stream the order package ZIP (any role)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/package",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "package"
+              ],
+              "query": [
+                {
+                  "key": "files",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Which CAD files to include"
+                }
+              ]
+            },
+            "description": "The CAD files plus the job-bag PDF of every line and a summary CSV. The PDF is built before the first byte is sent, so a failure is a proper error and not a broken ZIP.\n\nResponses: 200: ZIP stream; 400: Invalid input; 404: Not found; 413: Request or file too large; 429: The same user already has a ZIP running"
+          },
+          "response": []
+        },
+        {
+          "name": "Check an order package and get a two-minute signed link (any role)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/package/link",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "{{orderId}}",
+                "package",
+                "link"
+              ],
+              "query": [
+                {
+                  "key": "files",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Which CAD files to include"
+                }
+              ]
+            },
+            "description": "Responses: 200: Plan and link; 400: Invalid input; 404: Not found"
           },
           "response": []
         }
