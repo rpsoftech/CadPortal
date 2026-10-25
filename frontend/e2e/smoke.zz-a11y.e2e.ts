@@ -131,6 +131,13 @@ for (const scheme of SCHEMES) {
       await s.scan('catalog: selection bar');
       await s.overlay('catalog: download STL dialog', () => page.getByRole('button', { name: 'Download STL' }).click());
       await s.overlay('catalog: print job bags dialog', () => page.getByRole('button', { name: 'Print job bags' }).click());
+      // Costing the ticked design: the inputs, then the preview with its "save as costing sheet" form
+      await s.overlay('catalog: cost selected dialog', async () => {
+        await page.getByRole('button', { name: 'Cost selected' }).click();
+        await page.getByRole('dialog').waitFor();
+        await page.getByRole('button', { name: 'Preview' }).click();
+        await page.getByRole('table', { name: 'Costing preview' }).or(page.getByRole('alert')).first().waitFor();
+      });
       // New order: the review step from the selection (SPA navigation keeps the selection), then back
       await page.getByRole('button', { name: 'Create order' }).click();
       await expect(page.getByRole('heading', { name: 'New order', level: 1 })).toBeVisible();
@@ -188,6 +195,7 @@ for (const scheme of SCHEMES) {
       });
       await s.overlay('design: edit dialog', () => page.getByRole('button', { name: 'Edit design' }).click());
       await s.overlay('design: add variation dialog', () => page.getByRole('button', { name: 'Add variation' }).click());
+      await s.overlay('design: duplicate dialog', () => page.getByRole('button', { name: 'Duplicate', exact: true }).click());
       const thumb = page.locator('app-media-gallery button.thumb, app-media-gallery .thumb button, app-media-gallery [role="listitem"] button').first();
       if (await thumb.count()) {
         await s.overlay('design: media viewer', async () => {
@@ -241,6 +249,17 @@ for (const scheme of SCHEMES) {
         await page.getByRole('button', { name: 'Make new draft' }).click();
         await page.getByRole('button', { name: /^Open ORD-/ }).waitFor();
       });
+
+      // costing sheets: the list, and one sheet with its re-cost form (empty until a sheet was saved)
+      await s.go('/costing-sheets', 'costing sheets');
+      const sheet = page.getByRole('table', { name: 'Costing sheets' }).getByRole('link').first();
+      if (await sheet.count()) {
+        await sheet.click();
+        await expect(page.getByRole('table', { name: 'Costed variations' })).toBeVisible();
+        await s.scan('costing sheet');
+        await page.getByRole('button', { name: 'Re-cost…' }).click();
+        await s.scan('costing sheet: re-cost form');
+      }
 
       // the rest
       await s.go('/removed', 'removed');
