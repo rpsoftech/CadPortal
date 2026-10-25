@@ -1382,7 +1382,7 @@ paths:
     post:
       tags: [Downloads]
       summary: Check a CAD ZIP selection and get a two-minute signed link (any role)
-      description: Same body as `/downloads/cad-zip`. Tells what the ZIP would hold (files, bytes, missing) before it starts.
+      description: Same body as `/downloads/cad-zip`. Tells what the ZIP would hold (files, bytes, missing) before it starts. At most 2000 designs and variations per request.
       requestBody:
         required: true
         content:
@@ -1397,6 +1397,7 @@ paths:
               schema: {$ref: "#/components/schemas/ZipLink"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "413": {$ref: "#/components/responses/TooLarge"}
+        "503": {$ref: "#/components/responses/StorageOff"}
   /api/v1/downloads/cad-zip/file:
     get:
       tags: [Downloads]
@@ -1460,7 +1461,7 @@ paths:
       tags: [Orders]
       summary: Create an order (designer, admin)
       description: |
-        A selection of variations (a quantity each) in one metal and one stone code. Every line keeps an immutable
+        A selection of variations (a quantity each, each variation on one line only) in one active metal and one stone code. Every line keeps an immutable
         snapshot of its weights, stone BOM, CAD file names and hashes and cover photo. Numbers are sequential and
         gap-free (`ORD-0001`). No prices are stored. If any variation cannot be ordered (for example missing stone
         data) the answer is 422 listing every one, and nothing is saved.
@@ -1509,7 +1510,7 @@ paths:
               type: object
               properties:
                 name: {type: string, maxLength: 120}
-                notes: {type: string}
+                notes: {type: string, maxLength: 2000}
                 due_date: {type: string, description: "YYYY-MM-DD, empty to clear"}
             example: {name: Diwali rings, notes: Rush, due_date: "2026-11-05"}
       responses:
@@ -1520,6 +1521,7 @@ paths:
               schema: {$ref: "#/components/schemas/OrderDetail"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/orders/{id}/lines:
     put:
       tags: [Orders]
@@ -1759,6 +1761,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "429": {$ref: "#/components/responses/TooManyDownloads"}
+        "503": {$ref: "#/components/responses/StorageOff"}
   /api/v1/orders/{id}/download/link:
     get:
       tags: [Downloads]
@@ -1774,6 +1777,7 @@ paths:
               schema: {$ref: "#/components/schemas/OrderZipLink"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "503": {$ref: "#/components/responses/StorageOff"}
   /api/v1/orders/{id}/package:
     get:
       tags: [Downloads]
@@ -1792,6 +1796,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "429": {$ref: "#/components/responses/TooManyDownloads"}
+        "503": {$ref: "#/components/responses/StorageOff"}
   /api/v1/orders/{id}/package/link:
     get:
       tags: [Downloads]
@@ -1809,6 +1814,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
 
   # ---------------------------------------------------------------- Backups
+        "503": {$ref: "#/components/responses/StorageOff"}
   /api/v1/backups:
     get:
       tags: [Backups]
@@ -1853,7 +1859,7 @@ paths:
       tags: [Audit]
       summary: Audit log, newest first (admin)
       parameters:
-        - {name: action, in: query, description: Action prefix, schema: {type: string}, example: "POST /api/v1/designs"}
+        - {name: action, in: query, description: "Action prefix, for example `design`, `order.` or `cad.upload`. Actions are dotted names such as `design.create`, `order.status` or `download.cad_zip`; a route with no stable name is logged as `<method> <path>`.", schema: {type: string}, example: design.}
         - {name: user_id, in: query, schema: {type: integer, format: int64}}
         - {name: from, in: query, description: RFC 3339 timestamp or YYYY-MM-DD, schema: {type: string}}
         - {name: to, in: query, description: "RFC 3339 timestamp or YYYY-MM-DD (a plain date includes that whole day)", schema: {type: string}}
@@ -1896,8 +1902,10 @@ components:
     OrderZipFiles:
       name: files
       in: query
-      description: Which CAD files to include
+      required: true
+      description: "Which CAD files to include. Required: omitting it is a 400."
       schema: {type: string, enum: [stl, "3dm", "stl,3dm"]}
+      example: stl
 
   headers:
     TotalCount:
@@ -2547,7 +2555,7 @@ components:
         detail: {type: string}
     CadZipRequest:
       type: object
-      description: Give `variation_ids` and/or `design_ids` (a design stands for all its live variations).
+      description: Give `variation_ids` and/or `design_ids` (a design stands for all its live variations); at least one, at most 2000 in all. `kinds` is required.
       required: [kinds]
       properties:
         variation_ids: {type: array, items: {type: integer, format: int64}}
@@ -2589,7 +2597,7 @@ components:
       required: [metal_code, stone_code, items]
       properties:
         name: {type: string, maxLength: 120}
-        notes: {type: string}
+        notes: {type: string, maxLength: 2000}
         due_date: {type: string, description: "YYYY-MM-DD, optional"}
         metal_code: {type: string}
         stone_code: {type: string}

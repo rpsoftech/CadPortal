@@ -2131,7 +2131,7 @@
               ],
               "query": []
             },
-            "description": "A selection of variations (a quantity each) in one metal and one stone code. Every line keeps an immutable\nsnapshot of its weights, stone BOM, CAD file names and hashes and cover photo. Numbers are sequential and\ngap-free (`ORD-0001`). No prices are stored. If any variation cannot be ordered (for example missing stone\ndata) the answer is 422 listing every one, and nothing is saved.\n\nResponses: 201: Created; 400: Invalid input; 422: Variations that cannot be put on the order (every one is listed, nothing is saved)",
+            "description": "A selection of variations (a quantity each, each variation on one line only) in one active metal and one stone code. Every line keeps an immutable\nsnapshot of its weights, stone BOM, CAD file names and hashes and cover photo. Numbers are sequential and\ngap-free (`ORD-0001`). No prices are stored. If any variation cannot be ordered (for example missing stone\ndata) the answer is 422 listing every one, and nothing is saved.\n\nResponses: 201: Created; 400: Invalid input; 422: Variations that cannot be put on the order (every one is listed, nothing is saved)",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Diwali rings\",\n  \"notes\": \"Rush\",\n  \"due_date\": \"2026-11-05\",\n  \"metal_code\": \"18KY\",\n  \"stone_code\": \"2HD\",\n  \"items\": [\n    {\n      \"variation_id\": 1,\n      \"quantity\": 10\n    },\n    {\n      \"variation_id\": 2,\n      \"quantity\": 4\n    }\n  ],\n  \"place\": false\n}",
@@ -2189,7 +2189,7 @@
               ],
               "query": []
             },
-            "description": "Responses: 200: Updated; 400: Invalid input; 404: Not found",
+            "description": "Responses: 200: Updated; 400: Invalid input; 404: Not found; 409: Conflict (duplicate code or checksum, state does not allow it)",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Diwali rings\",\n  \"notes\": \"Rush\",\n  \"due_date\": \"2026-11-05\"\n}",
@@ -2584,7 +2584,7 @@
               ],
               "query": []
             },
-            "description": "Same body as `/downloads/cad-zip`. Tells what the ZIP would hold (files, bytes, missing) before it starts.\n\nResponses: 200: Plan and link; 400: Invalid input; 413: Request or file too large",
+            "description": "Same body as `/downloads/cad-zip`. Tells what the ZIP would hold (files, bytes, missing) before it starts. At most 2000 designs and variations per request.\n\nResponses: 200: Plan and link; 400: Invalid input; 413: Request or file too large; 503: File storage is not configured",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"variation_ids\": [\n    1,\n    2\n  ],\n  \"kinds\": [\n    \"stl\",\n    \"3dm\"\n  ]\n}",
@@ -2669,7 +2669,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/download",
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/download?files=stl",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2683,13 +2683,13 @@
               "query": [
                 {
                   "key": "files",
-                  "value": "",
-                  "disabled": true,
-                  "description": "Which CAD files to include"
+                  "value": "stl",
+                  "disabled": false,
+                  "description": "Which CAD files to include. Required: omitting it is a 400."
                 }
               ]
             },
-            "description": "For scripts; a browser uses `/download/link`. Files that were replaced since the order was made are flagged `changed`. Audited.\n\nResponses: 200: ZIP stream; 400: Invalid input; 404: Not found; 413: Request or file too large; 429: The same user already has a ZIP running"
+            "description": "For scripts; a browser uses `/download/link`. Files that were replaced since the order was made are flagged `changed`. Audited.\n\nResponses: 200: ZIP stream; 400: Invalid input; 404: Not found; 413: Request or file too large; 429: The same user already has a ZIP running; 503: File storage is not configured"
           },
           "response": []
         },
@@ -2699,7 +2699,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/download/link",
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/download/link?files=stl",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2714,13 +2714,13 @@
               "query": [
                 {
                   "key": "files",
-                  "value": "",
-                  "disabled": true,
-                  "description": "Which CAD files to include"
+                  "value": "stl",
+                  "disabled": false,
+                  "description": "Which CAD files to include. Required: omitting it is a 400."
                 }
               ]
             },
-            "description": "Responses: 200: Plan and link; 400: Invalid input; 404: Not found"
+            "description": "Responses: 200: Plan and link; 400: Invalid input; 404: Not found; 503: File storage is not configured"
           },
           "response": []
         },
@@ -2730,7 +2730,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/package",
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/package?files=stl",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2744,13 +2744,13 @@
               "query": [
                 {
                   "key": "files",
-                  "value": "",
-                  "disabled": true,
-                  "description": "Which CAD files to include"
+                  "value": "stl",
+                  "disabled": false,
+                  "description": "Which CAD files to include. Required: omitting it is a 400."
                 }
               ]
             },
-            "description": "The CAD files plus the job-bag PDF of every line and a summary CSV. The PDF is built before the first byte is sent, so a failure is a proper error and not a broken ZIP.\n\nResponses: 200: ZIP stream; 400: Invalid input; 404: Not found; 413: Request or file too large; 429: The same user already has a ZIP running"
+            "description": "The CAD files plus the job-bag PDF of every line and a summary CSV. The PDF is built before the first byte is sent, so a failure is a proper error and not a broken ZIP.\n\nResponses: 200: ZIP stream; 400: Invalid input; 404: Not found; 413: Request or file too large; 429: The same user already has a ZIP running; 503: File storage is not configured"
           },
           "response": []
         },
@@ -2760,7 +2760,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/package/link",
+              "raw": "{{baseUrl}}/api/v1/orders/{{orderId}}/package/link?files=stl",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2775,13 +2775,13 @@
               "query": [
                 {
                   "key": "files",
-                  "value": "",
-                  "disabled": true,
-                  "description": "Which CAD files to include"
+                  "value": "stl",
+                  "disabled": false,
+                  "description": "Which CAD files to include. Required: omitting it is a 400."
                 }
               ]
             },
-            "description": "Responses: 200: Plan and link; 400: Invalid input; 404: Not found"
+            "description": "Responses: 200: Plan and link; 400: Invalid input; 404: Not found; 503: File storage is not configured"
           },
           "response": []
         }
@@ -3135,9 +3135,9 @@
               "query": [
                 {
                   "key": "action",
-                  "value": "POST /api/v1/designs",
+                  "value": "design.",
                   "disabled": true,
-                  "description": "Action prefix"
+                  "description": "Action prefix, for example `design`, `order.` or `cad.upload`. Actions are dotted names such as `design.create`, `order.status` or `download.cad_zip`; a route with no stable name is logged as `<method> <path>`."
                 },
                 {
                   "key": "user_id",
