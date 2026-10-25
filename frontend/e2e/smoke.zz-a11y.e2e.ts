@@ -132,12 +132,14 @@ for (const scheme of SCHEMES) {
       await s.overlay('catalog: download STL dialog', () => page.getByRole('button', { name: 'Download STL' }).click());
       await s.overlay('catalog: print job bags dialog', () => page.getByRole('button', { name: 'Print job bags' }).click());
       // Costing the ticked design: the inputs, then the preview with its "save as costing sheet" form
-      await s.overlay('catalog: cost selected dialog', async () => {
-        await page.getByRole('button', { name: 'Cost selected' }).click();
-        await page.getByRole('dialog').waitFor();
-        await page.getByRole('button', { name: 'Preview' }).click();
-        await page.getByRole('table', { name: 'Costing preview' }).or(page.getByRole('alert')).first().waitFor();
-      });
+      await page.getByRole('button', { name: 'Cost selected' }).click();
+      await page.getByRole('dialog').waitFor();
+      await s.scan('catalog: cost selected dialog');
+      await page.getByRole('button', { name: 'Preview' }).click();
+      await page.getByRole('table', { name: 'Costing preview' }).or(page.getByRole('alert')).first().waitFor();
+      await s.scan('catalog: cost selected preview');
+      await page.getByRole('button', { name: 'Close' }).click();
+      await page.getByRole('dialog').waitFor({ state: 'hidden' });
       // New order: the review step from the selection (SPA navigation keeps the selection), then back
       await page.getByRole('button', { name: 'Create order' }).click();
       await expect(page.getByRole('heading', { name: 'New order', level: 1 })).toBeVisible();
