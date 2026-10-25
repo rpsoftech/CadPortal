@@ -141,7 +141,7 @@ export function signed(v: string | null, dp = 2): string {
         }
 
         <h2>Costing</h2>
-        <table class="plain" aria-label="Costed variations">
+        <table class="plain" aria-label="Costed variations" tabindex="0">
           <thead>
             <tr>
               <th>Design</th>
@@ -207,7 +207,7 @@ export function signed(v: string | null, dp = 2): string {
             }
           </ul>
           <h3>Stone prices</h3>
-          <table class="plain" aria-label="Stone prices used">
+          <table class="plain" aria-label="Stone prices used" tabindex="0">
             <thead>
               <tr><th>Size mm</th><th>Code</th><th>Priced</th><th class="num">Price</th><th class="num">ct / stone</th></tr>
             </thead>
