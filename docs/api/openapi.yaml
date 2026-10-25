@@ -36,6 +36,8 @@ tags:
   - name: Media
   - name: Undo
   - name: Exports
+  - name: Orders
+  - name: Downloads
   - name: Costing
   - name: Backups
   - name: Audit
@@ -631,7 +633,10 @@ paths:
     get:
       tags: [Designs]
       summary: Search and filter the catalog
-      description: Total matches before paging are returned in `X-Total-Count`.
+      description: |
+        Total matches before paging are returned in `X-Total-Count`. With `metal_code`, each card carries the net,
+        stone and gross grams and stone % of the shown variation; when a stone matrix row is missing the stone
+        figures are null with `stone_status: no_data` and a `stone_note` (never 0).
       parameters:
         - {name: q, in: query, description: Text search on code or name, schema: {type: string}}
         - {name: category_id, in: query, schema: {type: integer, format: int64}}
@@ -646,6 +651,14 @@ paths:
         - {name: min_gross_wt, in: query, schema: {type: number}}
         - {name: max_gross_wt, in: query, schema: {type: number}}
         - {name: max_stone_cts, in: query, schema: {type: number}}
+        - {name: stone_code, in: query, description: Stone code the stone figures and gross range are computed for (default is the baseline code), schema: {type: string}, example: 2HD}
+        - {name: min_stone_pct, in: query, description: "Stone weight as a percent of gross, 0 to 100, 2 dp. Needs metal_code.", schema: {type: number, minimum: 0, maximum: 100}}
+        - {name: max_stone_pct, in: query, description: "As min_stone_pct", schema: {type: number, minimum: 0, maximum: 100}}
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [net_asc, net_desc, gross_asc, gross_desc, stone_pct_asc, stone_pct_desc]
         - {$ref: "#/components/parameters/Limit"}
         - {$ref: "#/components/parameters/Offset"}
       responses:
@@ -1336,7 +1349,472 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "422": {$ref: "#/components/responses/IncompleteCosting"}
 
+  # ---------------------------------------------------------------- CAD ZIP
+  /api/v1/downloads/cad-zip:
+    post:
+      tags: [Downloads]
+      summary: Stream one ZIP of CAD files for a selection (any role)
+      description: |
+        Streams a ZIP of the original STL / 3dm files of the chosen variations, or of all live variations of the
+        chosen designs, followed by `MANIFEST.csv` (ok / missing / hash-mismatch / error per file). Nothing is
+        held in memory and hashes are verified on the fly. For scripts: a browser should use `/link` instead,
+        because a plain navigation cannot send the bearer token.
+
+        Limits: 413 over `CAD_ZIP_MAX_FILES` (default 1000) or `CAD_ZIP_MAX_MB` (default 5 GB); 429 with
+        `Retry-After` while the same user already has a ZIP running. Audited as `download.cad_zip`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CadZipRequest"}
+            example: {design_ids: [1, 2], kinds: [stl]}
+      responses:
+        "200":
+          description: ZIP stream
+          content:
+            application/zip:
+              schema: {type: string, format: binary}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooManyDownloads"}
+        "503": {$ref: "#/components/responses/StorageOff"}
+  /api/v1/downloads/cad-zip/link:
+    post:
+      tags: [Downloads]
+      summary: Check a CAD ZIP selection and get a two-minute signed link (any role)
+      description: Same body as `/downloads/cad-zip`. Tells what the ZIP would hold (files, bytes, missing) before it starts. At most 2000 designs and variations per request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CadZipRequest"}
+            example: {variation_ids: [1, 2], kinds: [stl, "3dm"]}
+      responses:
+        "200":
+          description: Plan and link
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ZipLink"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "503": {$ref: "#/components/responses/StorageOff"}
+  /api/v1/downloads/cad-zip/file:
+    get:
+      tags: [Downloads]
+      summary: Open a signed CAD ZIP link (no bearer token)
+      description: |
+        The `url` returned by `/downloads/cad-zip/link`. Authenticated by the signed ticket, valid for two minutes,
+        and refused if the person it was made for was deactivated or changed their password since. The plan is
+        made again from live data, so a file replaced in the meantime is the current one.
+      security: []
+      parameters:
+        - {name: ticket, in: query, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: ZIP stream
+          content:
+            application/zip:
+              schema: {type: string, format: binary}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "429": {$ref: "#/components/responses/TooManyDownloads"}
+  /api/v1/downloads/order-zip/file:
+    get:
+      tags: [Downloads]
+      summary: Open a signed order ZIP link (no bearer token)
+      description: The `url` returned by `/orders/{id}/download/link` or `/orders/{id}/package/link`. Valid for two minutes.
+      security: []
+      parameters:
+        - {name: ticket, in: query, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: ZIP stream
+          content:
+            application/zip:
+              schema: {type: string, format: binary}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "429": {$ref: "#/components/responses/TooManyDownloads"}
+
+  # ---------------------------------------------------------------- Orders
+  /api/v1/orders:
+    get:
+      tags: [Orders]
+      summary: List orders, newest first (any role)
+      parameters:
+        - {name: status, in: query, schema: {$ref: "#/components/schemas/OrderStatus"}}
+        - {name: q, in: query, description: Text search on number or name, schema: {type: string}}
+        - {name: from, in: query, description: RFC 3339 timestamp or YYYY-MM-DD, schema: {type: string}}
+        - {name: to, in: query, description: "RFC 3339 timestamp or YYYY-MM-DD (a plain date includes that whole day)", schema: {type: string}}
+        - {name: limit, in: query, description: "Default 50, max 200", schema: {type: integer, minimum: 1, maximum: 200}}
+        - {$ref: "#/components/parameters/Offset"}
+      responses:
+        "200":
+          description: Orders
+          headers:
+            X-Total-Count: {$ref: "#/components/headers/TotalCount"}
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/OrderSummary"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+    post:
+      tags: [Orders]
+      summary: Create an order (designer, admin)
+      description: |
+        A selection of variations (a quantity each, each variation on one line only) in one active metal and one stone code. Every line keeps an immutable
+        snapshot of its weights, stone BOM, CAD file names and hashes and cover photo. Numbers are sequential and
+        gap-free (`ORD-0001`). No prices are stored. If any variation cannot be ordered (for example missing stone
+        data) the answer is 422 listing every one, and nothing is saved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateOrderRequest"}
+            example:
+              name: Diwali rings
+              notes: Rush
+              due_date: "2026-11-05"
+              metal_code: 18KY
+              stone_code: 2HD
+              items: [{variation_id: 1, quantity: 10}, {variation_id: 2, quantity: 4}]
+              place: false
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OrderDetail"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "422": {$ref: "#/components/responses/OrderProblems"}
+  /api/v1/orders/{id}:
+    get:
+      tags: [Orders]
+      summary: One order with its line snapshots and status history (any role)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200":
+          description: Order
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OrderDetail"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    put:
+      tags: [Orders]
+      summary: Change name, notes or due date (designer, admin)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string, maxLength: 120}
+                notes: {type: string, maxLength: 2000}
+                due_date: {type: string, description: "YYYY-MM-DD, empty to clear"}
+            example: {name: Diwali rings, notes: Rush, due_date: "2026-11-05"}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OrderDetail"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/orders/{id}/lines:
+    put:
+      tags: [Orders]
+      summary: Replace all lines of a draft order (designer, admin)
+      description: Draft only (409 otherwise). Every line is re-snapshotted. Max 500 lines, quantity 1 to 100000.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items: {type: array, items: {$ref: "#/components/schemas/OrderItem"}}
+            example: {items: [{variation_id: 1, quantity: 12}]}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OrderDetail"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/OrderProblems"}
+  /api/v1/orders/{id}/status:
+    post:
+      tags: [Orders]
+      summary: Move an order through its status flow (designer, admin)
+      description: |
+        Allowed moves: draft to placed or cancelled; placed to in_production or cancelled; in_production to done or
+        cancelled. `done` and `cancelled` are final. An order is cancelled, never deleted. Who and when is recorded
+        in `history`.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: {$ref: "#/components/schemas/OrderStatus"}
+                note: {type: string}
+            example: {status: placed, note: Approved by the owner}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OrderDetail"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/orders/{id}/clone:
+    post:
+      tags: [Orders]
+      summary: Re-order - new order from an old one, with a diff (designer, admin)
+      description: |
+        Every line is re-snapshotted from the current catalog. The source order is untouched. The diff lists, per
+        line, what changed since the old snapshot. Metal and stone code default to the source order's. Without
+        `skip_unavailable`, a line whose variation is gone or lacks stone data fails the clone.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                metal_code: {type: string}
+                stone_code: {type: string}
+                skip_unavailable: {type: boolean}
+                place: {type: boolean}
+            example: {skip_unavailable: true}
+      responses:
+        "201":
+          description: New order and the differences
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  order: {$ref: "#/components/schemas/OrderDetail"}
+                  diff: {$ref: "#/components/schemas/OrderDiff"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/OrderProblems"}
+  /api/v1/orders/{id}/live:
+    get:
+      tags: [Orders]
+      summary: Compare each line with the catalog today (any role)
+      description: Read only. Marks a line `changed`, `unchanged` or `unavailable` (design or variation gone, data missing).
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200":
+          description: Per-line state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        line_id: {type: integer, format: int64}
+                        status: {type: string, enum: [unchanged, changed, unavailable]}
+                        reason: {type: string}
+                        changes: {type: array, items: {$ref: "#/components/schemas/LineChange"}}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/orders/{id}/summary.pdf:
+    get:
+      tags: [Orders]
+      summary: Order summary PDF with QR code (any role)
+      description: Built from the order's snapshot. Audited.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200":
+          description: PDF
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/orders/{id}/job-bags.pdf:
+    get:
+      tags: [Orders]
+      summary: Job bags for every line of the order, from its snapshot (any role)
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - {name: per_piece, in: query, description: One bag per piece instead of one per line, schema: {type: boolean, default: false}}
+      responses:
+        "200":
+          description: PDF
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/orders/{id}/csv:
+    get:
+      tags: [Orders]
+      summary: One order as CSV (any role)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200":
+          description: CSV
+          content:
+            text/csv:
+              schema: {type: string}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/exports/orders-csv:
+    get:
+      tags: [Orders]
+      summary: The orders list as CSV, with the list's own filters (any role)
+      description: Capped at 5000 orders; the total is in `X-Total-Count`.
+      parameters:
+        - {name: status, in: query, schema: {$ref: "#/components/schemas/OrderStatus"}}
+        - {name: q, in: query, schema: {type: string}}
+        - {name: from, in: query, schema: {type: string}}
+        - {name: to, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: CSV
+          headers:
+            X-Total-Count: {$ref: "#/components/headers/TotalCount"}
+          content:
+            text/csv:
+              schema: {type: string}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /api/v1/orders/{id}/costing:
+    post:
+      tags: [Orders]
+      summary: Cost an order and save it as a costing sheet (designer, admin)
+      description: |
+        Costs the order's variations for their quantities in the order's metal and stone code from the **current**
+        masters and designs (not the snapshot), and saves an immutable costing sheet linked to the order.
+        Missing data fails the run with the grouped list (422) unless `skip_incomplete`. `drift` shows how far the
+        live designs have moved from the order's snapshots.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gold_rate_per_g, setting_rate_per_pc]
+              properties:
+                gold_rate_per_g: {$ref: "#/components/schemas/Decimal"}
+                setting_rate_per_pc: {$ref: "#/components/schemas/Decimal"}
+                skip_incomplete: {type: boolean}
+                name: {type: string, description: Default "<ORD number> costing"}
+            example: {gold_rate_per_g: 6200, setting_rate_per_pc: 15}
+      responses:
+        "201":
+          description: Saved sheet and drift
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sheet: {$ref: "#/components/schemas/CostingSheetDetail"}
+                  drift: {$ref: "#/components/schemas/OrderDiff"}
+                  snapshot_differs: {type: boolean}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/IncompleteCosting"}
+  /api/v1/orders/{id}/costing-sheets:
+    get:
+      tags: [Orders]
+      summary: Costing sheets saved for an order (designer, admin)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200":
+          description: Sheets
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/CostingSheetSummary"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/orders/{id}/download:
+    get:
+      tags: [Downloads]
+      summary: Stream a ZIP of the CAD files an order recorded (any role)
+      description: For scripts; a browser uses `/download/link`. Files that were replaced since the order was made are flagged `changed`. Audited.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - {$ref: "#/components/parameters/OrderZipFiles"}
+      responses:
+        "200":
+          description: ZIP stream
+          content:
+            application/zip:
+              schema: {type: string, format: binary}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooManyDownloads"}
+        "503": {$ref: "#/components/responses/StorageOff"}
+  /api/v1/orders/{id}/download/link:
+    get:
+      tags: [Downloads]
+      summary: Check an order ZIP and get a two-minute signed link (any role)
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - {$ref: "#/components/parameters/OrderZipFiles"}
+      responses:
+        "200":
+          description: Plan and link
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OrderZipLink"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "503": {$ref: "#/components/responses/StorageOff"}
+  /api/v1/orders/{id}/package:
+    get:
+      tags: [Downloads]
+      summary: Stream the order package ZIP (any role)
+      description: The CAD files plus the job-bag PDF of every line and a summary CSV. The PDF is built before the first byte is sent, so a failure is a proper error and not a broken ZIP.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - {$ref: "#/components/parameters/OrderZipFiles"}
+      responses:
+        "200":
+          description: ZIP stream
+          content:
+            application/zip:
+              schema: {type: string, format: binary}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooManyDownloads"}
+        "503": {$ref: "#/components/responses/StorageOff"}
+  /api/v1/orders/{id}/package/link:
+    get:
+      tags: [Downloads]
+      summary: Check an order package and get a two-minute signed link (any role)
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - {$ref: "#/components/parameters/OrderZipFiles"}
+      responses:
+        "200":
+          description: Plan and link
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OrderZipLink"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+
   # ---------------------------------------------------------------- Backups
+        "503": {$ref: "#/components/responses/StorageOff"}
   /api/v1/backups:
     get:
       tags: [Backups]
@@ -1381,7 +1859,7 @@ paths:
       tags: [Audit]
       summary: Audit log, newest first (admin)
       parameters:
-        - {name: action, in: query, description: Action prefix, schema: {type: string}, example: "POST /api/v1/designs"}
+        - {name: action, in: query, description: "Action prefix, for example `design`, `order.` or `cad.upload`. Actions are dotted names such as `design.create`, `order.status` or `download.cad_zip`; a route with no stable name is logged as `<method> <path>`.", schema: {type: string}, example: design.}
         - {name: user_id, in: query, schema: {type: integer, format: int64}}
         - {name: from, in: query, description: RFC 3339 timestamp or YYYY-MM-DD, schema: {type: string}}
         - {name: to, in: query, description: "RFC 3339 timestamp or YYYY-MM-DD (a plain date includes that whole day)", schema: {type: string}}
@@ -1421,6 +1899,13 @@ components:
       name: offset
       in: query
       schema: {type: integer, minimum: 0}
+    OrderZipFiles:
+      name: files
+      in: query
+      required: true
+      description: "Which CAD files to include. Required: omitting it is a 400."
+      schema: {type: string, enum: [stl, "3dm", "stl,3dm"]}
+      example: stl
 
   headers:
     TotalCount:
@@ -1466,6 +1951,30 @@ components:
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
+    TooManyDownloads:
+      description: The same user already has a ZIP running
+      headers:
+        Retry-After: {schema: {type: integer, example: 30}}
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    OrderProblems:
+      description: Variations that cannot be put on the order (every one is listed, nothing is saved)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: {type: string}
+              problems:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    variation_id: {type: integer, format: int64}
+                    variation_code: {type: string}
+                    message: {type: string}
+                    missing: {type: array, items: {$ref: "#/components/schemas/MissingPair"}}
     StorageOff:
       description: File storage is not configured
       content:
@@ -1657,6 +2166,16 @@ components:
             net_max: {$ref: "#/components/schemas/NullableDecimal"}
             gross_min: {$ref: "#/components/schemas/NullableDecimal"}
             gross_max: {$ref: "#/components/schemas/NullableDecimal"}
+            stone_code: {type: string}
+            shown_variation_id: {type: integer, format: int64, nullable: true}
+            shown_variation_code: {type: string}
+            net_g: {$ref: "#/components/schemas/NullableDecimal"}
+            stone_carats: {$ref: "#/components/schemas/NullableDecimal"}
+            stone_g: {$ref: "#/components/schemas/NullableDecimal"}
+            gross_g: {$ref: "#/components/schemas/NullableDecimal"}
+            stone_pct: {$ref: "#/components/schemas/NullableDecimal"}
+            stone_status: {type: string, enum: ["", ok, no_data]}
+            stone_note: {type: string, example: no data for 2HD}
     DesignDetail:
       allOf:
         - $ref: "#/components/schemas/Design"
@@ -1840,6 +2359,11 @@ components:
         gold_rate_per_g: {$ref: "#/components/schemas/Decimal"}
         setting_rate_per_pc: {$ref: "#/components/schemas/Decimal"}
         skip_incomplete: {type: boolean}
+        quantities:
+          type: object
+          description: "Variation id to piece count (1 to 100000). A listed variation is costed for that many pieces; its row then carries `quantity` and every weight and amount is for the whole line."
+          additionalProperties: {type: integer, minimum: 1, maximum: 100000}
+          example: {"1": 10}
     CostingItemsRequest:
       type: object
       required: [items]
@@ -1864,6 +2388,7 @@ components:
         variation_code: {type: string}
         metal_code: {type: string}
         stone_code: {type: string}
+        quantity: {type: integer, description: "Pieces the row stands for; absent for a plain single piece"}
         net_g: {$ref: "#/components/schemas/Decimal"}
         gross_g: {$ref: "#/components/schemas/Decimal"}
         wastage_pct: {$ref: "#/components/schemas/Decimal"}
@@ -1915,6 +2440,7 @@ components:
       properties:
         id: {type: integer, format: int64}
         name: {type: string}
+        order_id: {type: integer, format: int64, nullable: true, description: Set when the sheet was made from an order}
         created_at: {type: string, format: date-time}
         created_by: {type: integer, format: int64, nullable: true}
         created_by_name: {type: string}
@@ -2027,3 +2553,183 @@ components:
         entity_id: {type: string}
         status: {type: integer}
         detail: {type: string}
+    CadZipRequest:
+      type: object
+      description: Give `variation_ids` and/or `design_ids` (a design stands for all its live variations); at least one, at most 2000 in all. `kinds` is required.
+      required: [kinds]
+      properties:
+        variation_ids: {type: array, items: {type: integer, format: int64}}
+        design_ids: {type: array, items: {type: integer, format: int64}}
+        kinds:
+          type: array
+          items: {type: string, enum: [stl, "3dm"]}
+    ZipLink:
+      type: object
+      properties:
+        url: {type: string, example: "/api/v1/downloads/cad-zip/file?ticket=..."}
+        expires_in_seconds: {type: integer, example: 120}
+        filename: {type: string, example: cad-stl-20261025-1030.zip}
+        variations: {type: integer}
+        files: {type: integer, description: Files the ZIP will hold}
+        missing: {type: integer, description: Entries with no file on the variation}
+        bytes: {type: integer, format: int64, description: Sum of the original sizes}
+        kinds: {type: array, items: {type: string}}
+    OrderZipLink:
+      allOf:
+        - $ref: "#/components/schemas/ZipLink"
+        - type: object
+          properties:
+            order: {type: string, example: ORD-0001}
+            lines: {type: integer}
+            changed: {type: integer, description: Files replaced since the order was made}
+            package: {type: boolean}
+    OrderStatus:
+      type: string
+      enum: [draft, placed, in_production, done, cancelled]
+    OrderItem:
+      type: object
+      required: [variation_id, quantity]
+      properties:
+        variation_id: {type: integer, format: int64}
+        quantity: {type: integer, minimum: 1, maximum: 100000}
+    CreateOrderRequest:
+      type: object
+      required: [metal_code, stone_code, items]
+      properties:
+        name: {type: string, maxLength: 120}
+        notes: {type: string, maxLength: 2000}
+        due_date: {type: string, description: "YYYY-MM-DD, optional"}
+        metal_code: {type: string}
+        stone_code: {type: string}
+        items:
+          type: array
+          maxItems: 500
+          items: {$ref: "#/components/schemas/OrderItem"}
+        criteria: {type: object, description: "Optional: the catalog filters the selection came from (max 8 KB)"}
+        place: {type: boolean, description: Create as placed instead of draft}
+    OrderSummary:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        number: {type: string, example: ORD-0001}
+        name: {type: string}
+        due_date: {type: string, nullable: true}
+        status: {$ref: "#/components/schemas/OrderStatus"}
+        metal_code: {type: string}
+        stone_code: {type: string}
+        cloned_from: {type: integer, format: int64, nullable: true}
+        created_by: {type: integer, format: int64, nullable: true}
+        created_by_name: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        line_count: {type: integer}
+        total_quantity: {type: integer, format: int64}
+    OrderDetail:
+      allOf:
+        - $ref: "#/components/schemas/OrderSummary"
+        - type: object
+          properties:
+            notes: {type: string}
+            criteria: {type: object, nullable: true}
+            lines: {type: array, items: {$ref: "#/components/schemas/OrderLine"}}
+            history:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: {type: integer, format: int64}
+                  from_status: {type: string, nullable: true}
+                  to_status: {$ref: "#/components/schemas/OrderStatus"}
+                  changed_by: {type: integer, format: int64, nullable: true}
+                  changed_by_name: {type: string}
+                  changed_at: {type: string, format: date-time}
+                  note: {type: string}
+    OrderLine:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        position: {type: integer}
+        design_id: {type: integer, format: int64, nullable: true, description: Null once the design has been purged}
+        variation_id: {type: integer, format: int64, nullable: true, description: Null once the variation has been purged}
+        quantity: {type: integer}
+        snapshot: {$ref: "#/components/schemas/LineSnapshot"}
+    LineSnapshot:
+      type: object
+      description: Everything the order remembers about one variation. Storage keys are never included.
+      properties:
+        snapshot_at: {type: string, format: date-time}
+        design_code: {type: string}
+        design_name: {type: string}
+        category_name: {type: string}
+        tags: {type: array, items: {type: string}}
+        variation_code: {type: string}
+        metal_code: {type: string}
+        stone_code: {type: string}
+        specific_gravity: {$ref: "#/components/schemas/Decimal"}
+        base_input:
+          type: object
+          properties:
+            kind: {type: string, enum: [volume, weight]}
+            volume_mm3: {$ref: "#/components/schemas/Decimal"}
+            ref_weight_g: {$ref: "#/components/schemas/Decimal"}
+            ref_metal_code: {type: string}
+        net_weight_g: {$ref: "#/components/schemas/Decimal"}
+        stone_weight_g: {$ref: "#/components/schemas/Decimal"}
+        stone_carats: {$ref: "#/components/schemas/Decimal"}
+        gross_weight_g: {$ref: "#/components/schemas/Decimal"}
+        stone_pct: {$ref: "#/components/schemas/Decimal"}
+        total_pcs: {type: integer}
+        bom:
+          type: array
+          items:
+            type: object
+            properties:
+              size_mm: {$ref: "#/components/schemas/Decimal"}
+              stone_count: {type: integer}
+              stone_code: {type: string}
+              locked: {type: boolean}
+              carats_per_stone: {$ref: "#/components/schemas/Decimal"}
+              line_carats: {$ref: "#/components/schemas/Decimal"}
+              line_weight_g: {$ref: "#/components/schemas/Decimal"}
+        file_3dm: {$ref: "#/components/schemas/FileSnapshot"}
+        file_stl: {$ref: "#/components/schemas/FileSnapshot"}
+        cover:
+          type: object
+          nullable: true
+          properties:
+            media_id: {type: integer, format: int64}
+            filename: {type: string}
+            content_type: {type: string}
+    FileSnapshot:
+      type: object
+      nullable: true
+      properties:
+        name: {type: string}
+        sha256: {type: string}
+        size_bytes: {type: integer, format: int64}
+    LineChange:
+      type: object
+      properties:
+        field: {type: string}
+        old: {type: string}
+        new: {type: string}
+    OrderDiff:
+      type: object
+      description: Differences between an order's stored snapshots and fresh ones from the current catalog.
+      properties:
+        source_id: {type: integer, format: int64}
+        changed: {type: integer}
+        unchanged: {type: integer}
+        unavailable: {type: integer}
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              variation_id: {type: integer, format: int64, nullable: true}
+              design_code: {type: string}
+              variation_code: {type: string}
+              quantity: {type: integer}
+              status: {type: string, enum: [unchanged, changed, unavailable]}
+              reason: {type: string}
+              changes: {type: array, items: {$ref: "#/components/schemas/LineChange"}}
