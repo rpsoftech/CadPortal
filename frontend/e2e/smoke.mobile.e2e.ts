@@ -87,7 +87,7 @@ test('the catalog filters fold into a panel with a count, and the search stays i
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await page.getByLabel('Net min (g)').fill('1');
   await page.getByLabel('Gross max (g)').fill('9');
-  await expect(toggle).toHaveAccessibleName('Filters, 2 active');
+  await expect(toggle).toHaveAccessibleName('Filters 2 active');
   await expect(page.getByRole('button', { name: /^Show \d+ design/ })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Clear filters' })).toBeVisible();
   await page.getByRole('button', { name: 'Clear filters' }).click();

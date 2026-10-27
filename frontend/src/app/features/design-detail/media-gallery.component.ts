@@ -138,7 +138,7 @@ const IDLE: UploadState = { busy: false, progress: null, current: '', errors: []
                     <button
                       class="tile"
                       (click)="open(m)"
-                      [attr.aria-label]="'Open ' + m.filename"
+                      [attr.aria-label]="'Open ' + m.filename + (m.is_cover ? ', Cover' : '')"
                       [class.cover]="m.is_cover"
                     >
                       @if (m.kind === 'image') {
