@@ -28,11 +28,10 @@
         class="filters-toggle"
         aria-controls="filter-panel"
         [attr.aria-expanded]="filtersOpen()"
-        [attr.aria-label]="activeFilters() > 0 ? 'Filters, ' + activeFilters() + ' active' : null"
         (click)="filtersOpen.set(!filtersOpen())"
       >
         Filters@if (activeFilters() > 0) {
-          <span class="count" aria-hidden="true">{{ activeFilters() }}</span>
+          <span class="count"> {{ activeFilters() }}</span><span class="sr-only"> active</span>
         }
       </button>
     </div>
@@ -202,7 +201,11 @@
           (change)="selection.toggle(d)"
           [aria-label]="'Select ' + d.code"
         />
-        <a [routerLink]="['/designs', d.code]" class="cover" [attr.aria-label]="'Open ' + d.code">
+        <a
+          [routerLink]="['/designs', d.code]"
+          class="cover"
+          [attr.aria-label]="'Open ' + d.code + (d.cover_url ? '' : ', no photo yet')"
+        >
           @if (d.cover_url) {
             <img [src]="d.cover_url" [alt]="d.code + ' cover photo'" loading="lazy" />
           } @else {
