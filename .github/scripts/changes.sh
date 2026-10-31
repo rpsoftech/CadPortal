@@ -50,7 +50,8 @@ if match '^\.github/(workflows/ci\.yml|scripts/)'; then run_all "the CI definiti
 
 decide() { if "$@"; then echo true; else echo false; fi; }
 
-emit test      "$(decide match '^backend/')"
+# The API documentation is checked in the test job: against the real routes and by the Postman check.
+emit test      "$(decide match '^(backend/|docs/api/)')"
 emit sqlc      "$(decide match '^backend/(internal/db/|migrations/|sqlc\.yaml$)')"
 emit vulncheck "$(decide nontest '^backend/(go\.(mod|sum)$|.*\.go$)')"
 emit frontend  "$(decide match '^frontend/')"

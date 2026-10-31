@@ -35,10 +35,10 @@ CI runs only the jobs a change needs (`.github/scripts/changes.sh`):
 
 | Changed files | Jobs that run |
 |---|---|
-| `backend/**` | `test`, plus `vulncheck` for non-test Go code or `go.mod`/`go.sum`, `sqlc` for queries, migrations or `sqlc.yaml` |
+| `backend/**` or `docs/api/**` | `test` (for `docs/api/**` that includes the API-docs checks), plus `vulncheck` for non-test Go code or `go.mod`/`go.sum`, `sqlc` for queries, migrations or `sqlc.yaml` |
 | `frontend/**` | `frontend` |
 | image sources (non-test files in `backend/` or `frontend/`) or `docker-compose.prod.yml` | `docker` (parts `docker-stack`, `docker-backup`, `docker-multi`) |
-| docs, README, `.github/dependabot.yml`, the dev `docker-compose.yml` | none |
+| other docs, README, `.github/dependabot.yml`, the dev `docker-compose.yml` | none |
 | `.github/workflows/ci.yml` or `.github/scripts/` | everything |
 
 Manual runs, the weekly scheduled run, and any push or PR where the base commit cannot be

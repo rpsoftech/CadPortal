@@ -104,6 +104,14 @@ jobs:
         run: go vet ./...
       - name: go test
         run: go test -count=1 ./...
+      # TestSpecDocumentsEveryRoute (in go test above) compares docs/api/openapi.yaml with the routes
+      # the API serves. These two steps check the spec itself and the generated Postman files.
+      - name: API docs - spec is valid and the Postman files are current
+        working-directory: .
+        run: |
+          python3 -m pip install --quiet PyYAML==6.0.3 openapi-spec-validator==0.9.0
+          python3 -c "import yaml; from openapi_spec_validator import validate; validate(yaml.safe_load(open('docs/api/openapi.yaml'))); print('openapi.yaml is valid')"
+          python3 docs/api/gen_postman.py --check
 
   sqlc:
     name: sqlc
