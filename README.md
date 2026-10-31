@@ -569,7 +569,9 @@ is missing: the Catalog shows a banner, and the top of **Master data** lists eve
 and shrinks as you fix them.
 
 - **Alloys:** wastage % for every active alloy (costing refuses to run without it; it never
-  assumes zero) and the default input alloy.
+  assumes zero) and the default input alloy. The wastage the owner has given, to enter under
+  **Master data, Alloys**: 22KY 6 %, 20KY 5.5 %, 18KY 6 %, 18KR 7 % (approximate figures). 22KY, 18KY and
+  18KR are already in a fresh installation. **20KY is not**: add it first, with its specific gravity.
 - **Category code prefixes:** 1 to 6 letters per category, for example `LR`. **Design codes are
   assigned automatically**, never typed: the prefix plus a 4-digit number counted per category
   (`LR0001`, `LR0002`, …; past 9999 the number simply grows). A category without a prefix cannot
@@ -627,6 +629,11 @@ stone code**), then **Import CSV / paste** the file's contents. Notes on how it 
 - A `0` in the list means that stone does not come in that size, so no row is made for it (STAR at
   1/15, 1/25 and 1/35). A zero is never recorded as a weight, and blank cells are skipped.
 - Prices are left empty for you to fill in (per piece by default).
+- **With the STAR price filled in:** `docs/imports/cz-stone-weights-star-priced.csv` is the same 35 rows with
+  STAR at 1.00, 1.10, 1.20, 1.30, 1.40 and 1.50 mm priced at 0.50 per piece (the rate chart's 500 per 1000
+  pieces). Import it instead of the plain file if you want those prices. The chart's 0.90 mm is not in the
+  supplier's weight list, so it has no row; add it by hand once its weight is known. Every other price is
+  still empty.
 - Per 1000 weights with two decimals need five decimals of carats (1.81 g per 1000 is 0.00905 ct),
   which is why the matrix keeps eight decimals of carats. Grams are shown in full: a weight of n decimals of carats is n + 1 decimals of grams (0.12345678 ct is 0.024691356 g).
 
@@ -1080,6 +1087,16 @@ request. After changing a route, update `openapi.yaml` and run `python3 docs/api
 PyYAML). View the spec with any Swagger UI, for example
 `docker run -p 8081:8080 -e SWAGGER_JSON=/api/openapi.yaml -v "$PWD/docs/api:/api" swaggerapi/swagger-ui`.
 
+**CI keeps it honest.** The `test` job fails when
+- a route the API serves is missing from `openapi.yaml`, or the spec describes a route that does not exist
+  (`backend/internal/apidocs`, which asks the real router, so it cannot be fooled by a typo);
+- an operation has no summary, tag or response;
+- `openapi.yaml` is not valid OpenAPI;
+- the Postman files differ from what `gen_postman.py` produces (`python3 docs/api/gen_postman.py --check`).
+
+The job runs whenever `backend/` or `docs/api/` changes. Run the same checks locally with
+`cd backend && go test ./internal/apidocs/` and `python3 docs/api/gen_postman.py --check`.
+
 ### How CI is laid out
 
 Jobs that run in parallel, each on its own runner (see `.github/workflows/ci.yml`):
@@ -1111,4 +1128,6 @@ docker run --rm -v "$PWD:/src" -w /src sqlc/sqlc:1.31.1 generate
 ## Contributing and security
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). Repository
-protection settings are listed in [docs/github-settings.md](docs/github-settings.md).
+protection settings are listed in [docs/github-settings.md](docs/github-settings.md). How
+dependency updates are handled (what Dependabot watches and what to check before merging each
+kind) is in [docs/dependabot.md](docs/dependabot.md).
