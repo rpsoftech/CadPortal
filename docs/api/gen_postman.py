@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Builds the Postman collection from openapi.yaml (the single source of truth).
 
-    python3 docs/api/gen_postman.py
+    python3 docs/api/gen_postman.py            write the two Postman files
+    python3 docs/api/gen_postman.py --check    exit 1 if they are not what openapi.yaml produces
 
-Writes docs/api/CadPortal.postman_collection.json. Needs PyYAML.
-Import it into Postman together with docs/api/CadPortal.postman_environment.json.
+Writes docs/api/CadPortal.postman_collection.json and CadPortal.postman_environment.json. Needs PyYAML.
+Import both into Postman. CI runs --check, so a change to openapi.yaml must be followed by a run without it.
 """
 import json
 import pathlib
 import re
+import sys
 import yaml
 
 HERE = pathlib.Path(__file__).parent
@@ -177,7 +179,6 @@ def main():
         ] + [{"key": k, "value": "1"} for k in sorted(set(VAR_FOR.values()) | {"variationId", "orderId", "id"})],
         "item": [{"name": name, "item": items} for name, items in folders.items() if items],
     }
-    (HERE / "CadPortal.postman_collection.json").write_text(json.dumps(coll, indent=2) + "\n")
     env = {
         "name": "CadPortal local",
         "values": [
@@ -186,8 +187,22 @@ def main():
         ],
         "_postman_variable_scope": "environment",
     }
-    (HERE / "CadPortal.postman_environment.json").write_text(json.dumps(env, indent=2) + "\n")
+    files = {
+        "CadPortal.postman_collection.json": json.dumps(coll, indent=2) + "\n",
+        "CadPortal.postman_environment.json": json.dumps(env, indent=2) + "\n",
+    }
     n = sum(len(f["item"]) for f in coll["item"])
+    if "--check" in sys.argv[1:]:
+        stale = [name for name, text in files.items()
+                 if not (HERE / name).exists() or (HERE / name).read_text() != text]
+        if stale:
+            print("Out of date: " + ", ".join(stale))
+            print("Run `python3 docs/api/gen_postman.py` and commit the result.")
+            sys.exit(1)
+        print(f"Postman files are current ({n} requests in {len(coll['item'])} folders)")
+        return
+    for name, text in files.items():
+        (HERE / name).write_text(text)
     print(f"{n} requests in {len(coll['item'])} folders")
 
 

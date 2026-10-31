@@ -118,11 +118,16 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
    - job-bag PDF and costing CSV export
 
 ## Open decisions (ask, don't guess)
-- Wastage % per metal.
 - Which alloy is the default input/reference.
-- Real `stone_size_matrix` values (sizes, sieve, carats, rates).
+- The specific gravity of 20KY (the alloy does not exist yet; its wastage is decided below).
+- Real `stone_size_matrix` values (sizes, sieve, carats, rates), except the STAR price decided below. STAR at 0.90 mm is
+  not in the supplier weight list, so it has no row yet.
 
 ## Decided
+- Wastage % (owner, approximate): 22KY 6, 20KY 5.5, 18KY 6, 18KR 7. An admin enters it under Master data, Alloys. It is
+  deliberately not set by a migration: that would also fill every test database and hide the "missing wastage" paths.
+- STAR stone price: 0.50 per piece (the rate chart's 500 per 1000 pieces) for 1.00 to 1.50 mm; ready to import as
+  `docs/imports/cz-stone-weights-star-priced.csv`.
 - Storage: Cloudflare R2 in production (bucket `cad-vault`, keys `cad/<design>/<variation>/<id>.<kind>.gz`); local disk (`STORAGE=local`) for development only.
 - Design codes are automatic and sequential: category prefix (1 to 6 letters, set by an admin) plus a 4-digit number, e.g. `LR0001`, `LR0002`, counted per category. Nobody types a code: the API refuses one on create, and an import may only bring a code that is the category's prefix plus digits. A category without a prefix cannot take designs.
 - Roles: `admin` (everything), `designer` (edit designs, seats, CAD, costing), `production` (read, job bags, CAD downloads; never sees wastage % or stone rates).
@@ -172,5 +177,6 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   40b. Order downloads (issue #63, no migration): the order CAD ZIP and the order package (job-bag PDF drawn from the snapshot + summary CSV) from the snapshot's recorded keys and hashes, `current_file` in the manifest, signed link flow, audit `order.download`; the order screen has Download STL / Download 3dm / Download package (any role; `order-download-dialog.component.ts` shows the `/link` estimate first, then a browser navigation to the signed URL; a kind no line recorded is disabled with a note); the retention purge keeps files recorded by an order that is not cancelled (`ClaimExpiredTrash`, `ObjectKeyInOpenOrder`)
   41. What an order produces (issue #64): summary PDF (`GET /orders/:id/summary.pdf`, totals = snapshot weight x quantity, QR, paginated table), job bags for the whole order (`GET /orders/:id/job-bags.pdf`, `per_piece`), CSV of one order and of the orders list, "Cost this order" (`POST /orders/:id/costing`: live masters, quantity multiplies the pieces via `SheetRequest.Quantities`, immutable sheet linked by `costing_sheets.order_id`, migration 000019, grouped problems, `drift` against the snapshot), catalog selection bar "Print job bags"
 - CI layout and test speed (issue #69): the CI `docker` check is an aggregate over three parallel jobs (`docker-stack`, `docker-backup`, `docker-multi`; images from a buildx GHA layer cache). Playwright has two projects: `main` (data tests, serial, file order) and `a11y` (axe scans, parallel; `smoke.zz-a11y.e2e.ts`). Tests sign in with `signIn` from `frontend/e2e/auth.ts` (a session saved once per run; never a local copy of the form login, except tests of the form: `signInViaForm`). Subsets: `scripts/e2e.sh <file>`, `scripts/e2e.sh --project=main -g "title"`, `scripts/e2e.sh --project=a11y --no-deps` (README, "Browser smoke tests").
+- API documentation (`docs/api`): `openapi.yaml` is the source, the Postman files are generated from it (`python3 docs/api/gen_postman.py`). The `test` job fails if a registered route and the spec disagree (`backend/internal/apidocs`), if the spec is invalid, or if the Postman files are stale (`gen_postman.py --check`). Dependency updates: `docs/dependabot.md`.
 - Every service function that does weight/BOM math gets table-driven tests using the fixtures above.
 - Run `go vet`, `go test ./...`, and `ng build` (plus `ng test --watch=false` in `frontend/`) before saying a stage is done.
