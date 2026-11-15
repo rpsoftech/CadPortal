@@ -32,6 +32,16 @@ const WRITE_EVERY_MS = 2_000;
 const MAX_WAIT_MS = 15_000;
 const MIN_WAIT_MS = 250;
 
+/**
+ * How often the web app tells the server "still here" while the user is active. The server ends a login that
+ * makes no request for the idle timeout plus a short grace, and typing in a long form makes no request, so
+ * this keeps a working user signed in. A third of the timeout, but never faster than every 30 seconds or
+ * slower than every 5 minutes.
+ */
+export function keepAliveEveryMs(timeoutMs: number): number {
+  return Math.max(30_000, Math.min(300_000, Math.floor(timeoutMs / 3)));
+}
+
 /** The warning lasts up to a minute, but never more than half the timeout. */
 export function warnWindowMs(timeoutMs: number): number {
   return Math.min(60_000, Math.floor(timeoutMs / 2));
@@ -83,6 +93,14 @@ export class IdleTimer {
     const n = this.env.now();
     this.last = n;
     if (n - this.lastWrite >= WRITE_EVERY_MS) this.touch();
+  }
+
+  /** How long since the user last did anything, in any tab (0 right after activity). */
+  idleForMs(): number {
+    const n = this.env.now();
+    const shared = this.env.read();
+    const last = shared !== null && shared > this.last ? Math.min(shared, n) : this.last;
+    return Math.max(0, n - last);
   }
 
   /** The "Stay signed in" button. */

@@ -152,7 +152,7 @@
               ],
               "query": []
             },
-            "description": "Public. Every failure (unknown user, wrong password, locked out) is the same 401.\n\nResponses: 200: Signed in; 400: Invalid input; 401: Missing, expired or invalid token (or wrong credentials); 413: Request or file too large",
+            "description": "Public. Every failure (unknown user, wrong password, locked out) is the same 401.\n\nResponses: 200: Signed in; 400: Invalid input; 401: Missing, expired, signed-out or invalid token (or wrong credentials). A login that went idle answers with\n`code: idle_timeout`, so the web app can say why.\n; 413: Request or file too large",
             "auth": {
               "type": "noauth"
             },
@@ -200,7 +200,7 @@
               ],
               "query": []
             },
-            "description": "Responses: 200: The signed-in user; 401: Missing, expired or invalid token (or wrong credentials)"
+            "description": "Responses: 200: The signed-in user; 401: Missing, expired, signed-out or invalid token (or wrong credentials). A login that went idle answers with\n`code: idle_timeout`, so the web app can say why.\n"
           },
           "response": []
         },
@@ -227,7 +227,7 @@
               ],
               "query": []
             },
-            "description": "Invalidates every earlier token and returns a fresh one.\n\nResponses: 200: Signed in; 400: Invalid input; 401: Missing, expired or invalid token (or wrong credentials)",
+            "description": "Invalidates every earlier token and returns a fresh one.\n\nResponses: 200: Signed in; 400: Invalid input; 401: Missing, expired, signed-out or invalid token (or wrong credentials). A login that went idle answers with\n`code: idle_timeout`, so the web app can say why.\n",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"current_password\": \"old-password\",\n  \"new_password\": \"a-new-longer-password\"\n}",
@@ -253,6 +253,28 @@
               }
             }
           ]
+        },
+        {
+          "name": "Sign out",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "logout"
+              ],
+              "query": []
+            },
+            "description": "Ends the caller's login at once, so a copy of the token stops working (a second call with the same token is a\n401, like any signed-out token). Every token\nbelongs to a server-side session; one that makes no request for `IDLE_TIMEOUT_MINUTES` plus a two minute\ngrace is ended too, and the next call answers 401 with `code: idle_timeout`.\n\nResponses: 204: Signed out; 401: Missing, expired, signed-out or invalid token (or wrong credentials). A login that went idle answers with\n`code: idle_timeout`, so the web app can say why.\n"
+          },
+          "response": []
         },
         {
           "name": "Sign-in screen configuration",

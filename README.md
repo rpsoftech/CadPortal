@@ -151,9 +151,18 @@ and no rebuild:
   through `localStorage`; if that is unavailable each tab counts its own). About a minute before, a dialog
   says "You will be signed out in N s" with a *Stay signed in* button; with a timeout of 1 minute the
   warning is 30 s. Requests the app makes on its own do not count as activity. The app reads the value from
-  the public `GET /api/v1/auth/config` (`idle_timeout_minutes`) when someone signs in. The idle timeout
-  is enforced by the browser, not the server: it protects an unattended screen, not a stolen token (that is
-  what `SESSION_HOURS` and the per-request token check are for).
+  the public `GET /api/v1/auth/config` (`idle_timeout_minutes`) when someone signs in.
+- **The server enforces it too.** Every login is a row in the `sessions` table and its token carries the row's
+  id. A login that makes no request for `IDLE_TIMEOUT_MINUTES` plus a two minute grace (32 minutes with the
+  default) is ended on the server: its token answers `401` with `code: idle_timeout`, and the web app shows
+  the same "signed out after inactivity" message. A token that is copied off a screen or left in a log stops
+  working once it has been quiet that long. While someone is really active the web app sends a small
+  "still here" request (`GET /api/v1/auth/me`, every 5 minutes at most), and *Stay signed in* sends one at once,
+  so typing in a long form never gets you signed out; a quiet browser sends none. `POST /api/v1/auth/logout`
+  ends a login on the spot when the user signs out. `IDLE_TIMEOUT_MINUTES=0` turns the idle limit off on both
+  sides (sign-out still ends the login). The last-seen time is written at most every 30 seconds, using the
+  database clock, so any number of API instances agree. **After this was introduced everyone signs in once
+  again**: tokens issued before it carry no session.
 
 ## Configuration
 
@@ -981,7 +990,8 @@ Every route except login needs `Authorization: Bearer <token>`.
 
 Security behaviour worth knowing:
 
-- Passwords are hashed with Argon2id (12 to 128 characters). Login tokens last 8 hours.
+- Passwords are hashed with Argon2id (12 to 128 characters). Login tokens last 8 hours, and end sooner when
+  the login is idle or signed out (see "Sign-out and session length").
 - Five failed logins lock an account for 15 minutes. Failures are indistinguishable: an
   unknown email, a wrong password and a locked or disabled account all return the same 401.
 - Tokens are checked against the database on every request, so disabling a user, changing

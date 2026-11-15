@@ -167,3 +167,49 @@ func TestRefusedRequestStillIdentifiesTheCaller(t *testing.T) {
 		t.Errorf("caller of a refused request = (%q, %q), want (\"17\", production)", seenUser, seenRole)
 	}
 }
+
+func TestRequireChecksTheSession(t *testing.T) {
+	raw, _, err := IssueSession(secret, "7", "abc123", Designer, time.Hour, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	call := func(check SessionChecker) (int, string, string) {
+		gin.SetMode(gin.TestMode)
+		r := gin.New()
+		a := &Authenticator{Secret: secret, Session: check}
+		var seen string
+		r.GET("/x", a.Require(Designer), func(c *gin.Context) { seen = SessionIDFrom(c); c.Status(http.StatusOK) })
+		req := httptest.NewRequest(http.MethodGet, "/x", nil)
+		req.Header.Set("Authorization", "Bearer "+raw)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w.Code, w.Body.String(), seen
+	}
+	fixed := func(s SessionState, err error) SessionChecker {
+		return func(_ context.Context, c Claims) (SessionState, error) {
+			if c.SessionID != "abc123" || c.Subject != "7" {
+				t.Errorf("the checker saw %q for %q", c.SessionID, c.Subject)
+			}
+			return s, err
+		}
+	}
+
+	if code, _, sid := call(fixed(SessionActive, nil)); code != 200 || sid != "abc123" {
+		t.Errorf("active: %d, session in context %q", code, sid)
+	}
+	code, body, _ := call(fixed(SessionIdle, nil))
+	if code != 401 || !strings.Contains(body, `"code":"`+CodeIdleTimeout+`"`) {
+		t.Errorf("idle: %d %s", code, body)
+	}
+	code, body, _ = call(fixed(SessionEnded, nil))
+	if code != 401 || strings.Contains(body, "code") {
+		t.Errorf("ended: %d %s (no code: it must not say more than the token is invalid)", code, body)
+	}
+	if code, _, _ := call(fixed(SessionActive, errors.New("db down"))); code != 503 {
+		t.Errorf("a database error is a 503, not a sign-out: %d", code)
+	}
+	if code, _, _ := call(nil); code != 200 {
+		t.Errorf("no checker means no lookup: %d", code)
+	}
+}
