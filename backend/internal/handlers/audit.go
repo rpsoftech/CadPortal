@@ -29,6 +29,7 @@ type auditRoute struct {
 var auditRoutes = map[string]auditRoute{
 	"POST /api/v1/auth/login":           {skip: true}, // recorded by the login handler (it knows the email)
 	"POST /api/v1/auth/change-password": {action: "auth.password_change", entity: "user"},
+	"POST /api/v1/auth/logout":          {action: "auth.logout", entity: "user"},
 
 	"POST /api/v1/auth/forgot-password":   {action: "auth.password_reset_request", entity: "user"},
 	"POST /api/v1/auth/reset-password":    {action: "auth.password_reset", entity: "user"},

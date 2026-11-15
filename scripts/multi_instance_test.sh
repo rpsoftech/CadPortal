@@ -88,6 +88,19 @@ n2=$(($(count_in_logs "$second" '"path":"/api/v1/auth/me"') - m2))
 echo "token accepted by both: instance 1 answered $n1, instance 2 answered $n2 of 30"
 [ "$n1" -ge 1 ] && [ "$n2" -ge 1 ] || fail "the token was not exercised on both instances"
 
+echo "== signing out on one instance ends the login on the other"
+login2=$(curl -fsS -X POST "$base/api/v1/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"multi@example.com\",\"password\":\"$pw\"}")
+token2=$(echo "$login2" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+[ -n "$token2" ] || fail "the second sign-in returned no token"
+[ "$(curl -s -w '%{http_code}' -H "Authorization: Bearer $token2" "$base/api/v1/auth/me" | tail -c 3)" = "200" ] || fail "the second login was rejected"
+[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $token2" "$base/api/v1/auth/logout")" = "204" ] || fail "sign-out did not answer 204"
+for _ in $(seq 1 10); do # the web container alternates between the two instances
+  [ "$(curl -s -w '%{http_code}' -H "Authorization: Bearer $token2" "$base/api/v1/auth/me" | tail -c 3)" = "401" ] || fail "a signed-out token still works on one instance"
+done
+[ "$(curl -s -w '%{http_code}' "${auth[@]}" "$base/api/v1/auth/me" | tail -c 3)" = "200" ] || fail "signing out one login ended the other"
+echo "signed out on both instances; the other login is untouched"
+
 echo "== 60 designs created in parallel"
 sql "UPDATE categories SET code_prefix = 'MI' WHERE name = 'Rings'" >/dev/null
 cat_id=$(sql "SELECT id FROM categories WHERE name = 'Rings'")

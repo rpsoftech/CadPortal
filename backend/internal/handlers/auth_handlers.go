@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -41,8 +42,14 @@ type tokenResponse struct {
 	User      service.UserView `json:"user"`
 }
 
-func (h *H) issue(u service.UserView) (tokenResponse, error) {
-	tok, exp, err := auth.IssueAt(h.JWTSecret, strconv.FormatInt(u.ID, 10), auth.Role(u.Role), h.ttl(), time.Now())
+// issue opens a login (a row in the sessions table) and signs the token that belongs to it.
+func (h *H) issue(ctx context.Context, u service.UserView) (tokenResponse, error) {
+	now := time.Now()
+	sid, err := h.S.CreateSession(ctx, u.ID, now.Add(h.ttl()))
+	if err != nil {
+		return tokenResponse{}, err
+	}
+	tok, exp, err := auth.IssueSession(h.JWTSecret, strconv.FormatInt(u.ID, 10), sid, auth.Role(u.Role), h.ttl(), now)
 	return tokenResponse{Token: tok, ExpiresAt: exp, User: u}, err
 }
 
@@ -67,7 +74,7 @@ func (h *H) login(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	resp, err := h.issue(u)
+	resp, err := h.issue(c.Request.Context(), u)
 	if err != nil {
 		fail(c, err)
 		return
@@ -119,13 +126,27 @@ func (h *H) changePassword(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	resp, err := h.issue(u)
+	resp, err := h.issue(c.Request.Context(), u)
 	if err != nil {
 		fail(c, err)
 		return
 	}
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, resp)
+}
+
+// logout ends the caller's login at once, so a copy of the token stops working. The web app calls it when the
+// user signs out; it is safe to call twice.
+func (h *H) logout(c *gin.Context) {
+	id, ok := callerID(c)
+	if !ok {
+		return
+	}
+	if err := h.S.EndSession(c.Request.Context(), id, auth.SessionIDFrom(c)); err != nil {
+		fail(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func (h *H) listUsers(c *gin.Context) {

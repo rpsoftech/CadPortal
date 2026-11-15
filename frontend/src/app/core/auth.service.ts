@@ -78,6 +78,7 @@ export class AuthService {
 
   /** Signs out on purpose. */
   logout(): void {
+    this.endOnServer();
     this.clear();
     void this.router.navigate(['/login']);
   }
@@ -92,14 +93,31 @@ export class AuthService {
     });
   }
 
-  /** No activity for the idle period: sign out and say why on the login page. */
-  expireIdle(): void {
+  /**
+   * No activity for the idle period: sign out and say why on the login page. `serverEnded` is for when the
+   * server itself said the login went idle, so there is nothing left to end there.
+   */
+  expireIdle(serverEnded = false): void {
     if (!this.session()) return;
     const returnUrl = this.router.url;
+    if (!serverEnded) this.endOnServer();
     this.clear();
     void this.router.navigate(['/login'], {
       queryParams: { reason: 'idle', ...(returnUrl && returnUrl !== '/login' ? { returnUrl } : {}) },
     });
+  }
+
+  /**
+   * Tells the server to end this login, so a copy of the token stops working too. It must be called before
+   * the token is dropped (the request picks it up when it is sent). Best effort: if it fails, the tab signs out
+   * anyway and the server's idle limit ends the login later.
+   */
+  private endOnServer(): void {
+    if (!this.session()) return;
+    this.http
+      .post('/api/v1/auth/logout', null)
+      .pipe(catchError(() => of(null)))
+      .subscribe();
   }
 
   private start(r: LoginResponse): void {

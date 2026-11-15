@@ -1,13 +1,13 @@
 import { DestroyRef, Injectable, effect, inject, signal, untracked } from '@angular/core';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
-import { catchError, of } from 'rxjs';
+import { EMPTY, catchError, of } from 'rxjs';
 import {
   IdleWarningData,
   IdleWarningDialogComponent,
 } from '../shared/idle-warning-dialog.component';
 import { ApiService } from './api.service';
 import { AuthService } from './auth.service';
-import { IdleEnv, IdleTimer } from './idle-timer';
+import { IdleEnv, IdleTimer, keepAliveEveryMs } from './idle-timer';
 
 /** Shared by every tab of this browser: when anyone last used the portal. */
 export const ACTIVITY_KEY = 'cadportal.lastActivity';
@@ -56,6 +56,7 @@ export class IdleService {
   private timer: IdleTimer | null = null;
   private dialogRef: MatDialogRef<IdleWarningDialogComponent> | null = null;
   private detach: (() => void) | null = null;
+  private pinger: ReturnType<typeof setInterval> | null = null;
   private generation = 0;
 
   constructor() {
@@ -66,9 +67,18 @@ export class IdleService {
     inject(DestroyRef).onDestroy(() => this.end());
   }
 
-  /** The "Stay signed in" button. */
+  /** The "Stay signed in" button. It also tells the server at once: the warning is the last chance. */
   stay(): void {
     this.timer?.stay();
+    this.keepAlive();
+  }
+
+  /** Counts as activity on the server, which ends a login that makes no request for a while. */
+  private keepAlive(): void {
+    this.api
+      .keepAlive()
+      .pipe(catchError(() => EMPTY)) // a 401 is handled by the interceptor; anything else can wait for the next ping
+      .subscribe();
   }
 
   private begin(): void {
@@ -125,10 +135,19 @@ export class IdleService {
       document.removeEventListener('visibilitychange', onVisible);
     };
     timer.start();
+
+    // Typing in a long form makes no request, so while the user is really active, say so now and then. The
+    // server's own idle limit is a little longer than this timeout, and only a quiet user runs into it.
+    const every = keepAliveEveryMs(timeoutMs);
+    this.pinger = setInterval(() => {
+      if (timer.isRunning && !timer.isWarning && timer.idleForMs() < every) this.keepAlive();
+    }, every);
   }
 
   private end(): void {
     this.generation++;
+    if (this.pinger) clearInterval(this.pinger);
+    this.pinger = null;
     this.timer?.stop();
     this.timer = null;
     this.detach?.();

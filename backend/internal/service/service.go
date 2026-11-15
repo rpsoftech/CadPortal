@@ -88,6 +88,10 @@ type Service struct {
 	// AppBaseURL is the public address of the portal (https://cad.example.com), used in emailed links.
 	AppBaseURL string
 
+	// SessionIdle is how long a login may go without a request before the server ends it (0 = no limit).
+	// Set it with SessionIdleLimit from the web idle timeout, so it is a little longer than the browser's.
+	SessionIdle time.Duration
+
 	// CADZipMaxFiles and CADZipMaxBytes cap one CAD ZIP download (0 = the defaults in cadzip.go).
 	CADZipMaxFiles int
 	CADZipMaxBytes int64

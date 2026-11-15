@@ -40,6 +40,13 @@ function setup() {
   return { idle, auth, http, dialog };
 }
 
+/** The user does something partway through an interval of `ms`, and then the interval's timer fires. */
+function activeDuring(ms: number) {
+  vi.advanceTimersByTime(1000);
+  document.dispatchEvent(new Event('keydown'));
+  vi.advanceTimersByTime(ms - 1000);
+}
+
 /** Signs in and lets the effect fetch the config. */
 async function signIn(ctx: ReturnType<typeof setup>, minutes: number | undefined) {
   ctx.auth.login('a@b.co', 'x').subscribe();
@@ -113,6 +120,59 @@ describe('IdleService', () => {
     ctx.idle.stay();
     vi.advanceTimersByTime(3 * 60_000);
     expect(ctx.auth.isAuthenticated()).toBe(true);
+  });
+
+  it('tells the server "still here" while the user is active, every few minutes', async () => {
+    const ctx = setup();
+    await signIn(ctx, 30); // pings every 5 minutes
+    for (let i = 0; i < 3; i++) {
+      activeDuring(5 * 60_000);
+      const ping = ctx.http.expectOne('/api/v1/auth/me');
+      expect(ping.request.method).toBe('GET');
+      ping.flush(login.user);
+    }
+  });
+
+  it('sends nothing while the user is away, so the server can end the login', async () => {
+    const ctx = setup();
+    await signIn(ctx, 30);
+    activeDuring(5 * 60_000); // one burst of activity, then nothing
+    ctx.http.expectOne('/api/v1/auth/me').flush(login.user); // it falls in the first interval
+    vi.advanceTimersByTime(12 * 60_000); // two more intervals with nobody there
+    ctx.http.expectNone('/api/v1/auth/me');
+  });
+
+  it('"Stay signed in" tells the server at once', async () => {
+    const ctx = setup();
+    await signIn(ctx, 5);
+    vi.advanceTimersByTime(4 * 60_000 + 5000);
+    expect(ctx.dialog.open).toHaveBeenCalled();
+    ctx.http.expectNone('/api/v1/auth/me');
+    ctx.idle.stay();
+    ctx.http.expectOne('/api/v1/auth/me').flush(login.user);
+  });
+
+  it('a failed ping is ignored; the next one tries again', async () => {
+    const ctx = setup();
+    await signIn(ctx, 30);
+    activeDuring(5 * 60_000);
+    ctx.http
+      .expectOne('/api/v1/auth/me')
+      .flush({ error: 'down' }, { status: 503, statusText: 'Unavailable' });
+    expect(ctx.auth.isAuthenticated()).toBe(true);
+    activeDuring(5 * 60_000);
+    ctx.http.expectOne('/api/v1/auth/me').flush(login.user);
+  });
+
+  it('stops pinging after sign-out', async () => {
+    const ctx = setup();
+    await signIn(ctx, 30);
+    ctx.auth.logout();
+    TestBed.tick();
+    ctx.http.expectOne('/api/v1/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
+    activeDuring(5 * 60_000);
+    vi.advanceTimersByTime(30 * 60_000);
+    ctx.http.expectNone('/api/v1/auth/me');
   });
 
   it.each([0, undefined])('does nothing when the server says %s', async (minutes) => {

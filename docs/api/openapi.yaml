@@ -123,6 +123,18 @@ paths:
         "200": {$ref: "#/components/responses/Token"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Sign out
+      description: |
+        Ends the caller's login at once, so a copy of the token stops working (a second call with the same token is a
+        401, like any signed-out token). Every token
+        belongs to a server-side session; one that makes no request for `IDLE_TIMEOUT_MINUTES` plus a two minute
+        grace is ended too, and the next call answers 401 with `code: idle_timeout`.
+      responses:
+        "204": {description: Signed out}
+        "401": {$ref: "#/components/responses/Unauthorized"}
   /api/v1/auth/config:
     get:
       tags: [Auth]
@@ -1927,7 +1939,9 @@ components:
           schema: {$ref: "#/components/schemas/Error"}
           example: {error: invalid JSON body}
     Unauthorized:
-      description: Missing, expired or invalid token (or wrong credentials)
+      description: |
+        Missing, expired, signed-out or invalid token (or wrong credentials). A login that went idle answers with
+        `code: idle_timeout`, so the web app can say why.
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
@@ -2007,6 +2021,7 @@ components:
       type: object
       properties:
         error: {type: string}
+        code: {type: string, description: "Only on a 401 for an idle login: idle_timeout", example: idle_timeout}
         request_id: {type: string, description: Only on a 500}
     Status:
       type: object

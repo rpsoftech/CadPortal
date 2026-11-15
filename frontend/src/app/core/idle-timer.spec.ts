@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IdleEnv, IdleTimer, warnWindowMs } from './idle-timer';
+import { IdleEnv, IdleTimer, keepAliveEveryMs, warnWindowMs } from './idle-timer';
 
 /** A clock whose timers only run when the test advances time. */
 function fakeEnv() {
@@ -178,5 +178,44 @@ describe('IdleTimer', () => {
     t.stop();
     f.advance(60 * 60_000);
     expect(log).toEqual([]);
+  });
+});
+
+describe('keepAliveEveryMs', () => {
+  it.each([
+    [30 * 60_000, 300_000], // the usual 30 minutes: every 5 minutes, never slower
+    [9 * 60_000, 180_000], // a third of the timeout
+    [60_000, 30_000], // never faster than every 30 seconds
+    [2 * 60_000, 40_000],
+  ])('a timeout of %i ms pings every %i ms', (timeoutMs, want) => {
+    expect(keepAliveEveryMs(timeoutMs)).toBe(want);
+  });
+
+  it('is always well inside the timeout, so a working user is never quiet for the whole of it', () => {
+    for (const minutes of [1, 2, 5, 15, 30, 120, 1440]) {
+      expect(keepAliveEveryMs(minutes * 60_000)).toBeLessThan(minutes * 60_000);
+    }
+  });
+});
+
+describe('IdleTimer.idleForMs', () => {
+  it('is zero after activity and grows with the clock', () => {
+    const f = fakeEnv();
+    const t = new IdleTimer(300_000, f.env, { warn() {}, tick() {}, resume() {}, expire() {} });
+    t.start();
+    expect(t.idleForMs()).toBe(0);
+    f.advance(45_000);
+    expect(t.idleForMs()).toBe(45_000);
+    t.activity();
+    expect(t.idleForMs()).toBe(0);
+  });
+
+  it('counts activity in another tab', () => {
+    const f = fakeEnv();
+    const t = new IdleTimer(300_000, f.env, { warn() {}, tick() {}, resume() {}, expire() {} });
+    t.start();
+    f.advance(120_000);
+    f.env.write(f.env.now() - 10_000); // another tab was active 10 s ago
+    expect(t.idleForMs()).toBe(10_000);
   });
 });
