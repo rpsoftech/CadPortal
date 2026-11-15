@@ -37,3 +37,30 @@ test.describe('docs/imports/cz-stone-weights.csv', () => {
     expect(r.rows.every((x) => x.rate_per_pc === null && x.rate_per_ct === null && x.rate_per_g === null)).toBe(true);
   });
 });
+
+// docs/imports/cz-stone-weights-star-priced.csv is the same list with the owner's STAR price filled in
+// (500 per 1000 pieces = 0.50 per piece, sizes 1.00 to 1.50 mm). It must load without a refusal, carry exactly
+// the supplier weights, and price nothing else.
+test.describe('docs/imports/cz-stone-weights-star-priced.csv', () => {
+  const plain = parseMatrixCsv(readFileSync('../docs/imports/cz-stone-weights.csv', 'utf8'));
+  const priced = parseMatrixCsv(readFileSync('../docs/imports/cz-stone-weights-star-priced.csv', 'utf8'));
+  const pricedSizes = ['1.00', '1.10', '1.20', '1.30', '1.40', '1.50'];
+
+  test('parses without errors and has the same rows and weights as the supplier list', () => {
+    expect(priced.errors).toEqual([]);
+    expect(priced.rows).toHaveLength(plain.rows.length);
+    const key = (x: { size_mm: string; stone_code: string; carats_per_stone: string; sieve: string | null }) =>
+      `${x.stone_code}|${x.size_mm}|${x.carats_per_stone}|${x.sieve}`;
+    expect(priced.rows.map(key)).toEqual(plain.rows.map(key));
+  });
+
+  test('prices STAR 1.00 to 1.50 mm at 0.50 per piece and nothing else', () => {
+    for (const x of priced.rows) {
+      const isPriced = x.stone_code === 'STAR' && pricedSizes.includes(x.size_mm);
+      expect(x.rate_per_pc, `${x.stone_code} ${x.size_mm}`).toBe(isPriced ? '0.50' : null);
+      expect(x.rate_per_ct).toBeNull();
+      expect(x.rate_per_g).toBeNull();
+    }
+    expect(priced.rows.filter((x) => x.rate_per_pc !== null)).toHaveLength(pricedSizes.length);
+  });
+});
