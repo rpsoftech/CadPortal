@@ -42,7 +42,28 @@ shows only the checks that apply to it. Skipped jobs are normal. What to look at
   `label-content-name-mismatch`, because three controls had an `aria-label` that left out their visible text.
   The fix was to put the visible text into each accessible name (WCAG 2.5.3, Label in Name).
 
+## What Dependabot does not watch
+
+- **The Go version.** `backend/go.mod` pins it (`go 1.27.4`), and CI builds with exactly that. When
+  `govulncheck` (the `vulncheck` job, also run weekly) reports a standard-library advisory, the fix is a new Go
+  patch release: raise the `go` line to the version it names under "Fixed in" and merge that first, because it turns
+  every open pull request red until then. Example: GO-2026-6859 (`net/http`) was fixed in 1.27.4.
+- **Test images in scripts.** `scripts/backup_service_test.sh` runs against RustFS. It is pinned by digest because
+  its `latest` changed behaviour (it refused `CreateBucket` with the region `auto`) and failed the backup test with
+  no change in this repository. Move the digest on purpose: pull the newer image, run the test, then update it.
+- **The Dockerfile base images** are watched (see the table), but `golang:1.27-alpine` follows the latest 1.27 patch
+  by design, so a `go.mod` bump to a patch that is not published as an image yet fails the image build until it is.
+
 ## Working with the pull requests
+
+- **Many open at once.** Version updates arrive weekly, so several can pile up, and each one touching
+  `frontend/yarn.lock` conflicts after the one before it merges. Rather than rebasing and re-running CI eight
+  times, apply them together in one pull request: update the manifests, let the package manager rewrite the
+  lockfile, and run the checks once. Dependabot then closes its own pull requests, because their versions are
+  already on `main`.
+- **A red Dependabot pull request is not always its fault.** Read the failing log before blaming the update. A
+  new advisory, a floating test image or a tool that needs a matching newer release (jsdom 31 crashed vitest 5.0.5 but
+  works with 5.1.0) each look like "the bump broke CI".
 
 - **Two pull requests touching `frontend/package.json` and `frontend/yarn.lock`** conflict as soon as one
   merges. Merge one, then comment `@dependabot rebase` on the other and wait for CI to run again.

@@ -13,7 +13,9 @@ cd "$(dirname "$0")/.."
 export MSYS_NO_PATHCONV=1 # Git Bash on Windows must not rewrite /data and /scratch
 
 IMAGE=${BACKUP_IMAGE:-cadportal-backup:test}
-S3_IMAGE=${S3_IMAGE:-rustfs/rustfs:latest}
+# Pinned by digest: a newer RustFS build rejected CreateBucket with the region "auto" and broke this test with no
+# change in this repository. Dependabot does not watch scripts, so move the digest on purpose (docs/dependabot.md).
+S3_IMAGE=${S3_IMAGE:-rustfs/rustfs@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2}
 AWS_IMAGE=${AWS_IMAGE:-amazon/aws-cli:latest}
 PG_IMAGE=${PG_IMAGE:-postgres:18-alpine}
 net=bktest-$$
