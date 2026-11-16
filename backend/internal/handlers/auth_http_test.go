@@ -37,8 +37,9 @@ func newAuthEnv(t *testing.T) (*gin.Engine, *service.Service) {
 		t.Fatal(err)
 	}
 	svc := service.New(pool)
+	svc.SessionIdle = service.SessionIdleLimit(30)
 	r := gin.New()
-	(&H{S: svc, JWTSecret: testSecret, Validate: svc.ValidateToken}).Register(r)
+	(&H{S: svc, JWTSecret: testSecret, Validate: svc.ValidateToken, Session: svc.CheckSession}).Register(r)
 	return r, svc
 }
 

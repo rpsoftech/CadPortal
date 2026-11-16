@@ -21,7 +21,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         err.status === 401 &&
         !req.url.endsWith('/auth/login')
       ) {
-        auth.expire();
+        // The server ends a login that made no request for a while and says so; show the same
+        // "signed out after inactivity" message as the browser's own idle sign-out.
+        if ((err.error as { code?: string } | null)?.code === 'idle_timeout') auth.expireIdle(true);
+        else auth.expire();
       }
       return throwError(() => err);
     }),

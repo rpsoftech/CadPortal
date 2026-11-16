@@ -202,6 +202,15 @@ type PasswordReset struct {
 	UsedAt    pgtype.Timestamptz `json:"used_at"`
 }
 
+type Session struct {
+	ID         string             `json:"id"`
+	UserID     int64              `json:"user_id"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+}
+
 type StoneCode struct {
 	ID                int64              `json:"id"`
 	Code              string             `json:"code"`

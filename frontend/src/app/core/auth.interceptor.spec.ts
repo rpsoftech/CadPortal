@@ -70,6 +70,20 @@ describe('authInterceptor', () => {
     expect(nav.mock.calls[0][0]).toEqual(['/login']);
   });
 
+  it('a 401 for an idle login goes to the login page with the idle reason', () => {
+    const { http, ctl, auth, nav } = setup();
+    http.get('/api/v1/designs').subscribe({ error: () => undefined });
+    ctl.expectOne('/api/v1/designs').flush(
+      { error: 'you were signed out after a period without activity', code: 'idle_timeout' },
+      { status: 401, statusText: 'Unauthorized' },
+    );
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(nav).toHaveBeenCalledTimes(1);
+    expect(nav.mock.calls[0][1]).toMatchObject({ queryParams: { reason: 'idle' } });
+    // Signed out because the server said so: there is no login left to end.
+    ctl.expectNone('/api/v1/auth/logout');
+  });
+
   it('a 401 from the login call itself (wrong password) does not touch the session', () => {
     const { http, ctl, auth, nav } = setup();
     http.post('/api/v1/auth/login', {}).subscribe({ error: () => undefined });

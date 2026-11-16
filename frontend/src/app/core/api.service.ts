@@ -115,6 +115,14 @@ export class ApiService {
     return this.http.post<ResetLink>(`${BASE}/users/${id}/reset-link`, null);
   }
 
+  /**
+   * "Still here": any signed-in request counts as activity on the server, and this is the cheapest one. The
+   * idle service sends it while the user is active.
+   */
+  keepAlive(): Observable<unknown> {
+    return this.http.get(`${BASE}/auth/me`);
+  }
+
   // ----- password reset (public: no sign-in needed) -----
   authConfig(): Observable<AuthConfig> {
     return this.http.get<AuthConfig>(`${BASE}/auth/config`);

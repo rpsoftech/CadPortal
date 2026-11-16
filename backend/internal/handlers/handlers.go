@@ -30,6 +30,9 @@ type H struct {
 	// Validate is the per-request token check (user active, role unchanged, password
 	// not changed since issue). Nil means signature and expiry only (tests).
 	Validate auth.Validator
+	// Session looks up the login a token belongs to and ends it when it has been idle too long or signed out.
+	// Nil means no lookup (tests); main sets it to the service's CheckSession.
+	Session auth.SessionChecker
 	// TokenTTL is how long a login token lives (0 = DefaultTokenTTL). This is the absolute cap on a
 	// session: the idle timeout can end it sooner, but nothing extends it.
 	TokenTTL time.Duration
@@ -54,7 +57,7 @@ const (
 // reads for any signed-in role, writes for admin/designer, master data and user
 // management for admin only.
 func (h *H) Register(r *gin.Engine) {
-	a := &auth.Authenticator{Secret: h.JWTSecret, Validate: h.Validate}
+	a := &auth.Authenticator{Secret: h.JWTSecret, Validate: h.Validate, Session: h.Session}
 	anyRole := a.Require(auth.AllRoles...)
 	editor := a.Require(auth.Editors...)
 	admin := a.Require(auth.Admin)
@@ -73,6 +76,7 @@ func (h *H) Register(r *gin.Engine) {
 	v1.POST("/auth/login", h.login)
 	v1.GET("/auth/me", anyRole, h.me)
 	v1.POST("/auth/change-password", anyRole, h.changePassword)
+	v1.POST("/auth/logout", anyRole, h.logout)
 	v1.GET("/auth/config", h.authConfig)
 	v1.POST("/auth/forgot-password", h.forgotPassword)
 	v1.POST("/auth/reset-password", h.resetWithToken)

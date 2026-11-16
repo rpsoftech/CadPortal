@@ -32,6 +32,9 @@ func (r Role) Valid() bool { return r == Admin || r == Designer || r == Producti
 
 type Claims struct {
 	Role Role `json:"role"`
+	// SessionID names the login this token belongs to (the sessions table). Tokens without one come from
+	// before sessions existed, or from a signed download link, which is checked another way.
+	SessionID string `json:"sid,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -44,15 +47,37 @@ type Claims struct {
 // brief outage does not sign every user out.
 type Validator func(ctx context.Context, c Claims) (ok bool, err error)
 
-// Authenticator verifies tokens. A nil Validate means signature and expiry only.
+// SessionState is what the session check found out about a token's login.
+type SessionState int
+
+const (
+	// SessionActive: the login is open and has been used recently enough.
+	SessionActive SessionState = iota
+	// SessionIdle: the login went too long without a request. The user simply signs in again.
+	SessionIdle
+	// SessionEnded: the login was signed out, has expired, never existed, or the token carries no session.
+	SessionEnded
+)
+
+// SessionChecker decides whether a token's login is still open, and counts the request as activity. Like
+// Validator it returns an error only when it could not decide (a database outage), which is a 503.
+type SessionChecker func(ctx context.Context, c Claims) (SessionState, error)
+
+// CodeIdleTimeout is the "code" of the 401 answer for a login that went idle, so the web app can say why.
+const CodeIdleTimeout = "idle_timeout"
+
+// Authenticator verifies tokens. A nil Validate means signature and expiry only, and a nil Session means the
+// token's login is not looked up (only tests leave it out).
 type Authenticator struct {
 	Secret   []byte
 	Validate Validator
+	Session  SessionChecker
 }
 
 const (
-	roleKey = "auth.role"
-	userKey = "auth.user"
+	roleKey    = "auth.role"
+	userKey    = "auth.user"
+	sessionKey = "auth.session"
 )
 
 // Issue signs a token for subject with the given role.
@@ -63,12 +88,17 @@ func Issue(secret []byte, subject string, role Role, ttl time.Duration) (string,
 
 // IssueAt is Issue with an explicit issue time; it also returns the expiry.
 func IssueAt(secret []byte, subject string, role Role, ttl time.Duration, now time.Time) (string, time.Time, error) {
+	return IssueSession(secret, subject, "", role, ttl, now)
+}
+
+// IssueSession is IssueAt for a token that belongs to the login sessionID.
+func IssueSession(secret []byte, subject, sessionID string, role Role, ttl time.Duration, now time.Time) (string, time.Time, error) {
 	if !role.Valid() {
 		return "", time.Time{}, errors.New("auth: unknown role")
 	}
 	exp := now.Add(ttl)
 	tok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
-		Role: role,
+		Role: role, SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject: subject, IssuedAt: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(exp),
 		},
@@ -104,10 +134,29 @@ func (a *Authenticator) Require(roles ...Role) gin.HandlerFunc {
 				return
 			}
 		}
+		if a.Session != nil {
+			state, err := a.Session(c.Request.Context(), cl)
+			if err != nil {
+				_ = c.Error(err)
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "service temporarily unavailable"})
+				return
+			}
+			switch state {
+			case SessionActive:
+			case SessionIdle:
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": "you were signed out after a period without activity", "code": CodeIdleTimeout})
+				return
+			default:
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+				return
+			}
+		}
 		// Identify the caller before the role check, so a refused request can still be
 		// attributed to them (the audit log records who tried).
 		c.Set(roleKey, cl.Role)
 		c.Set(userKey, cl.Subject)
+		c.Set(sessionKey, cl.SessionID)
 		if !slices.Contains(roles, cl.Role) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "role not permitted"})
 			return
@@ -133,6 +182,14 @@ func RoleFrom(c *gin.Context) Role {
 	r, _ := c.Get(roleKey)
 	role, _ := r.(Role)
 	return role
+}
+
+// SessionIDFrom returns the login the authenticated request belongs to ("" outside Require, or for a token
+// without a session).
+func SessionIDFrom(c *gin.Context) string {
+	u, _ := c.Get(sessionKey)
+	id, _ := u.(string)
+	return id
 }
 
 // UserIDFrom returns the authenticated caller's user id ("" outside Require).

@@ -120,6 +120,45 @@ describe('AuthService', () => {
     expect(nav).toHaveBeenCalledWith(['/login']);
   });
 
+  it('logout also ends the login on the server, with the token it still has', () => {
+    const { auth, http, router } = setup();
+    vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    auth.login('a@b.co', 'x').subscribe();
+    http.expectOne('/api/v1/auth/login').flush(response());
+    auth.logout();
+    const req = http.expectOne('/api/v1/auth/logout');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.headers.get('Authorization')).toBe('Bearer tok-designer');
+    // The tab is signed out whatever the server answers.
+    req.flush({ error: 'down' }, { status: 503, statusText: 'Unavailable' });
+    expect(auth.isAuthenticated()).toBe(false);
+  });
+
+  it('signing out when already signed out does not call the server', () => {
+    const { auth, http, router } = setup();
+    vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    auth.logout();
+    http.expectNone('/api/v1/auth/logout');
+  });
+
+  it('the browser idle sign-out ends the login on the server too', () => {
+    const { auth, http, router } = setup();
+    vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    auth.login('a@b.co', 'x').subscribe();
+    http.expectOne('/api/v1/auth/login').flush(response());
+    auth.expireIdle();
+    http.expectOne('/api/v1/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('a session the server already ended is not ended again', () => {
+    const { auth, http, router } = setup();
+    vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    auth.login('a@b.co', 'x').subscribe();
+    http.expectOne('/api/v1/auth/login').flush(response());
+    auth.expire();
+    http.expectNone('/api/v1/auth/logout');
+  });
+
   it('an idle sign-out clears the session and says why on the login page', () => {
     const { auth, http, router } = setup();
     const nav = vi.spyOn(router, 'navigate').mockResolvedValue(true);

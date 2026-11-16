@@ -138,6 +138,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// The server ends a login that has been idle a little longer than the web app's own timeout (see
+	// service.SessionIdleGrace), so a stolen or forgotten token stops working, not only the browser tab.
+	svc.SessionIdle = service.SessionIdleLimit(idleMinutes)
 	sessionTTL, err := sessionDuration(os.Getenv("SESSION_HOURS"))
 	if err != nil {
 		return err
@@ -183,7 +186,7 @@ func run() error {
 	}
 	r.Use(logx.Middleware(logger), logx.Recovery(logger))
 	(&handlers.H{
-		S: svc, JWTSecret: []byte(jwtSecret), Validate: svc.ValidateToken, LocalFiles: localStore,
+		S: svc, JWTSecret: []byte(jwtSecret), Validate: svc.ValidateToken, Session: svc.CheckSession, LocalFiles: localStore,
 		TokenTTL: sessionTTL, IdleTimeoutMinutes: idleMinutes,
 	}).Register(r)
 
@@ -466,7 +469,8 @@ func backupMaxAge(v, storageEnv, bucket string) (time.Duration, error) {
 }
 
 // idleTimeoutMinutes parses IDLE_TIMEOUT_MINUTES: how long the web app may sit without activity before it
-// signs the user out. Empty means 30, and 0 turns it off.
+// signs the user out, and (with a short grace) how long the server keeps a login that makes no requests.
+// Empty means 30, and 0 turns both off.
 func idleTimeoutMinutes(v string) (int, error) {
 	if strings.TrimSpace(v) == "" {
 		return 30, nil
