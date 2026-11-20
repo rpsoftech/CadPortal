@@ -52,7 +52,7 @@ for the domain model, formulas and stages; this page covers how to work here.
 
 - Roles: admin (everything), designer (edit), production (read; never sees wastage or rates).
 - Wastage: 22KY 6, 20KY 5.5, 18KY 6, 18KR 7. An admin enters it under Master data; no migration sets it.
-- STAR stone price: 0.50 per piece for 1.00 to 1.50 mm.
+- STAR stone price: 0.55 per piece for 1.00 to 1.50 mm.
 - Idle limit: `IDLE_TIMEOUT_MINUTES` (default 30) plus 2 minutes of grace; `SESSION_HOURS` (default 8) is the cap.
 
 ## Still open (owner decides)
