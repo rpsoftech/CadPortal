@@ -640,6 +640,8 @@ stone code**), then **Import CSV / paste** the file's contents. Notes on how it 
 - The columns are in the order of **Export CSV** (`carats_per_stone` is left empty and the weight is in `grams_per_stone`),
   so the file loads correctly even when pasted without its header line.
 - Prices are left empty for you to fill in (per piece by default).
+- **The owner's own list:** `docs/imports/stone-matrix-default.csv` has 35 rows for the stone codes `STAR`, `1HD` and `2HD`
+  (weight per stone in grams, price per piece). Add those three stone codes first, then import it.
 - **With the STAR price filled in:** `docs/imports/cz-stone-weights-star-priced.csv` is the same 35 rows with
   STAR at 1.00, 1.10, 1.20, 1.30, 1.40 and 1.50 mm priced at 0.50 per piece (the rate chart's 500 per 1000
   pieces). Import it instead of the plain file if you want those prices. The chart's 0.90 mm is not in the
