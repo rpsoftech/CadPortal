@@ -637,6 +637,8 @@ stone code**), then **Import CSV / paste** the file's contents. Notes on how it 
   notation, and kept in the **Sieve** column, so the original name is never lost. Check this reading.
 - A `0` in the list means that stone does not come in that size, so no row is made for it (STAR at
   1/15, 1/25 and 1/35). A zero is never recorded as a weight, and blank cells are skipped.
+- The columns are in the order of **Export CSV** (`carats_per_stone` is left empty and the weight is in `grams_per_stone`),
+  so the file loads correctly even when pasted without its header line.
 - Prices are left empty for you to fill in (per piece by default).
 - **With the STAR price filled in:** `docs/imports/cz-stone-weights-star-priced.csv` is the same 35 rows with
   STAR at 1.00, 1.10, 1.20, 1.30, 1.40 and 1.50 mm priced at 0.50 per piece (the rate chart's 500 per 1000

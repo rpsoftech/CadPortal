@@ -23,6 +23,14 @@ test.describe('docs/imports/cz-stone-weights.csv', () => {
     expect(hd2?.carats_per_stone).toBe('0.1087'); // 21.74 g per 1000
   });
 
+  test('reads the same weights when pasted without the header line (columns are in the export order)', () => {
+    const headerless = parseMatrixCsv(text.split('\n').slice(1).join('\n'));
+    expect(headerless.errors).toEqual([]);
+    expect(headerless.rows).toEqual(r.rows);
+    const star1mm = headerless.rows.find((x) => x.stone_code === 'STAR' && x.size_mm === '1.00');
+    expect(caratsToGrams(star1mm!.carats_per_stone, 5)).toBe('0.00181'); // grams, not read as carats
+  });
+
   test('leaves out sizes a stone does not come in, instead of recording them as zero', () => {
     for (const size of ['1.15', '1.25', '1.35']) {
       expect(r.rows.some((x) => x.stone_code === 'STAR' && x.size_mm === size)).toBe(false);
