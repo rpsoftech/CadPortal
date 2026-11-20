@@ -47,7 +47,7 @@ test.describe('docs/imports/cz-stone-weights.csv', () => {
 });
 
 // docs/imports/cz-stone-weights-star-priced.csv is the same list with the owner's STAR price filled in
-// (500 per 1000 pieces = 0.50 per piece, sizes 1.00 to 1.50 mm). It must load without a refusal, carry exactly
+// (550 per 1000 pieces = 0.55 per piece, sizes 1.00 to 1.50 mm). It must load without a refusal, carry exactly
 // the supplier weights, and price nothing else.
 test.describe('docs/imports/cz-stone-weights-star-priced.csv', () => {
   const plain = parseMatrixCsv(readFileSync('../docs/imports/cz-stone-weights.csv', 'utf8'));
@@ -62,10 +62,10 @@ test.describe('docs/imports/cz-stone-weights-star-priced.csv', () => {
     expect(priced.rows.map(key)).toEqual(plain.rows.map(key));
   });
 
-  test('prices STAR 1.00 to 1.50 mm at 0.50 per piece and nothing else', () => {
+  test('prices STAR 1.00 to 1.50 mm at 0.55 per piece and nothing else', () => {
     for (const x of priced.rows) {
       const isPriced = x.stone_code === 'STAR' && pricedSizes.includes(x.size_mm);
-      expect(x.rate_per_pc, `${x.stone_code} ${x.size_mm}`).toBe(isPriced ? '0.50' : null);
+      expect(x.rate_per_pc, `${x.stone_code} ${x.size_mm}`).toBe(isPriced ? '0.55' : null);
       expect(x.rate_per_ct).toBeNull();
       expect(x.rate_per_g).toBeNull();
     }

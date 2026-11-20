@@ -643,7 +643,7 @@ stone code**), then **Import CSV / paste** the file's contents. Notes on how it 
 - **The owner's own list:** `docs/imports/stone-matrix-default.csv` has 35 rows for the stone codes `STAR`, `1HD` and `2HD`
   (weight per stone in grams, price per piece). Add those three stone codes first, then import it.
 - **With the STAR price filled in:** `docs/imports/cz-stone-weights-star-priced.csv` is the same 35 rows with
-  STAR at 1.00, 1.10, 1.20, 1.30, 1.40 and 1.50 mm priced at 0.50 per piece (the rate chart's 500 per 1000
+  STAR at 1.00, 1.10, 1.20, 1.30, 1.40 and 1.50 mm priced at 0.55 per piece (550 per 1000
   pieces). Import it instead of the plain file if you want those prices. The chart's 0.90 mm is not in the
   supplier's weight list, so it has no row; add it by hand once its weight is known. Every other price is
   still empty.

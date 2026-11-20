@@ -126,7 +126,7 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
 ## Decided
 - Wastage % (owner, approximate): 22KY 6, 20KY 5.5, 18KY 6, 18KR 7. An admin enters it under Master data, Alloys. It is
   deliberately not set by a migration: that would also fill every test database and hide the "missing wastage" paths.
-- STAR stone price: 0.50 per piece (the rate chart's 500 per 1000 pieces) for 1.00 to 1.50 mm; ready to import as
+- STAR stone price: 0.55 per piece (550 per 1000 pieces) for 1.00 to 1.50 mm; ready to import as
   `docs/imports/cz-stone-weights-star-priced.csv`.
 - Storage: Cloudflare R2 in production (bucket `cad-vault`, keys `cad/<design>/<variation>/<id>.<kind>.gz`); local disk (`STORAGE=local`) for development only.
 - Design codes are automatic and sequential: category prefix (1 to 6 letters, set by an admin) plus a 4-digit number, e.g. `LR0001`, `LR0002`, counted per category. Nobody types a code: the API refuses one on create, and an import may only bring a code that is the category's prefix plus digits. A category without a prefix cannot take designs.
