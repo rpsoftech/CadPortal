@@ -72,3 +72,30 @@ test.describe('docs/imports/cz-stone-weights-star-priced.csv', () => {
     expect(priced.rows.filter((x) => x.rate_per_pc !== null)).toHaveLength(pricedSizes.length);
   });
 });
+
+// docs/imports/stone-matrix-default.csv is the owner's own list for the stone codes STAR, 1HD and 2HD: the weight
+// of one stone in grams and the price per piece. It must load without a refusal, with or without its header line.
+test.describe('docs/imports/stone-matrix-default.csv', () => {
+  const text = readFileSync('../docs/imports/stone-matrix-default.csv', 'utf8');
+  const r = parseMatrixCsv(text);
+
+  test('parses without errors, 35 rows over STAR, 1HD and 2HD', () => {
+    expect(r.errors).toEqual([]);
+    expect(r.rows).toHaveLength(35);
+    const count = (code: string) => r.rows.filter((x) => x.stone_code === code).length;
+    expect([count('STAR'), count('1HD'), count('2HD')]).toEqual([11, 10, 14]);
+  });
+
+  test('reads the weight as grams (0.00181 g = 0.00905 ct) and prices every row per piece', () => {
+    const star1mm = r.rows.find((x) => x.stone_code === 'STAR' && x.size_mm === '1.00');
+    expect(star1mm?.carats_per_stone).toBe('0.00905');
+    expect(caratsToGrams(star1mm!.carats_per_stone, 5)).toBe('0.00181');
+    expect(r.rows.every((x) => x.rate_basis === 'pc' && x.rate_per_pc !== null)).toBe(true);
+  });
+
+  test('reads the same rows when pasted without the header line', () => {
+    const headerless = parseMatrixCsv(text.split('\n').slice(1).join('\n'));
+    expect(headerless.errors).toEqual([]);
+    expect(headerless.rows).toEqual(r.rows);
+  });
+});
