@@ -46,7 +46,7 @@ deleted once you have checked the designs in the portal; the source folders are 
 ## Rules the tools apply
 
 - **Photos.** One render per metal (yellow, rose, white; view 3D, else P, else T; PNG before JPG), then the model photo
-  (WH). The yellow one is the cover. The CAD screenshot is only read, not uploaded (`--upload-cad-picture` changes that).
+  (WH), when the folder has one: neither a missing metal nor a missing model photo stops a design. The yellow one is the cover. The CAD screenshot is only read, not uploaded (`--upload-cad-picture` changes that).
   A design holds 5 photos at most.
 - **Base input.** The printed weight of the first karat the portal has an alloy for (22, 18, 14, ...), else the STL
   volume. A design with neither is left out, and the reason is printed.

@@ -90,9 +90,31 @@ class Stage(unittest.TestCase):
             d.mkdir()
             for n in ["a.stl", "b.stl", "198.jpg", "Y3D.png"]:
                 (d / n).write_text("x")
-            problems = " | ".join(stg.inspect_design(d, ["3D"])["problems"])
-            for want in ["2 stl files", "0 3dm/jcd files", "no rose render", "no white render", "no model photo"]:
+            info = stg.inspect_design(d, ["3D"])
+            problems = " | ".join(info["problems"])
+            for want in ["2 stl files", "0 3dm/jcd files"]:
                 self.assertIn(want, problems)
+            self.assertNotIn("render", problems)   # a missing render is only a note
+            self.assertEqual(info["notes"], ["no rose render", "no white render", "no model photo"])
+
+    def test_no_model_photo_is_not_a_problem(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "MHD245"
+            d.mkdir()
+            for n in ["MHD245.stl", "MHD245.jcd", "MHD245.jpg", "Y3D.png", "R3D.png", "W3D.png"]:
+                (d / n).write_text("x")
+            info = stg.inspect_design(d, ["3D"])
+            self.assertEqual(info["problems"], [])
+            self.assertEqual(info["notes"], ["no model photo"])
+            self.assertEqual([l for l, _ in info["renders"]], ["yellow", "rose", "white"])
+
+    def test_a_folder_with_no_render_at_all_is_a_problem(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "X1"
+            d.mkdir()
+            for n in ["a.stl", "a.3dm", "a.jpg"]:
+                (d / n).write_text("x")
+            self.assertEqual(stg.inspect_design(d, ["3D"])["problems"], ["no renders at all"])
 
 
 class Mock(http.server.BaseHTTPRequestHandler):
