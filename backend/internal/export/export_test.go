@@ -188,3 +188,23 @@ func TestWriteCostingCSVShowsHowEachStoneLineWasPriced(t *testing.T) {
 		t.Errorf("stone_cost = %s want 5764.00", got)
 	}
 }
+
+func TestWriteCostingSheetCSVNamesTheStonesLeftOut(t *testing.T) {
+	row := service.SheetRow{VariationCode: "LR1-V1", MetalCode: "18KR", StoneCode: "2HD", IgnoredStones: "1 x 6.00 mm"}
+	var with bytes.Buffer
+	if err := WriteCostingSheetCSV(&with, []service.SheetRow{row}, service.SheetTotals{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(with.String()), "\n")
+	if !strings.HasSuffix(lines[0], ",ignored_stones") || !strings.HasSuffix(lines[1], ",1 x 6.00 mm") {
+		t.Errorf("a sheet that left stones out must say which in its last column:\n%s", with.String())
+	}
+	row.IgnoredStones = ""
+	var without bytes.Buffer
+	if err := WriteCostingSheetCSV(&without, []service.SheetRow{row}, service.SheetTotals{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(without.String(), "ignored_stones") {
+		t.Errorf("a sheet that left nothing out has no such column:\n%s", without.String())
+	}
+}

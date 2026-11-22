@@ -312,6 +312,8 @@ export interface CostSheetRequest {
   skip_incomplete: boolean;
   /** Pieces per variation id (an order's quantities): the rows are then for that many pieces. */
   quantities?: Record<number, number>;
+  /** Leave out every stone larger than this many mm: not counted, weighed, priced or set. */
+  ignore_stones_over_mm?: string;
 }
 
 /** One costed variation. Money and weights are decimal strings straight from the API. */
@@ -338,6 +340,8 @@ export interface CostSheetRow {
   setting_rate_per_pc: string;
   setting_cost: string;
   total: string;
+  /** The stones left out because of ignore_stones_over_mm, per piece, for example "1 x 6.00 mm". */
+  ignored_stones?: string;
 }
 
 export interface CostSheetTotals {
@@ -802,6 +806,8 @@ export interface CostOrderRequest {
   setting_rate_per_pc: string;
   skip_incomplete: boolean;
   name?: string;
+  /** Leave out every stone larger than this many mm (see CostSheetRequest). */
+  ignore_stones_over_mm?: string;
 }
 
 /** The answer to costing an order: the saved sheet and how far the live designs have moved from the order. */

@@ -437,3 +437,74 @@ func TestCostSelectionPricesAPerGramMatrixRow(t *testing.T) {
 		t.Fatalf("a row without a price must be reported as missing, not costed as zero: rows=%d problems=%d", len(missing.Rows), len(missing.Problems))
 	}
 }
+
+// A large centre stone (6.00 mm) has no stone matrix row. Without the option the variation cannot be costed; with
+// "ignore stones over 2 mm" it is costed exactly like the same piece without that stone, and the row says what was left out.
+func TestCostSelectionCanIgnoreStonesOverASize(t *testing.T) {
+	e := newSheetEnv(t)
+	ctx := context.Background()
+	des3 := newDesign(t, e.s, "LR072")
+	v3, err := e.s.CreateVariation(ctx, des3.ID, BaseInput{VolumeMM3: dp("100")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.s.SetSeats(ctx, v3.ID, []SeatInput{{SizeMM: d("1.10"), StoneCount: 10}, {SizeMM: d("6.00"), StoneCount: 1}}); err != nil {
+		t.Fatal(err)
+	}
+
+	plain, err := e.s.CostSelection(ctx, e.req(func(r *SheetRequest) { r.VariationIDs = []int64{v3.ID} }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plain.Rows) != 0 || len(plain.Problems) != 1 || len(plain.Problems[0].Variations[0].MatrixMissing) == 0 {
+		t.Fatalf("without the option: rows %d, problems %+v (want the missing 6.00 mm row named)", len(plain.Rows), plain.Problems)
+	}
+
+	over := d("2.00")
+	res, err := e.s.CostSelection(ctx, e.req(func(r *SheetRequest) { r.VariationIDs = []int64{v3.ID, e.v2}; r.IgnoreStonesOverMM = &over }))
+	if err != nil || len(res.Problems) != 0 || len(res.Rows) != 2 {
+		t.Fatalf("with the option: %v rows %d problems %+v", err, len(res.Rows), res.Problems)
+	}
+	var big, small SheetRow
+	for _, r := range res.Rows {
+		if r.VariationID == v3.ID {
+			big = r
+		} else {
+			small = r
+		}
+	}
+	// The same piece without the stone: identical stone carats, setting pieces and total.
+	if !same(big.StoneCt, small.StoneCt) || big.SettingPcs != 10 || !same(big.Total, small.Total) {
+		t.Errorf("costed %+v, want the same as the piece without the 6.00 mm stone %+v", big, small)
+	}
+	if big.IgnoredStones != "1 x 6.00 mm" || small.IgnoredStones != "" {
+		t.Errorf("ignored stones = %q and %q", big.IgnoredStones, small.IgnoredStones)
+	}
+
+	// A seat exactly at the limit is kept; a quantity multiplies the amounts but not the note.
+	at := d("6.00")
+	if r, _ := e.s.CostSelection(ctx, e.req(func(r *SheetRequest) { r.VariationIDs = []int64{v3.ID}; r.IgnoreStonesOverMM = &at })); len(r.Rows) != 0 {
+		t.Error("a 6.00 mm stone with a 6.00 mm limit is not over the limit, so it still needs its matrix row")
+	}
+	q, _ := e.s.CostSelection(ctx, e.req(func(r *SheetRequest) {
+		r.VariationIDs = []int64{v3.ID}
+		r.IgnoreStonesOverMM = &over
+		r.Quantities = map[int64]int{v3.ID: 3}
+	}))
+	if len(q.Rows) != 1 || q.Rows[0].SettingPcs != 30 || q.Rows[0].IgnoredStones != "1 x 6.00 mm" {
+		t.Errorf("quantity 3: %+v", q.Rows)
+	}
+
+	for _, bad := range []string{"0", "-1", "101", "2.005"} {
+		v := d(bad)
+		if _, err := e.s.CostSelection(ctx, e.req(func(r *SheetRequest) { r.VariationIDs = []int64{e.v2}; r.IgnoreStonesOverMM = &v })); !errors.Is(err, ErrInvalid) {
+			t.Errorf("ignore_stones_over_mm %s: %v, want invalid", bad, err)
+		}
+	}
+
+	// A re-cost keeps the choice.
+	old := SheetDetail{Inputs: SheetInputs{SheetRequest: SheetRequest{IgnoreStonesOverMM: &over}}}
+	if got := RecostRequest(old, RecostOverrides{}).IgnoreStonesOverMM; got == nil || !got.Equal(over) {
+		t.Errorf("re-cost lost the option: %v", got)
+	}
+}

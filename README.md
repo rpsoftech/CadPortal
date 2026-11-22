@@ -810,6 +810,15 @@ stone_code, gold_rate_per_g, setting_rate_per_pc, skip_incomplete?}` (`design_id
 variations); the older `{items: […]}` request still works. `POST /exports/costing-preview` takes the
 same body and always answers 200 with the rows and the problems, for the screen.
 
+**Leaving out large stones.** A solitaire's centre stone has no row in the stone matrix, so its design cannot be costed
+(and shows no stone figures) until that size has a weight and a price. In the costing dialogs, **Leave out large
+stones** (`ignore_stones_over_mm`, default 2.00 mm, any size with up to two decimals) costs the design without every
+seat larger than that: those stones are not counted, weighed, priced or set, and the gross weight and the setting
+pieces leave them out too. Each row names what was left out per piece (`ignored_stones`, for example `1 x 6.00 mm`, also
+a "Left out" column on the screen and a last `ignored_stones` column in the CSV, which exists only when something was
+left out). It is a choice made per costing, stored with a saved sheet and kept by a re-cost; it is not a standing
+setting. Once the matrix has the size, switch it off.
+
 **Save as costing sheet** keeps a result for later (**Costing sheets** in the top bar). A sheet stores the
 inputs, every computed row, the totals, the wastage % per metal and the stone prices per matrix row that
 were used, and the exact CSV. It is a snapshot (jsonb columns of the `costing_sheets` table, not
