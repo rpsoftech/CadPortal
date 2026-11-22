@@ -953,9 +953,11 @@ paths:
   /api/v1/variations/{id}/upload-cad:
     post:
       tags: [CAD vault]
-      summary: Upload a .3dm or .stl file (designer, admin)
+      summary: Upload a .3dm, .jcd or .stl file (designer, admin)
       description: |
-        Multipart with one `file` part; the kind comes from the file name. The SHA-256 is taken over the original
+        Multipart with one `file` part; the kind comes from the file name. A `.jcd` (JewelCAD) is kept in the same
+        slot as a `.3dm` (kind `3dm`, under its own file name), so a variation has an stl plus one native file, and a
+        `.jcd` and a `.3dm` with the same bytes are duplicates. The SHA-256 is taken over the original
         bytes, then the file is gzipped while it streams to storage. A duplicate checksum is a 409 that names the
         existing variation. Returns 503 when file storage is off.
       parameters: [{$ref: "#/components/parameters/Id"}]

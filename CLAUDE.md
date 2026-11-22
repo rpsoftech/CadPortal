@@ -130,6 +130,9 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
   `docs/imports/cz-stone-weights-star-priced.csv`.
 - Storage: Cloudflare R2 in production (bucket `cad-vault`, keys `cad/<design>/<variation>/<id>.<kind>.gz`); local disk (`STORAGE=local`) for development only.
 - Design codes are automatic and sequential: category prefix (1 to 6 letters, set by an admin) plus a 4-digit number, e.g. `LR0001`, `LR0002`, counted per category. Nobody types a code: the API refuses one on create, and an import may only bring a code that is the category's prefix plus digits. A category without a prefix cannot take designs.
+- CAD file types: `.stl` and one native file per variation, a `.3dm` or a `.jcd` (JewelCAD). A `.jcd` is kept in the
+  native slot (`kind` `3dm`, `file_3dm_*` columns) under its own file name and is zipped with its own extension; the
+  API kinds stay `3dm` and `stl`. No migration.
 - Roles: `admin` (everything), `designer` (edit designs, seats, CAD, costing), `production` (read, job bags, CAD downloads; never sees wastage % or stone rates).
 
 ## How to work

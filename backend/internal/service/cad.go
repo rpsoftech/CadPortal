@@ -32,15 +32,26 @@ type UploadResult struct {
 	SizeBytes     int64  `json:"size_bytes"`
 }
 
-// KindFromFilename maps .3dm / .stl (case-insensitive) to "3dm" / "stl".
+// KindFromFilename maps .3dm, .jcd and .stl (case-insensitive) to the two file kinds "3dm" and "stl". "3dm" is the
+// native CAD slot: a .jcd (JewelCAD) is kept there as an alternative to a .3dm, under its own file name, so a variation
+// has an stl plus one native file.
 func KindFromFilename(name string) (string, bool) {
 	switch strings.ToLower(filepath.Ext(name)) {
-	case ".3dm":
+	case ".3dm", ".jcd":
 		return "3dm", true
 	case ".stl":
 		return "stl", true
 	}
 	return "", false
+}
+
+// CADEntryName is the name of a CAD file inside a ZIP: the variation code and the kind, but a .jcd kept in the native
+// slot keeps its own extension, so it opens in the program that made it.
+func CADEntryName(variationCode, kind, originalName string) string {
+	if kind == "3dm" && strings.EqualFold(filepath.Ext(originalName), ".jcd") {
+		return variationCode + ".jcd"
+	}
+	return variationCode + "." + kind
 }
 
 func randomID() (string, error) {
@@ -63,7 +74,7 @@ func (s *Service) UploadCAD(ctx context.Context, variationID int64, filename str
 	filename = cleanFilename(filename)
 	kind, ok := KindFromFilename(filename)
 	if !ok {
-		return UploadResult{}, invalid("file must have a .3dm or .stl extension")
+		return UploadResult{}, invalid("file must have a .3dm, .jcd or .stl extension")
 	}
 	v, err := s.Q.GetVariation(ctx, variationID)
 	if err != nil {

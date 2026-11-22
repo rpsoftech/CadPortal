@@ -717,7 +717,7 @@ func (h *H) simulateBOM(c *gin.Context) {
 // ---------- CAD vault ----------
 
 // uploadCAD streams the multipart "file" part straight into the store without
-// buffering the whole body. The kind (.3dm / .stl) comes from the filename.
+// buffering the whole body. The kind (.3dm or .jcd: the native slot, .stl) comes from the filename.
 func (h *H) uploadCAD(c *gin.Context) {
 	id, ok := idParam(c)
 	if !ok {

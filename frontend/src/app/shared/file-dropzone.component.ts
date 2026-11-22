@@ -26,13 +26,13 @@ export interface StoredFile {
       (dragleave)="onDrag($event, false)"
       (drop)="onDrop($event)"
     >
-      <strong class="mono"><span class="sr-only">Upload </span>.{{ kind() }}</strong>
+      <strong class="mono"><span class="sr-only">Upload </span>{{ typeLabel() }}</strong>
       <span class="muted">Drop a file here or click to choose</span>
       <input
         #pick
         type="file"
         hidden
-        [accept]="'.' + kind()"
+        [accept]="accept()"
         [disabled]="disabled()"
         (change)="onPick(pick)"
       />
@@ -127,6 +127,10 @@ export class FileDropzoneComponent {
   readonly removed = output<void>();
 
   protected readonly over = signal(false);
+
+  /** The native CAD slot takes a .3dm or a .jcd (JewelCAD); the other takes an .stl. */
+  protected readonly accept = computed(() => (this.kind() === '3dm' ? '.3dm,.jcd' : '.stl'));
+  protected readonly typeLabel = computed(() => (this.kind() === '3dm' ? '.3dm / .jcd' : '.stl'));
 
   protected readonly sizeLabel = computed(() => {
     const b = this.stored().sizeBytes;
