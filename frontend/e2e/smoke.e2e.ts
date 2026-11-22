@@ -246,7 +246,7 @@ test('a CAD file keeps its bytes and its accented name through upload, download 
   const original = Buffer.alloc(6 << 20);
   for (let i = 0; i < original.length; i += 4)
     original.writeUInt32LE(Math.imul(i + 1, 2654435761) >>> 0, i);
-  await page.locator('input[type=file][accept=".3dm"]').setInputFiles({
+  await page.locator('input[type=file][accept=".3dm,.jcd"]').setInputFiles({
     name,
     mimeType: 'application/octet-stream',
     buffer: original,

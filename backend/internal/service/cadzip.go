@@ -129,7 +129,7 @@ func (s *Service) PlanCADZip(ctx context.Context, req CADZipRequest) (*CADZipPla
 				key, name, sha, size = v.FileStlKey, v.FileStlName, v.FileStlSha256, v.FileStlSizeBytes
 			}
 			e := ziparchive.Entry{
-				Name:         v.Code + "." + kind,
+				Name:         CADEntryName(v.Code, kind, name.String),
 				OriginalName: name.String,
 				Meta:         []string{d.Code, d.Name, v.Code, kind},
 			}

@@ -260,3 +260,27 @@ func TestUploadCADAcceptsANonUTF8AndAccentedFilename(t *testing.T) {
 		t.Errorf("objects = %v (replacing should leave one)", mem.Keys())
 	}
 }
+
+func TestKindFromFilenameAndZipEntryNames(t *testing.T) {
+	for _, tc := range []struct {
+		name, kind string
+		ok         bool
+	}{
+		{"ring.3dm", "3dm", true}, {"ring.3DM", "3dm", true}, {"ring.jcd", "3dm", true}, {"RING.JCD", "3dm", true},
+		{"ring.stl", "stl", true}, {"ring.txt", "", false}, {"ring", "", false}, {"ring.jcd.txt", "", false},
+	} {
+		if kind, ok := KindFromFilename(tc.name); kind != tc.kind || ok != tc.ok {
+			t.Errorf("KindFromFilename(%q) = %q, %v; want %q, %v", tc.name, kind, ok, tc.kind, tc.ok)
+		}
+	}
+	for _, tc := range []struct{ code, kind, orig, want string }{
+		{"LR1-V1", "3dm", "ring.3dm", "LR1-V1.3dm"},
+		{"LR1-V1", "3dm", "ring.JCD", "LR1-V1.jcd"},
+		{"LR1-V1", "3dm", "", "LR1-V1.3dm"},
+		{"LR1-V1", "stl", "x.jcd", "LR1-V1.stl"}, // only the native slot can hold a .jcd
+	} {
+		if got := CADEntryName(tc.code, tc.kind, tc.orig); got != tc.want {
+			t.Errorf("CADEntryName(%q, %q, %q) = %q, want %q", tc.code, tc.kind, tc.orig, got, tc.want)
+		}
+	}
+}

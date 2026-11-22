@@ -547,7 +547,7 @@ CADPORTAL_VERSION=1.2.3 docker compose -f docker-compose.prod.yml -f docker-comp
 | Designs | `POST/GET /designs` (POST assigns the code, a supplied one is refused; `q` search, `limit`/`offset`, total in `X-Total-Count`), `GET /designs/:code`, `PUT/DELETE /designs/:id`, `POST /designs/import` (bulk create from CSV rows; `dry_run` validates only) |
 | Variations | `POST /designs/:id/variations`, `PUT /variations/:id/base-input`, `DELETE /variations/:id` |
 | Seats and BOM | `GET/PUT /variations/:id/seats`, `POST /variations/:id/clone-seats`, `GET /variations/:id/simulate-bom?code=2HD` |
-| CAD vault | `POST /variations/:id/upload-cad`, `GET /variations/:id/download?kind=3dm\|stl`, `DELETE /variations/:id/cad?kind=3dm\|stl` |
+| CAD vault | `POST /variations/:id/upload-cad` (`.stl`, `.3dm` or `.jcd`; a `.jcd` is kept in the 3dm slot under its own name), `GET /variations/:id/download?kind=3dm\|stl`, `DELETE /variations/:id/cad?kind=3dm\|stl` |
 | Exports | `POST /exports/job-bag-pdf`, `POST /exports/job-bags-pdf` (many bags in one PDF), `GET /exports/designs-csv` (any role); `POST /exports/costing-csv`, `POST /exports/costing-preview` (admin/designer) |
 | Costing sheets (admin/designer) | `POST/GET /costing-sheets`, `GET/DELETE /costing-sheets/:id`, `GET /costing-sheets/:id/csv`, `POST /costing-sheets/:id/recost` |
 | Orders (read: any role; write: admin/designer) | `POST/GET /orders`, `GET/PUT /orders/:id`, `PUT /orders/:id/lines` (draft only), `POST /orders/:id/status`, `POST /orders/:id/clone` |

@@ -106,8 +106,12 @@ func (s *Service) PlanOrderZip(ctx context.Context, orderID int64, files string,
 			if kind == "stl" {
 				snapFile, key = l.Snapshot.FileStl, in.FileStlKey
 			}
+			recorded := ""
+			if snapFile != nil {
+				recorded = snapFile.Name
+			}
 			e := ziparchive.Entry{
-				Name: l.Snapshot.VariationCode + "." + kind,
+				Name: CADEntryName(l.Snapshot.VariationCode, kind, recorded),
 				Meta: []string{od.Number, l.Snapshot.DesignCode, l.Snapshot.VariationCode, l.Snapshot.MetalCode,
 					l.Snapshot.StoneCode, fmt.Sprint(l.Quantity), kind, ""},
 			}

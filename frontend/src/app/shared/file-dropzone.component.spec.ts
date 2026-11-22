@@ -24,6 +24,17 @@ describe('FileDropzoneComponent', () => {
     expect(emitted).toBe(1);
   });
 
+  it('takes a .3dm or a .jcd in the native slot and only an .stl in the other', () => {
+    const dm = mount({ name: null, sha256: null, sizeBytes: null });
+    expect(dm.nativeElement.querySelector('input[type=file]').getAttribute('accept')).toBe('.3dm,.jcd');
+    expect(dm.nativeElement.querySelector('strong').textContent).toContain('.3dm / .jcd');
+
+    const stl = TestBed.createComponent(FileDropzoneComponent);
+    stl.componentRef.setInput('kind', 'stl');
+    stl.detectChanges();
+    expect(stl.nativeElement.querySelector('input[type=file]').getAttribute('accept')).toBe('.stl');
+  });
+
   it('disables Remove while the zone is disabled', () => {
     const f = TestBed.createComponent(FileDropzoneComponent);
     f.componentRef.setInput('kind', 'stl');
