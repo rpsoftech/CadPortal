@@ -1728,6 +1728,7 @@ paths:
                 setting_rate_per_pc: {$ref: "#/components/schemas/Decimal"}
                 skip_incomplete: {type: boolean}
                 name: {type: string, description: Default "<ORD number> costing"}
+                ignore_stones_over_mm: {allOf: [{$ref: "#/components/schemas/Decimal"}], description: "Leave out every stone seat larger than this many mm (more than 0, at most 100, 2 decimals): its stones are not counted, weighed, priced or set, so it needs no stone matrix row. Each row says what was left out in `ignored_stones`."}
             example: {gold_rate_per_g: 6200, setting_rate_per_pc: 15}
       responses:
         "201":
@@ -2376,6 +2377,7 @@ components:
         gold_rate_per_g: {$ref: "#/components/schemas/Decimal"}
         setting_rate_per_pc: {$ref: "#/components/schemas/Decimal"}
         skip_incomplete: {type: boolean}
+        ignore_stones_over_mm: {allOf: [{$ref: "#/components/schemas/Decimal"}], description: "Leave out every stone seat larger than this many mm (more than 0, at most 100, 2 decimals): its stones are not counted, weighed, priced or set, so it needs no stone matrix row. Each row says what was left out in `ignored_stones`."}
         quantities:
           type: object
           description: "Variation id to piece count (1 to 100000). A listed variation is costed for that many pieces; its row then carries `quantity` and every weight and amount is for the whole line."
@@ -2419,6 +2421,7 @@ components:
         setting_rate_per_pc: {$ref: "#/components/schemas/Decimal"}
         setting_cost: {$ref: "#/components/schemas/Decimal"}
         total: {$ref: "#/components/schemas/Decimal"}
+        ignored_stones: {type: string, description: 'Stones left out because of `ignore_stones_over_mm`, per piece, for example "1 x 6.00 mm"; absent when none', example: "1 x 6.00 mm"}
     CostTotals:
       type: object
       properties:

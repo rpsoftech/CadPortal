@@ -144,6 +144,8 @@ type OrderCostParams struct {
 	SettingRatePerPc decimal.Decimal `json:"setting_rate_per_pc"`
 	SkipIncomplete   bool            `json:"skip_incomplete"`
 	Name             string          `json:"name"`
+	// IgnoreStonesOverMM: see SheetRequest.
+	IgnoreStonesOverMM *decimal.Decimal `json:"ignore_stones_over_mm,omitempty"`
 }
 
 // CostOrder costs the order's variations for their quantities in the order's metal and stone code, from
@@ -156,7 +158,8 @@ func (s *Service) CostOrder(ctx context.Context, id int64, p OrderCostParams) (C
 		return CostResult{}, SheetRequest{}, d, err
 	}
 	req := SheetRequest{MetalCode: d.MetalCode, StoneCode: d.StoneCode, GoldRatePerG: p.GoldRatePerG,
-		SettingRatePerPc: p.SettingRatePerPc, SkipIncomplete: p.SkipIncomplete, Quantities: map[int64]int{}}
+		SettingRatePerPc: p.SettingRatePerPc, SkipIncomplete: p.SkipIncomplete, Quantities: map[int64]int{},
+		IgnoreStonesOverMM: p.IgnoreStonesOverMM}
 	var purged []DesignProblem
 	for _, l := range d.Lines {
 		if l.VariationID == nil {

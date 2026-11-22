@@ -16,6 +16,7 @@ import { fixed } from '../../core/format';
 import { CostPreview, CostSheetRequest } from '../../core/models';
 import { CostProblemsComponent } from '../../shared/cost-problems.component';
 import { saveBlob } from '../../shared/download';
+import { IGNORE_OVER_DEFAULT_MM, ignoreOverPart } from '../../shared/ignore-stones';
 import { positiveDecimal } from '../../shared/validators';
 
 export interface CostSelectedData {
@@ -87,6 +88,19 @@ export function costUsable(r: CostPreview | null, skip: boolean): boolean {
         <mat-slide-toggle formControlName="skip">
           Skip variations with missing data (they are listed, not costed)
         </mat-slide-toggle>
+        <mat-slide-toggle formControlName="ignoreBig">
+          Leave out large stones: not counted, weighed, priced or set
+        </mat-slide-toggle>
+        @if (form.controls.ignoreBig.value) {
+          <mat-form-field appearance="outline" class="field">
+            <mat-label>Larger than (mm)</mat-label>
+            <input matInput formControlName="ignoreOver" inputmode="decimal" />
+            <mat-hint>A centre stone with no stone matrix row</mat-hint>
+            @if (form.controls.ignoreOver.errors; as e) {
+              <mat-error>{{ e['required'] ? 'Required' : (e['decimal'] ?? e['positive']) }}</mat-error>
+            }
+          </mat-form-field>
+        }
         <button matButton="filled" type="submit" [disabled]="form.invalid || busy()">Preview</button>
       </form>
 
@@ -126,6 +140,9 @@ export function costUsable(r: CostPreview | null, skip: boolean): boolean {
                 <th class="num">Gross g</th>
                 <th class="num">Stone g</th>
                 <th class="num">Total</th>
+                @if (ignoredAny()) {
+                  <th>Left out</th>
+                }
               </tr>
             </thead>
             <tbody>
@@ -138,6 +155,9 @@ export function costUsable(r: CostPreview | null, skip: boolean): boolean {
                   <td class="num">{{ fx(row.gross_g, 3) }}</td>
                   <td class="num">{{ fx(row.stone_g, 4) }}</td>
                   <td class="num">{{ fx(row.total, 2) }}</td>
+                  @if (ignoredAny()) {
+                    <td class="mono">{{ row.ignored_stones || '–' }}</td>
+                  }
                 </tr>
               }
               @if (r.rows.length > 1) {
@@ -147,6 +167,9 @@ export function costUsable(r: CostPreview | null, skip: boolean): boolean {
                   <td class="num">{{ fx(r.totals.gross_g, 3) }}</td>
                   <td class="num">{{ fx(r.totals.stone_g, 4) }}</td>
                   <td class="num">{{ fx(r.totals.total, 2) }}</td>
+                  @if (ignoredAny()) {
+                    <td></td>
+                  }
                 </tr>
               }
             </tbody>
@@ -241,6 +264,11 @@ export class CostSelectedDialogComponent {
     goldRate: new FormControl('', [Validators.required, positiveDecimal(2)]),
     settingRate: new FormControl('', [Validators.required, positiveDecimal(2)]),
     skip: new FormControl(false, { nonNullable: true }),
+    ignoreBig: new FormControl(false, { nonNullable: true }),
+    ignoreOver: new FormControl({ value: IGNORE_OVER_DEFAULT_MM, disabled: true }, [
+      Validators.required,
+      positiveDecimal(2),
+    ]),
   });
   protected readonly saveForm = new FormGroup({
     name: new FormControl('', {
@@ -256,6 +284,8 @@ export class CostSelectedDialogComponent {
   /** The inputs the current preview was made with. */
   private previewed: CostSheetRequest | null = null;
 
+  protected readonly ignoredAny = computed(() => !!this.result()?.rows.some((r) => r.ignored_stones));
+
   protected readonly incomplete = computed(() =>
     (this.result()?.problems ?? []).reduce((n, d) => n + Math.max(d.variations.length, 1), 0),
   );
@@ -263,6 +293,11 @@ export class CostSelectedDialogComponent {
   constructor() {
     // Changing a rate, metal or stone code makes the preview stale; the skip toggle only changes
     // what may be downloaded, not the rows.
+    // The size only counts (and only has to be valid) while the choice is on.
+    this.form.controls.ignoreBig.valueChanges.subscribe((on) => {
+      if (on) this.form.controls.ignoreOver.enable();
+      else this.form.controls.ignoreOver.disable();
+    });
     this.form.valueChanges.subscribe(() => {
       if (this.previewed && !this.sameInputs()) {
         this.result.set(null);
@@ -292,6 +327,7 @@ export class CostSelectedDialogComponent {
       gold_rate_per_g: (f.goldRate.value ?? '').trim(),
       setting_rate_per_pc: (f.settingRate.value ?? '').trim(),
       skip_incomplete: f.skip.value,
+      ...ignoreOverPart(f.ignoreBig.value, f.ignoreOver.value),
     };
   }
 
@@ -302,7 +338,8 @@ export class CostSelectedDialogComponent {
       a.metal_code === b.metal_code &&
       a.stone_code === b.stone_code &&
       a.gold_rate_per_g === b.gold_rate_per_g &&
-      a.setting_rate_per_pc === b.setting_rate_per_pc
+      a.setting_rate_per_pc === b.setting_rate_per_pc &&
+      a.ignore_stones_over_mm === b.ignore_stones_over_mm
     );
   }
 

@@ -95,7 +95,19 @@ func WriteCostingSheetCSV(w io.Writer, rows []service.SheetRow, totals service.S
 		}
 		return append(rec[:1], append([]string{qty}, rec[1:]...)...)
 	}
-	if err := cw.Write(addQty(append([]string(nil), CostingHeader...), "qty")); err != nil {
+	// When stones were left out of the costing (ignore_stones_over_mm) the sheet says which, in a last column; a sheet
+	// that left nothing out has no such column.
+	withIgnored := false
+	for _, r := range rows {
+		if r.IgnoredStones != "" {
+			withIgnored = true
+		}
+	}
+	head := addQty(append([]string(nil), CostingHeader...), "qty")
+	if withIgnored {
+		head = append(head, "ignored_stones")
+	}
+	if err := cw.Write(head); err != nil {
 		return err
 	}
 	for _, r := range rows {
@@ -107,7 +119,11 @@ func WriteCostingSheetCSV(w io.Writer, rows []service.SheetRow, totals service.S
 			strconv.Itoa(r.SettingPcs), r.SettingRatePerPc.String(), r.SettingCost.StringFixed(2),
 			r.Total.StringFixed(2),
 		}
-		if err := cw.Write(addQty(rec, strconv.Itoa(r.Quantity))); err != nil {
+		rec = addQty(rec, strconv.Itoa(r.Quantity))
+		if withIgnored {
+			rec = append(rec, safeCell(r.IgnoredStones))
+		}
+		if err := cw.Write(rec); err != nil {
 			return err
 		}
 	}
@@ -117,7 +133,11 @@ func WriteCostingSheetCSV(w io.Writer, rows []service.SheetRow, totals service.S
 			totals.StoneCt.StringFixed(4), totals.StoneG.StringFixed(4), totals.StoneCost.StringFixed(2),
 			strconv.Itoa(totals.SettingPcs), "", totals.SettingCost.StringFixed(2), totals.Total.StringFixed(2),
 		}
-		if err := cw.Write(addQty(rec, strconv.Itoa(qtyTotal))); err != nil {
+		rec = addQty(rec, strconv.Itoa(qtyTotal))
+		if withIgnored {
+			rec = append(rec, "")
+		}
+		if err := cw.Write(rec); err != nil {
 			return err
 		}
 	}

@@ -133,6 +133,11 @@ Expected totals: 37 pcs, 0.3470 ct (0.069 g), and 18KR gross 3.119 g.
 - CAD file types: `.stl` and one native file per variation, a `.3dm` or a `.jcd` (JewelCAD). A `.jcd` is kept in the
   native slot (`kind` `3dm`, `file_3dm_*` columns) under its own file name and is zipped with its own extension; the
   API kinds stay `3dm` and `stl`. No migration.
+- Costing can leave out large stones: a choice made when a cost sheet (or an order costing) is made, `ignore_stones_over_mm`
+  (a tick box and a size in the costing dialogs, default 2.00 mm). Every seat larger than that is left out of the stone
+  carats and grams, the stone cost, the setting pieces and the gross weight, needs no stone matrix row, and is named per
+  piece in the row's `ignored_stones` (an `ignored_stones` CSV column appears only when something was left out). The
+  choice is stored with a saved sheet and kept by a re-cost. It is not a standing setting and not applied to the catalog.
 - Roles: `admin` (everything), `designer` (edit designs, seats, CAD, costing), `production` (read, job bags, CAD downloads; never sees wastage % or stone rates).
 
 ## How to work

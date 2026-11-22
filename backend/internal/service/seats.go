@@ -134,34 +134,48 @@ type BOMResult struct {
 // seats use that code; locked seats keep their own. Gaps in the matrix return
 // a *calc.MissingMatrixError (never zero). Nothing is persisted.
 func (s *Service) SimulateBOM(ctx context.Context, variationID int64, code string) (BOMResult, error) {
+	res, _, err := s.simulateBOM(ctx, variationID, code, nil)
+	return res, err
+}
+
+// simulateBOM is SimulateBOM that can leave out the seats whose size is more than ignoreOver mm (a large centre
+// stone, say): they are not resolved, counted or weighed, and so need no stone matrix row. The seats it left out
+// are returned, so the caller can say so.
+func (s *Service) simulateBOM(ctx context.Context, variationID int64, code string, ignoreOver *decimal.Decimal) (BOMResult, []calc.Seat, error) {
 	if code == "" {
-		return BOMResult{}, invalid("code query parameter is required")
+		return BOMResult{}, nil, invalid("code query parameter is required")
 	}
 	if _, err := s.Q.GetStoneCodeByCode(ctx, code); err != nil {
 		if mapErr(err) == ErrNotFound {
-			return BOMResult{}, invalid("unknown stone code %q", code)
+			return BOMResult{}, nil, invalid("unknown stone code %q", code)
 		}
-		return BOMResult{}, err
+		return BOMResult{}, nil, err
 	}
 	v, err := s.Q.GetVariation(ctx, variationID)
 	if err != nil {
-		return BOMResult{}, mapErr(err)
+		return BOMResult{}, nil, mapErr(err)
 	}
 	dbSeats, err := s.Q.ListVariationSeats(ctx, variationID)
 	if err != nil {
-		return BOMResult{}, err
+		return BOMResult{}, nil, err
 	}
 	in, err := loadRecalcInputs(ctx, s.Q)
 	if err != nil {
-		return BOMResult{}, err
+		return BOMResult{}, nil, err
 	}
-	seats := make([]calc.Seat, len(dbSeats))
-	for i, st := range dbSeats {
-		seats[i] = calc.Seat{SizeMM: st.SizeMm, Count: int(st.StoneCount), LockedCode: st.LockedCode.String}
+	seats := make([]calc.Seat, 0, len(dbSeats))
+	var ignored []calc.Seat
+	for _, st := range dbSeats {
+		seat := calc.Seat{SizeMM: st.SizeMm, Count: int(st.StoneCount), LockedCode: st.LockedCode.String}
+		if ignoreOver != nil && st.SizeMm.GreaterThan(*ignoreOver) {
+			ignored = append(ignored, seat)
+			continue
+		}
+		seats = append(seats, seat)
 	}
 	bom, err := calc.ResolveBOM(seats, code, in.matrix)
 	if err != nil {
-		return BOMResult{}, err
+		return BOMResult{}, nil, err
 	}
 
 	totalCt := calc.RoundCarats(bom.TotalCarats)
@@ -182,12 +196,12 @@ func (s *Service) SimulateBOM(ctx context.Context, variationID int64, code strin
 	for _, m := range in.metals {
 		net, err := netFor(v, in, m)
 		if err != nil {
-			return BOMResult{}, err
+			return BOMResult{}, nil, err
 		}
 		net = calc.RoundGrams(net)
 		res.Metals = append(res.Metals, MetalTotals{
 			MetalCode: m.Code, NetG: net, GrossG: calc.RoundGrams(calc.Gross(net, totalCt)),
 		})
 	}
-	return res, nil
+	return res, ignored, nil
 }

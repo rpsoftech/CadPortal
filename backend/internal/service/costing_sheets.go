@@ -35,6 +35,10 @@ type SheetRequest struct {
 	// 1). A variation with an entry is costed for that many pieces; its row then carries Quantity and
 	// every weight and amount on it is for the whole line. Variations without an entry cost one piece.
 	Quantities map[int64]int `json:"quantities,omitempty"`
+	// IgnoreStonesOverMM leaves out every stone seat larger than this many mm (a large centre stone whose weight
+	// and price are not in the stone matrix): its stones are not counted, weighed or priced, and not set. The row says
+	// what was left out. Nil costs every stone.
+	IgnoreStonesOverMM *decimal.Decimal `json:"ignore_stones_over_mm,omitempty"`
 }
 
 // SheetRow is one costed variation. Money is rounded as in calc.Compute.
@@ -62,6 +66,8 @@ type SheetRow struct {
 	SettingRatePerPc decimal.Decimal `json:"setting_rate_per_pc"`
 	SettingCost      decimal.Decimal `json:"setting_cost"`
 	Total            decimal.Decimal `json:"total"`
+	// IgnoredStones lists the stones left out because of ignore_stones_over_mm, per piece, for example "1 x 6.00 mm".
+	IgnoredStones string `json:"ignored_stones,omitempty"`
 }
 
 // SheetTotals adds up the printed row values, so the totals row always agrees with the rows above it.
@@ -348,6 +354,9 @@ func (s *Service) CostSelection(ctx context.Context, req SheetRequest) (CostResu
 	if req.SettingRatePerPc.IsNegative() {
 		return CostResult{}, invalid("setting_rate_per_pc must not be negative")
 	}
+	if o := req.IgnoreStonesOverMM; o != nil && (!o.IsPositive() || o.GreaterThan(decimal.NewFromInt(100)) || o.Exponent() < -2) {
+		return CostResult{}, invalid("ignore_stones_over_mm must be more than 0, at most 100, with at most 2 decimals")
+	}
 	for id, q := range req.Quantities {
 		if q < 1 || q > MaxLineQuantity {
 			return CostResult{}, invalid("quantity of variation %d must be between 1 and %d", id, MaxLineQuantity)
@@ -395,7 +404,7 @@ func (s *Service) CostSelection(ctx context.Context, req SheetRequest) (CostResu
 	for _, rv := range vars {
 		v, d := rv.v, rv.d
 		res.ResolvedVariationIDs = append(res.ResolvedVariationIDs, v.ID)
-		bom, err := s.SimulateBOM(ctx, v.ID, req.StoneCode)
+		bom, ignored, err := s.simulateBOM(ctx, v.ID, req.StoneCode, req.IgnoreStonesOverMM)
 		if err != nil {
 			var mme *calc.MissingMatrixError
 			if errors.As(err, &mme) {
@@ -449,6 +458,7 @@ func (s *Service) CostSelection(ctx context.Context, req SheetRequest) (CostResu
 			SettingPcs: cost.SettingPcs, SettingRatePerPc: req.SettingRatePerPc, SettingCost: cost.SettingCost,
 			Total: cost.Total,
 		}
+		row.IgnoredStones = ignoredText(ignored)
 		if q, ok := req.Quantities[v.ID]; ok {
 			row = row.times(q)
 		}
@@ -485,6 +495,15 @@ func (s *Service) CostSelection(ctx context.Context, req SheetRequest) (CostResu
 		})
 	}
 	return res, nil
+}
+
+// ignoredText says which stones a costing left out, per piece: "1 x 6.00 mm".
+func ignoredText(seats []calc.Seat) string {
+	parts := make([]string, 0, len(seats))
+	for _, s := range seats {
+		parts = append(parts, fmt.Sprintf("%d x %s mm", s.Count, s.SizeMM.StringFixed(2)))
+	}
+	return strings.Join(parts, "; ")
 }
 
 // times makes the row stand for q pieces: every weight and amount is multiplied by q, so the totals row
@@ -689,7 +708,7 @@ func RecostRequest(old SheetDetail, o RecostOverrides) SheetRequest {
 	req := SheetRequest{
 		VariationIDs: old.Inputs.ResolvedVariationIDs, MetalCode: old.MetalCode, StoneCode: old.StoneCode,
 		GoldRatePerG: old.GoldRatePerG, SettingRatePerPc: old.SettingRatePerPc, SkipIncomplete: old.Inputs.SkipIncomplete,
-		Quantities: old.Inputs.Quantities,
+		Quantities: old.Inputs.Quantities, IgnoreStonesOverMM: old.Inputs.IgnoreStonesOverMM,
 	}
 	if o.GoldRatePerG != nil {
 		req.GoldRatePerG = *o.GoldRatePerG

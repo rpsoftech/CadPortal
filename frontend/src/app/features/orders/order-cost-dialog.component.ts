@@ -11,6 +11,7 @@ import { ApiError, toApiError } from '../../core/errors';
 import { fixed } from '../../core/format';
 import { CostOrderResult, Order } from '../../core/models';
 import { CostProblemsComponent } from '../../shared/cost-problems.component';
+import { IGNORE_OVER_DEFAULT_MM, ignoreOverPart } from '../../shared/ignore-stones';
 import { positiveDecimal } from '../../shared/validators';
 
 export interface OrderCostData {
@@ -63,6 +64,19 @@ export interface OrderCostData {
           <mat-slide-toggle formControlName="skip">
             Skip lines with missing data (they are listed, not costed)
           </mat-slide-toggle>
+          <mat-slide-toggle formControlName="ignoreBig">
+            Leave out large stones: not counted, weighed, priced or set
+          </mat-slide-toggle>
+          @if (form.controls.ignoreBig.value) {
+            <mat-form-field appearance="outline" class="field">
+              <mat-label>Larger than (mm)</mat-label>
+              <input matInput formControlName="ignoreOver" inputmode="decimal" />
+              <mat-hint>A centre stone with no stone matrix row</mat-hint>
+              @if (form.controls.ignoreOver.errors; as e) {
+                <mat-error>{{ e['required'] ? 'Required' : (e['decimal'] ?? e['positive']) }}</mat-error>
+              }
+            </mat-form-field>
+          }
           @if (busy()) {
             <mat-progress-bar mode="indeterminate" aria-label="Costing the order" />
           }
@@ -145,8 +159,21 @@ export class OrderCostDialogComponent {
     goldRate: new FormControl('', [Validators.required, positiveDecimal(2)]),
     settingRate: new FormControl('', [Validators.required, positiveDecimal(2)]),
     skip: new FormControl(false, { nonNullable: true }),
+    ignoreBig: new FormControl(false, { nonNullable: true }),
+    ignoreOver: new FormControl({ value: IGNORE_OVER_DEFAULT_MM, disabled: true }, [
+      Validators.required,
+      positiveDecimal(2),
+    ]),
   });
   protected readonly busy = signal(false);
+
+  constructor() {
+    // The size only counts (and only has to be valid) while the choice is on.
+    this.form.controls.ignoreBig.valueChanges.subscribe((on) => {
+      if (on) this.form.controls.ignoreOver.enable();
+      else this.form.controls.ignoreOver.disable();
+    });
+  }
   protected readonly error = signal<ApiError | null>(null);
   protected readonly result = signal<CostOrderResult | null>(null);
 
@@ -164,6 +191,7 @@ export class OrderCostDialogComponent {
         gold_rate_per_g: (f.goldRate.value ?? '').trim(),
         setting_rate_per_pc: (f.settingRate.value ?? '').trim(),
         skip_incomplete: f.skip.value,
+        ...ignoreOverPart(f.ignoreBig.value, f.ignoreOver.value),
       })
       .subscribe({
         next: (r) => {
