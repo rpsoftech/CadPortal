@@ -188,6 +188,8 @@ def evaluate(row: dict, round_sizes=True) -> Evaluated:
         e.problems.append("name is missing")
     elif re.search(r"\d", name):
         e.problems.append("the name must not contain numbers")
+    elif not name.lower().endswith("ring"):
+        e.problems.append("the name must end in Ring: these tools load rings only, other items (pendants, chains, earrings) go in their own folders")
     elif not 2 <= len(name.split()) <= 5:
         e.problems.append("the name should be 2 to 4 words")
     e.weights, p = parse_weights(row.get("weights", ""))

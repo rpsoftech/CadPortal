@@ -4,6 +4,13 @@ You are given a folder of CAD pictures, one per ring design, and you write one C
 checks it, then a script creates the designs in the catalog portal from it. Your job is to read what is printed on
 each picture, exactly, and to say so when you cannot. A wrong number that looks right is worse than an empty cell.
 
+## Rings only
+
+This list is for **rings** (the codes start with LR). If a picture shows something else (a chain pendant, a pendant, a
+chain, an earring, a bangle), **do not write a row for it**. List it instead in a second small CSV, `not_rings.csv`, with
+the header `folder,what` (for example `LR-0612,chain pendant`), so a person can move it to its own folder. When you are
+not sure whether it is a ring, write the row and say so in `notes`.
+
 ## What you get
 
 A folder `pictures/` with one file per design, named like the design: `LR-0598.jpg`, `LR-0599.jpg`, and so on. Each is
@@ -22,7 +29,7 @@ One CSV file, UTF-8, comma separated, **exactly this header**, one row per pictu
 folder,name,weights,stones,gem_count,solitaire,notes
 ```
 
-Write nothing else: no explanation, no code fence, no extra columns. Put a cell in double quotes if it contains a comma.
+Write nothing else in that file: no explanation, no code fence, no extra columns. Put a cell in double quotes if it contains a comma.
 
 | column | what to put |
 |---|---|

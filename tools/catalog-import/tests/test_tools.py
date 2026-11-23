@@ -66,6 +66,10 @@ class Rules(unittest.TestCase):
         self.assertTrue(any("folder" in p for p in cc.evaluate(row(folder="ET_RD_104")).problems))
         self.assertTrue(any("name is missing" in p for p in cc.evaluate(row(name="")).problems))
 
+    def test_only_rings(self):
+        self.assertTrue(any("end in Ring" in p for p in cc.evaluate(row(name="Floral Chain Pendant")).problems))
+        self.assertTrue(cc.evaluate(row(name="Floral Band Ring")).ok)
+
     def test_unreadable_stones(self):
         self.assertTrue(any("cannot read the stone" in p for p in cc.evaluate(row(stones="1.20")).problems))
         self.assertTrue(any("no count" in p for p in cc.evaluate(row(stones="1.20x?")).problems))
@@ -83,6 +87,30 @@ class Stage(unittest.TestCase):
             self.assertEqual([(l, f.name) for l, f in info["renders"]], [("yellow", "Y3D.png"), ("rose", "R3D.png"), ("white", "WP.png"), ("model", "WH.jpg")])
             self.assertEqual(info["cad"].name, "ET_RD_104.jpg")
             self.assertEqual(info["problems"], [])
+
+    def test_include_and_exclude_by_folder_name(self):
+        with tempfile.TemporaryDirectory() as t:
+            src, out = Path(t) / "src", Path(t) / "out"
+            for name in ("LR_10", "LR_2", "CP_1", "Pendant 5"):
+                d = src / name
+                d.mkdir(parents=True)
+                for n in ("a.stl", "a.3dm", "a.jpg", "Y3D.png"):
+                    (d / n).write_text("x")
+            import io
+            import contextlib
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                stg.main([str(src), "--start", "10", "--out", str(out), "--include", "^lr", "--go"])
+            self.assertIn("LR-0010", buf.getvalue())
+            self.assertIn("LR-0011", buf.getvalue())
+            self.assertNotIn("-> LR-0012", buf.getvalue())                    # only the two LR folders were numbered
+            self.assertIn("The next free number after this part is LR-0012", buf.getvalue())
+            self.assertEqual(sorted(p.name for p in (out / "stl").iterdir()), ["LR-0010.stl", "LR-0011.stl"])
+            self.assertEqual(sorted(l.split(",")[1] for l in (out / "stage_map.csv").read_text(encoding="utf-8-sig").splitlines()[1:]), ["LR_10", "LR_2"])
+            out2 = Path(t) / "out2"
+            with contextlib.redirect_stdout(io.StringIO()):
+                stg.main([str(src), "--start", "10", "--out", str(out2), "--exclude", "^CP|pendant", "--go"])
+            self.assertEqual(len(list((out2 / "stl").iterdir())), 2)
 
     def test_names_what_is_missing(self):
         with tempfile.TemporaryDirectory() as t:
