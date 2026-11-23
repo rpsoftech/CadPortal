@@ -43,6 +43,13 @@ python import_designs.py work\part1\checked.csv --stage work\part1 --portal http
 Start the next part at the number the import prints as "the next free number". The staged copy and the maps can be
 deleted once you have checked the designs in the portal; the source folders are never changed.
 
+## Rings only
+
+The tools load rings. Other items (chain pendants, earrings) go in their own folders and their own run. Keep them out of
+a part with `stage_folders.py --include "^LR"` or `--exclude "^CP"` (regular expressions on the folder name, case does not
+matter; folders left out get no number). The agent lists anything that is not a ring in `not_rings.csv`, and the checker
+refuses a name that does not end in Ring.
+
 ## Rules the tools apply
 
 - **Photos.** One render per metal (yellow, rose, white; view 3D, else P, else T; PNG before JPG), then the model photo

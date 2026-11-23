@@ -22,6 +22,9 @@ Per design it writes, under --out (LR-0598 is the new number):
 The numbers follow the natural order of the folder names (2 before 10). Start after the highest code the portal has
 used; the importer prints it as "the next free number". Stage one part, import it, then stage the next.
 
+Only rings are loaded. Folders of other items (chain pendants, earrings) can be kept apart by name with --include or
+--exclude, so they get no number; the names are regular expressions and case does not matter.
+
 Which render is chosen: the metals are Y (yellow), R (rose) and W (white); for each the view 3D is preferred, then P,
 then T (change with --views), and a PNG is preferred over a JPG. The model photo is WH (a hand wearing the ring).
 A missing metal render or model photo is not a problem: the design is staged with the pictures it has. What counts as
@@ -112,6 +115,8 @@ def main(argv=None):
     ap.add_argument("--start", type=int, required=True, help="the first number to use, for example 598 gives LR-0598")
     ap.add_argument("--prefix", default="LR")
     ap.add_argument("--out", default="work", help="where the staged layout is written")
+    ap.add_argument("--include", default="", help="only the design folders whose name matches this regular expression (case does not matter), for example ^LR")
+    ap.add_argument("--exclude", default="", help="leave out the design folders whose name matches this regular expression, for example ^CP|pendant")
     ap.add_argument("--views", default="3D,P,T", help="the views to prefer for the metal renders, best first")
     ap.add_argument("--only-complete", action="store_true", help="skip design folders that miss the STL, the 3dm/jcd, the CAD picture or every render (default: stage what they have)")
     ap.add_argument("--go", action="store_true", help="really copy (without it: show only)")
@@ -123,6 +128,11 @@ def main(argv=None):
     if (out / "stage_map.csv").exists() and a.go:
         sys.exit(f"{out / 'stage_map.csv'} exists: this part was staged already. Use another --out, or delete the folder first.")
     folders = sorted((p for p in src.iterdir() if p.is_dir() and not p.name.startswith(".")), key=lambda p: natural(p.name))
+    kept = [p for p in folders if (not a.include or re.search(a.include, p.name, re.I)) and not (a.exclude and re.search(a.exclude, p.name, re.I))]
+    if len(kept) != len(folders):
+        print(f"{len(folders) - len(kept)} folders left out by --include/--exclude (they get no number): "
+              + ", ".join(p.name for p in folders if p not in kept)[:200])
+    folders = kept
     views = [v.strip() for v in a.views.split(",") if v.strip()]
     plan, rows = [], []
     for i, folder in enumerate(folders):
