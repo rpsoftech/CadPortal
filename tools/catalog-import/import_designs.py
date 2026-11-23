@@ -31,8 +31,8 @@ import catalog_csv as cc
 from check_design_list import read_rows
 from portal import Portal, multipart
 
-KARAT_ALLOYS = {22: ["22KY"], 18: ["18KY", "18KR"], 14: ["14KY", "14KR"], 20: ["20KY"], 24: ["24KY"], 10: ["10KY"]}
-KARAT_ORDER = [22, 18, 14, 20, 24, 10]
+KARAT_ALLOYS = {22: ["22KY"], 18: ["18KY", "18KR"], 14: ["14KY", "14KR"], 20: ["20KY"], 24: ["24KY"], 10: ["10KY"], 9: ["9KY"]}
+KARAT_ORDER = [22, 18, 14, 20, 24, 10, 9]
 MAX_PHOTOS = 5  # what the portal holds per design
 
 
