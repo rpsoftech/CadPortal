@@ -50,6 +50,17 @@ a part with `stage_folders.py --include "^LR"` or `--exclude "^CP"` (regular exp
 matter; folders left out get no number). The agent lists anything that is not a ring in `not_rings.csv`, and the checker
 refuses a name that does not end in Ring.
 
+To choose the folders by hand instead, write the list and edit it in a spreadsheet:
+
+```
+python stage_folders.py "D:\solitaires\Part 1" --list folders.csv
+:: open folders.csv, put no in the keep column of every folder that must not be staged, save, then:
+python stage_folders.py "D:\solitaires\Part 1" --start 598 --out work\part1 --from-list folders.csv --go
+```
+
+The `picture` column is the CAD picture of each folder, so you can look at it. A folder that is not in the list is not
+staged, and the run names it.
+
 ## Rules the tools apply
 
 - **Photos.** One render per metal (yellow, rose, white; view 3D, else P, else T; PNG before JPG), then the model photo

@@ -112,6 +112,36 @@ class Stage(unittest.TestCase):
                 stg.main([str(src), "--start", "10", "--out", str(out2), "--exclude", "^CP|pendant", "--go"])
             self.assertEqual(len(list((out2 / "stl").iterdir())), 2)
 
+    def test_choose_the_folders_by_hand_from_a_list(self):
+        import contextlib
+        import io
+        with tempfile.TemporaryDirectory() as t:
+            src, out, lst = Path(t) / "src", Path(t) / "out", Path(t) / "folders.csv"
+            for name in ("R1", "R2", "Chain 7", "R10"):
+                d = src / name
+                d.mkdir(parents=True)
+                for n in ("a.stl", "a.3dm", f"{name}.jpg", "Y3D.png"):
+                    (d / n).write_text("x")
+            with contextlib.redirect_stdout(io.StringIO()):
+                stg.main([str(src), "--list", str(lst)])                    # no --start needed to write the list
+            rows = list(csv.DictReader(open(lst, encoding="utf-8-sig")))
+            self.assertEqual([r["folder"] for r in rows], ["Chain 7", "R1", "R2", "R10"])
+            self.assertTrue(all(r["keep"] == "yes" for r in rows))
+            self.assertTrue(rows[1]["picture"].endswith("R1.jpg"))
+            for r in rows:                                                   # the person marks the pendant
+                r["keep"] = "no" if r["folder"] == "Chain 7" else r["keep"]
+            with open(lst, "w", newline="", encoding="utf-8-sig") as fh:
+                w = csv.DictWriter(fh, fieldnames=["folder", "keep", "picture", "files"])
+                w.writeheader()
+                w.writerows(rows)
+            (src / "New 3").mkdir()                                          # a folder that was not in the list
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                stg.main([str(src), "--start", "50", "--out", str(out), "--from-list", str(lst), "--go"])
+            self.assertIn("New 3", buf.getvalue())                           # said, not staged silently
+            self.assertEqual(sorted(p.name for p in (out / "stl").iterdir()), ["LR-0050.stl", "LR-0051.stl", "LR-0052.stl"])
+            self.assertEqual([l.split(",")[1] for l in (out / "stage_map.csv").read_text(encoding="utf-8-sig").splitlines()[1:]], ["R1", "R2", "R10"])
+
     def test_names_what_is_missing(self):
         with tempfile.TemporaryDirectory() as t:
             d = Path(t) / "198"
