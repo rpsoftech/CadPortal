@@ -30,7 +30,7 @@ STEP = Decimal("0.05")            # real stone sizes go in steps of this many mm
 
 # Specific gravities used to judge whether the weights printed for different karats fit each other. Approximate on
 # purpose: the portal's own figures decide the real weights; this only catches a misread number.
-KARAT_SG = {10: Decimal("11.6"), 14: Decimal("13.1"), 18: Decimal("15.5"), 20: Decimal("16.5"), 22: Decimal("17.75"), 24: Decimal("19.3")}
+KARAT_SG = {9: Decimal("11.2"), 10: Decimal("11.6"), 14: Decimal("13.1"), 18: Decimal("15.5"), 20: Decimal("16.5"), 22: Decimal("17.75"), 24: Decimal("19.3")}
 WEIGHT_TOLERANCE = Decimal("0.12")
 
 

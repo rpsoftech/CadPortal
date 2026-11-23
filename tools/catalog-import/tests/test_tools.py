@@ -61,6 +61,9 @@ class Rules(unittest.TestCase):
         self.assertTrue(cc.evaluate(row(weights="?=2.05")).ok)
         self.assertTrue(any("cannot read" in p for p in cc.evaluate(row(weights="2.05")).problems))
 
+    def test_nine_karat_is_known(self):
+        self.assertTrue(cc.evaluate(row(weights="9=3.73;10=3.85;14=4.33;18=5.19;22=6.02")).ok)
+
     def test_name_and_folder(self):
         self.assertTrue(any("numbers" in p for p in cc.evaluate(row(name="Floral Ring 2")).problems))
         self.assertTrue(any("folder" in p for p in cc.evaluate(row(folder="ET_RD_104")).problems))
