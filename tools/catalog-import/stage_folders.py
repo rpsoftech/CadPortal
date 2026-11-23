@@ -4,6 +4,12 @@
     python stage_folders.py "D:\\solitaires\\Part 1" --start 598 --out work\\part1            show what it would do
     python stage_folders.py "D:\\solitaires\\Part 1" --start 598 --out work\\part1 --go       copy the files
 
+To choose the folders by hand (for example to keep chain pendants out): first write the list, open it in a spreadsheet,
+put no in the keep column of every folder that must not be staged, save it, and stage from it:
+
+    python stage_folders.py "D:\\solitaires\\Part 1" --list folders.csv
+    python stage_folders.py "D:\\solitaires\\Part 1" --start 598 --out work\\part1 --from-list folders.csv --go
+
 The source folder holds one folder per design. Each design folder has one .stl, one .3dm (or .jcd), the CAD picture
 (the screenshot with the gem report) and many renders. Nothing in the source is changed: the files are COPIED.
 
@@ -109,10 +115,35 @@ def inspect_design(folder: Path, views):
     return {"stl": stl, "native": native, "cad": cad, "renders": chosen, "problems": problems, "notes": notes}
 
 
+def read_list(path):
+    """folder -> True when its keep cell says yes (yes, y, 1, true, x), from a list written by --list."""
+    with open(path, newline="", encoding="utf-8-sig") as fh:
+        rd = csv.DictReader(fh)
+        if not rd.fieldnames or "folder" not in rd.fieldnames or "keep" not in rd.fieldnames:
+            sys.exit(f"{path} needs the columns folder and keep (write it with --list)")
+        return {(r["folder"] or "").strip(): (r["keep"] or "").strip().lower() in ("yes", "y", "1", "true", "x") for r in rd}
+
+
+def write_list(src, out, a):
+    """One row per design folder, for choosing by hand: keep is yes for all, picture is the CAD picture to look at."""
+    folders = sorted((p for p in src.iterdir() if p.is_dir() and not p.name.startswith(".")), key=lambda p: natural(p.name))
+    views = [v.strip() for v in a.views.split(",") if v.strip()]
+    with open(out, "w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.writer(fh)
+        w.writerow(["folder", "keep", "picture", "files"])
+        for p in folders:
+            info = inspect_design(p, views)
+            w.writerow([p.name, "yes", str(info["cad"]) if info["cad"] else "", sum(1 for f in p.iterdir() if f.is_file())])
+    print(f"{len(folders)} design folders written to {out}. Open it, put no in the keep column for every folder that must not be "
+          f"staged (the picture column is the CAD picture to look at), save it, then stage with --from-list {out}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("source", help="the folder that holds one folder per design")
-    ap.add_argument("--start", type=int, required=True, help="the first number to use, for example 598 gives LR-0598")
+    ap.add_argument("--start", type=int, default=None, help="the first number to use, for example 598 gives LR-0598")
+    ap.add_argument("--list", default="", metavar="FILE", help="write the list of design folders to FILE (columns folder, keep, picture, files) and stop; nothing is staged")
+    ap.add_argument("--from-list", default="", metavar="FILE", help="stage only the folders marked keep=yes in this list (written by --list); a folder that is not in it is not staged")
     ap.add_argument("--prefix", default="LR")
     ap.add_argument("--out", default="work", help="where the staged layout is written")
     ap.add_argument("--include", default="", help="only the design folders whose name matches this regular expression (case does not matter), for example ^LR")
@@ -125,10 +156,24 @@ def main(argv=None):
     src, out = Path(a.source), Path(a.out)
     if not src.is_dir():
         sys.exit(f"folder not found: {a.source}  (check the path; put it in quotes if it has spaces)")
+    if a.list:
+        write_list(src, Path(a.list), a)
+        return
+    if a.start is None:
+        sys.exit("--start is required (the first number to use)")
     if (out / "stage_map.csv").exists() and a.go:
         sys.exit(f"{out / 'stage_map.csv'} exists: this part was staged already. Use another --out, or delete the folder first.")
     folders = sorted((p for p in src.iterdir() if p.is_dir() and not p.name.startswith(".")), key=lambda p: natural(p.name))
     kept = [p for p in folders if (not a.include or re.search(a.include, p.name, re.I)) and not (a.exclude and re.search(a.exclude, p.name, re.I))]
+    if a.from_list:
+        keep, unknown = read_list(a.from_list), []
+        for p in kept[:]:
+            if p.name not in keep:
+                unknown.append(p.name)
+        if unknown:
+            print(f"{len(unknown)} folders are not in {a.from_list} and are not staged (write the list again to include them): "
+                  + ", ".join(unknown)[:200])
+        kept = [p for p in kept if keep.get(p.name)]
     if len(kept) != len(folders):
         print(f"{len(folders) - len(kept)} folders left out by --include/--exclude (they get no number): "
               + ", ".join(p.name for p in folders if p not in kept)[:200])
