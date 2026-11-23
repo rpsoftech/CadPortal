@@ -48,6 +48,21 @@ class Rules(unittest.TestCase):
         self.assertFalse(no.solitaire)
         self.assertTrue(any("one big stone" in p for p in no.problems))
 
+    def test_three_stone_rings_are_not_solitaires(self):
+        self.assertFalse(cc.evaluate(row(stones="cushion 6.00*6.00x1; cushion 3.50*3.50x2")).solitaire)
+        self.assertFalse(cc.evaluate(row(name="Three Stone Ring", stones="6.00x1")).solitaire)
+        self.assertTrue(cc.evaluate(row(stones="1.10x18; 2.00x2; 6.00x1")).solitaire)
+        no = cc.evaluate(row(stones="4.80x1; 3.60x2", solitaire="no"))
+        self.assertTrue(no.ok)
+
+    def test_small_princess_stones_are_seats(self):
+        e = cc.evaluate(row(stones="princess 1.70*1.70x36", gem_count="36"))
+        self.assertTrue(e.ok)
+        self.assertEqual([s.text() for s in e.stones], ["1.70x36"])
+        self.assertEqual(e.non_round, [])
+        e = cc.evaluate(row(stones="princess 4.20*4.20x1; princess 2.50*1.80x2"))
+        self.assertEqual(len(e.non_round), 2)   # a big or a rectangular princess stone still gets no seat
+
     def test_star_and_non_round(self):
         e = cc.evaluate(row(stones="1.20x4*; 1.30x10; 6.00x1; pear 3.00*2.00x1"))
         self.assertEqual([s.text() for s in e.star_locked], ["1.20x4*", "6.00x1"])

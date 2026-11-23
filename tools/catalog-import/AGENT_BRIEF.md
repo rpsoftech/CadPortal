@@ -87,6 +87,12 @@ A solitaire has **one big stone in the centre** and that stone is listed once, c
 report has such a row, you can leave the cell empty: the checker finds it. Write `yes` only when the picture clearly
 shows a big centre stone that the gem report does not list. Write `no` only when you are sure it has none.
 
+A **three stone ring** (a big stone with a pair of big stones beside it, 2.5 mm or larger) is never a solitaire; the
+checker applies this, so leave the cell empty or write `no`.
+
+A small **square princess stone** (up to 2.00 mm, for example `princess 1.70*1.70x36`) becomes a normal seat of that
+size, like a round stone. Bigger or rectangular princess stones, and every other shape, get no seat.
+
 ## How to work
 
 1. List the files in `pictures/` in name order. Do one picture at a time.
