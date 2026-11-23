@@ -95,7 +95,7 @@ staged, and the run names it.
   in `pending_star.csv`. Run it again after the rows are entered. A stone of any other shape gets no seat and is listed in
   `non_round.csv`.
 - **Tags.** `Sub-Style:Solitaire` when the design has one stone (count 1) of 2.5 mm or more; `Attribute:Fancy stone` for
-  a stone that is not round; `Attribute:Color stone` for a coloured one. The tags must exist (Master data, Tags); the
+  a stone that is not round (a square princess stone up to 2.00 mm counts as round and gets a seat; a three stone ring is not a solitaire); `Attribute:Color stone` for a coloured one. The tags must exist (Master data, Tags); the
   importer says which are missing before it creates anything. Change a name with `--solitaire-tag`, `--fancy-tag`,
   `--color-tag`, or give an empty one to skip it.
 - **Sizes.** Stone sizes are rounded to the nearest 0.05 mm, and rows that become the same size are added up.

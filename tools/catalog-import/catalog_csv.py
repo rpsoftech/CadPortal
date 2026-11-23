@@ -26,6 +26,7 @@ COLUMNS = ["folder", "name", "weights", "stones", "gem_count", "solitaire", "not
 
 MATRIX_MAX_MM = Decimal("2.00")   # the largest size the stone matrix has rows for: a round stone above it is a STAR seat
 SOLITAIRE_FROM_MM = Decimal("2.50")  # one stone (count 1) of at least this size makes a design a solitaire
+PRINCESS_MAX_MM = MATRIX_MAX_MM   # a square princess stone up to this size is a seat, priced like a round stone of that size
 STEP = Decimal("0.05")            # real stone sizes go in steps of this many mm
 
 # Specific gravities used to judge whether the weights printed for different karats fit each other. Approximate on
@@ -41,6 +42,7 @@ class Stone:
     width: Decimal
     count: "int | None"
     colored: bool = False
+    princess: bool = False  # a small square princess stone, kept as a seat of that size
 
     @property
     def is_round(self):
@@ -132,7 +134,10 @@ def parse_stones(text: str, round_sizes=True):
             problems.append(f"'{part}' has a size outside 0.3 to 40 mm")
         if n is not None and not 1 <= n <= 3000:
             problems.append(f"'{part}' has a count outside 1 to 3000")
-        stones.append(Stone(shape, l, w, n, colored))
+        princess = shape == "princess" and l == w and l <= PRINCESS_MAX_MM
+        if princess:
+            shape = "round"
+        stones.append(Stone(shape, l, w, n, colored, princess))
     return merge(stones), problems, rounded
 
 
@@ -147,6 +152,14 @@ def merge(stones):
             out.append(s)
             index.setdefault(k, s)
     return out
+
+
+def is_three_stone(name, stones) -> bool:
+    """A three stone ring is never a solitaire: its name says so, or a big stone sits between a pair of big stones."""
+    if re.search(r"\bthree[\s-]*stone\b", name or "", re.I):
+        return True
+    big = [s for s in stones if s.biggest >= SOLITAIRE_FROM_MM]
+    return any(s.count == 1 for s in big) and any(s.count == 2 for s in big)
 
 
 @dataclass
@@ -208,7 +221,7 @@ def evaluate(row: dict, round_sizes=True) -> Evaluated:
     said = (row.get("solitaire") or "").strip().lower()
     if said not in ("", "yes", "no"):
         e.problems.append("solitaire must be yes, no or empty")
-    by_rule = any(s.count == 1 and s.biggest >= SOLITAIRE_FROM_MM for s in e.stones)
+    by_rule = any(s.count == 1 and s.biggest >= SOLITAIRE_FROM_MM for s in e.stones) and not is_three_stone(name, e.stones)
     if said == "no" and by_rule:
         e.problems.append("solitaire is no, but the gem report has one big stone: check the picture")
     e.solitaire = True if said == "yes" else (False if said == "no" else by_rule)
