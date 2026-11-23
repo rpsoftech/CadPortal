@@ -6,7 +6,8 @@ person's computer, talk to the portal's API, and use only Python 3.9 or newer (n
 
 ```
 tools/catalog-import/
-  AGENT_BRIEF.md        what to give an agent so it prepares the design list from the CAD pictures
+  read_pictures.py      reads the staged CAD pictures with your own vision model endpoint and writes the design list
+  AGENT_BRIEF.md        the same rules in words, for an agent that prepares the design list by hand instead
   stage_folders.py      copies the files of each design folder into a flat layout, with the portal's own numbers
   stl_volume.py         measures the metal volume of each STL file (for designs with no printed weight)
   check_design_list.py  checks the agent's CSV against the rules and writes checked.csv
@@ -31,7 +32,12 @@ python stage_folders.py "D:\solitaires\Part 1" --start 598 --out work\part1 --go
 :: 2. measure the STL files
 python stl_volume.py work\part1\stl --out work\part1\volumes.csv
 
-:: 3. give AGENT_BRIEF.md and work\part1\pictures to the agent; it writes work\part1\design_list.csv
+:: 3. read the CAD pictures with your model endpoint (try 5 first, then all); this writes work\part1\design_list.csv
+::    and not_rings.csv. Or give AGENT_BRIEF.md and work\part1\pictures to an agent that does it by hand.
+set CAD_API_KEY=your-key
+python read_pictures.py work\part1 --model YOUR-MODEL --base-url https://your.host/v1 --limit 5
+python read_pictures.py work\part1 --model YOUR-MODEL --base-url https://your.host/v1
+
 :: 4. check it, fix the rows with a problem
 python check_design_list.py work\part1\design_list.csv --out work\part1\checked.csv
 
@@ -42,6 +48,21 @@ python import_designs.py work\part1\checked.csv --stage work\part1 --portal http
 
 Start the next part at the number the import prints as "the next free number". The staged copy and the maps can be
 deleted once you have checked the designs in the portal; the source folders are never changed.
+
+## Reading the pictures
+
+`read_pictures.py` sends each picture in `work\part1\pictures` to your model endpoint (`--api-style openai`, the default,
+posts to `<base-url>/chat/completions`; `--api-style anthropic` posts to `<base-url>/v1/messages` and needs
+`pip install anthropic`) with the rules of `AGENT_BRIEF.md`, and writes `design_list.csv` and `not_rings.csv`. The key
+comes from `CAD_API_KEY` (never the command line). The model must accept images.
+
+- Each answer is saved under `cache\`, so a stopped run continues and nothing is paid for twice; `--refresh` asks again.
+- `--offset` and `--limit` read part of the pictures; the rows of the others are kept.
+- A picture that cannot be read still gets a row, with an empty name and a note saying why, so the checker flags it
+  and it is never imported by mistake.
+- `--with-render` also shows the model the first render, which can help with the name.
+- The model's answer is forgiven the usual slips (a code fence, a comment, a trailing comma); a broken answer is
+  tried three times.
 
 ## Rings only
 

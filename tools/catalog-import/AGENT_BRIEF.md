@@ -1,5 +1,8 @@
 # Brief: prepare the design list from CAD pictures
 
+(`read_pictures.py` does this with a model endpoint, using these same rules. This brief is for an agent that does it
+by hand, and the rules in it are the reference.)
+
 You are given a folder of CAD pictures, one per ring design, and you write one CSV file, the **design list**. A person
 checks it, then a script creates the designs in the catalog portal from it. Your job is to read what is printed on
 each picture, exactly, and to say so when you cannot. A wrong number that looks right is worse than an empty cell.
