@@ -24,6 +24,8 @@ used; the importer prints it as "the next free number". Stage one part, import i
 
 Which render is chosen: the metals are Y (yellow), R (rose) and W (white); for each the view 3D is preferred, then P,
 then T (change with --views), and a PNG is preferred over a JPG. The model photo is WH (a hand wearing the ring).
+A missing metal render or model photo is not a problem: the design is staged with the pictures it has. What counts as
+missing is the STL, the 3dm/jcd, the CAD picture, or having no render at all.
 """
 import argparse
 import csv
@@ -78,7 +80,7 @@ def inspect_design(folder: Path, views):
     stls = [f for f in files if f.suffix.lower() == ".stl"]
     nat = [f for f in files if f.suffix.lower() in (".3dm", ".jcd")]
     imgs = [f for f in files if f.suffix.lower() in IMG]
-    problems = []
+    problems, notes = [], []  # problems stop a design being complete; notes are only worth knowing
     if len(stls) != 1:
         problems.append(f"{len(stls)} stl files")
     if len(nat) != 1:
@@ -93,13 +95,15 @@ def inspect_design(folder: Path, views):
         if r:
             chosen.append((label, r))
         else:
-            problems.append(f"no {label} render")
+            notes.append(f"no {label} render")
     model = pick_model(imgs)
     if model:
         chosen.append(("model", model))
     else:
-        problems.append("no model photo")
-    return {"stl": stl, "native": native, "cad": cad, "renders": chosen, "problems": problems}
+        notes.append("no model photo")
+    if not chosen:
+        problems.append("no renders at all")
+    return {"stl": stl, "native": native, "cad": cad, "renders": chosen, "problems": problems, "notes": notes}
 
 
 def main(argv=None):
@@ -109,7 +113,7 @@ def main(argv=None):
     ap.add_argument("--prefix", default="LR")
     ap.add_argument("--out", default="work", help="where the staged layout is written")
     ap.add_argument("--views", default="3D,P,T", help="the views to prefer for the metal renders, best first")
-    ap.add_argument("--only-complete", action="store_true", help="skip design folders that miss a file (default: stage what they have)")
+    ap.add_argument("--only-complete", action="store_true", help="skip design folders that miss the STL, the 3dm/jcd, the CAD picture or every render (default: stage what they have)")
     ap.add_argument("--go", action="store_true", help="really copy (without it: show only)")
     a = ap.parse_args(argv)
 
@@ -131,12 +135,15 @@ def main(argv=None):
         rows.append({"code": code, "source": folder.name, "status": "ok" if not info["problems"] else "incomplete: " + "; ".join(info["problems"]),
                      "stl": info["stl"].name if info["stl"] else "", "cad": info["native"].name if info["native"] else "",
                      "picture": info["cad"].name if info["cad"] else "",
-                     "renders": ", ".join(f"{l}={f.name}" for l, f in info["renders"])})
+                     "renders": ", ".join(f"{l}={f.name}" for l, f in info["renders"]), "notes": "; ".join(info["notes"])})
 
     last = a.start + len(folders) - 1
     print(f"{len(folders)} design folders in {src}: {a.prefix}-{a.start:04d} to {a.prefix}-{last:04d}" if folders else "no design folders found")
     bad = [r for r in rows if r["status"] != "ok"]
     print(f"  {len(rows) - len(bad)} complete, {len(bad)} with something missing")
+    fewer = sum(1 for r in rows if r.get("notes"))
+    if fewer:
+        print(f"  {fewer} designs have fewer than the usual four pictures (no model photo or a metal missing): that is fine, they are staged with what they have")
     for r in bad[:15]:
         print(f"  {r['code']} <- {r['source']}: {r['status']}")
     if len(bad) > 15:
@@ -164,7 +171,7 @@ def main(argv=None):
             for n, (label, f) in enumerate(info["renders"], 1):
                 shutil.copy2(f, d / f"{n}-{label}{f.suffix.lower()}")
     with open(out / "stage_map.csv", "w", newline="", encoding="utf-8-sig") as fh:
-        w = csv.DictWriter(fh, fieldnames=["code", "source", "status", "stl", "cad", "picture", "renders"])
+        w = csv.DictWriter(fh, fieldnames=["code", "source", "status", "stl", "cad", "picture", "renders", "notes"])
         w.writeheader()
         w.writerows(rows)
     print(f"\nCopied {len(plan)} designs to {out}. The map is {out / 'stage_map.csv'}. The next free number after this part is {a.prefix}-{last + 1:04d}.")
