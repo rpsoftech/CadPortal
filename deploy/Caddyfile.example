@@ -23,3 +23,11 @@
 		flush_interval -1
 	}
 }
+
+# Grafana (docker-compose.monitoring.yml listens on 127.0.0.1:3000). Give it its own address and set
+# GRAFANA_ROOT_URL=https://grafana.example.com and GRAFANA_COOKIE_SECURE=true in .env.
+#
+#   grafana.example.com {
+#   	encode zstd gzip
+#   	reverse_proxy 127.0.0.1:3000
+#   }

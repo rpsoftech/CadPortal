@@ -19,7 +19,7 @@ git config commit.gpgsign false
 git config core.autocrlf false
 
 seed=(
-  README.md CLAUDE.md docs/notes.md docs/api/openapi.yaml docs/api/gen_postman.py .github/dependabot.yml docker-compose.yml docker-compose.prod.yml docker-compose.images.yml .github/workflows/release.yml
+  README.md CLAUDE.md docs/notes.md docs/api/openapi.yaml docs/api/gen_postman.py .github/dependabot.yml docker-compose.yml docker-compose.prod.yml docker-compose.images.yml docker-compose.monitoring.yml deploy/monitoring/prometheus.yml .github/workflows/release.yml
   backend/go.mod backend/go.sum backend/internal/service/x.go backend/internal/service/x_test.go
   backend/internal/db/queries/q.sql backend/migrations/000001_init.up.sql backend/sqlc.yaml
   frontend/package.json frontend/yarn.lock frontend/src/app/a.ts frontend/src/app/a.spec.ts
@@ -72,6 +72,8 @@ check "api docs generator"         "test"  docs/api/gen_postman.py
 check "CLAUDE.md"                 "-"  CLAUDE.md
 check "dependabot config"         "-"  .github/dependabot.yml
 check "dev compose file"          "-"  docker-compose.yml
+check "monitoring compose file"   "docker"  docker-compose.monitoring.yml
+check "monitoring config"         "docker"  deploy/monitoring/prometheus.yml
 
 # Frontend.
 check "frontend source"           "frontend docker"  frontend/src/app/a.ts

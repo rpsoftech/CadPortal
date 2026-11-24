@@ -196,6 +196,8 @@ jobs:
             web.cache-to=type=gha,scope=web,mode=max,ignore-error=true
       - name: Validate the production compose file
         run: docker compose -f docker-compose.prod.yml config -q
+      - name: Validate the monitoring compose file
+        run: GRAFANA_ADMIN_PASSWORD=ci docker compose -f docker-compose.monitoring.yml config -q
       - name: Validate the published-images override
         run: CADPORTAL_VERSION=0.0.0 docker compose -f docker-compose.prod.yml -f docker-compose.images.yml config -q
       - name: Deploy script (never touches the database, backs up before a version)

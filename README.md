@@ -441,6 +441,30 @@ gap in `BACKUP_AT` if you back up more than once a day), and put its URL in
 alerts you even if the whole server is gone. These URLs are secret-like and are never written to the logs
 (only the host is).
 
+### Grafana: server, containers and logs
+
+`docker-compose.monitoring.yml` is a separate compose project (`cadportal-monitoring`): Grafana, Prometheus with
+node-exporter and cAdvisor (server and per-container CPU, memory, disk), and Loki with Promtail (the API and web
+JSON logs). `scripts/deploy.sh` never starts, stops or recreates it, and it does not change the portal stack.
+
+```bash
+# in .env: GRAFANA_ADMIN_PASSWORD (required), GRAFANA_ROOT_URL; see .env.example
+docker compose -f docker-compose.monitoring.yml up -d
+```
+
+- Only Grafana is published, on `127.0.0.1:3000`. For a public address add the `grafana.` block from
+  `deploy/Caddyfile.example` (and set `GRAFANA_ROOT_URL` and `GRAFANA_COOKIE_SECURE=true`). Sign-up and anonymous
+  access are off; log in as `GRAFANA_ADMIN_USER`.
+- The dashboard "CAD portal overview" (folder CAD portal) is provisioned from
+  `deploy/monitoring/grafana/dashboards/overview.json`; edit the file, not the screen (it is read-only there).
+- Promtail reads the Docker socket **read-only** to find the portal's containers (compose project
+  `PORTAL_COMPOSE_PROJECT`, default `cadportal-prod`) and cAdvisor runs privileged to read cgroups. Both are
+  standard for these tools; this is why the stack belongs on a server you control, not behind a shared host.
+- Retention: Prometheus `PROMETHEUS_RETENTION` (30 days), Loki 30 days (`deploy/monitoring/loki.yml`). Data lives in
+  the named volumes `grafana-data`, `prometheus-data`, `loki-data`; `docker compose ... down` keeps them, `down -v`
+  deletes them.
+- Not covered: alerts. Uptime and backup alerts stay with the heartbeat monitors above.
+
 ### Forgotten passwords
 
 Two ways, and neither lets anyone see or choose someone else's password:
