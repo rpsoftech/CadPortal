@@ -19,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/rpsoftech/cad-portal/backend/internal/alert"
 	"github.com/rpsoftech/cad-portal/backend/internal/backup"
 	"github.com/rpsoftech/cad-portal/backend/internal/db"
 	"github.com/rpsoftech/cad-portal/backend/internal/handlers"
@@ -167,6 +168,22 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// Messages to a phone (Telegram, a webhook) when the database stops answering or the API starts returning
+	// server errors. Nothing configured means off.
+	notifier, err := alert.FromEnv(os.Getenv)
+	if err != nil {
+		return err
+	}
+	alertDone := make(chan struct{})
+	if notifier.Enabled() {
+		slog.Info("alerts on", "channels", notifier.Channels(), "server", notifier.Server, "min_level", notifier.Min.String())
+		go func() {
+			defer close(alertDone)
+			alert.WatchDatabase(ctx, notifier, time.Minute, pool.Ping)
+		}()
+	} else {
+		close(alertDone)
+	}
 	purgeDone := make(chan struct{})
 	go func() {
 		defer close(purgeDone)
@@ -184,7 +201,8 @@ func run() error {
 	if err := r.SetTrustedProxies(nil); err != nil {
 		return err
 	}
-	r.Use(logx.Middleware(logger), logx.Recovery(logger))
+	// The error watch sits outside the recovery, so it also sees the 500 that a panic turns into.
+	r.Use(logx.Middleware(logger), (&alert.ErrorWatch{N: notifier}).Middleware(), logx.Recovery(logger))
 	(&handlers.H{
 		S: svc, JWTSecret: []byte(jwtSecret), Validate: svc.ValidateToken, Session: svc.CheckSession, LocalFiles: localStore,
 		TokenTTL: sessionTTL, IdleTimeoutMinutes: idleMinutes,
@@ -213,6 +231,7 @@ func run() error {
 	svc.WaitMail()
 	<-workerDone
 	<-heartbeatDone
+	<-alertDone
 	<-pruneDone
 	<-purgeDone
 	return err
