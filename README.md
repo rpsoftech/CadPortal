@@ -457,6 +457,11 @@ docker compose -f docker-compose.monitoring.yml up -d
   access are off; log in as `GRAFANA_ADMIN_USER`.
 - The dashboard "CAD portal overview" (folder CAD portal) is provisioned from
   `deploy/monitoring/grafana/dashboards/overview.json`; edit the file, not the screen (it is read-only there).
+- Project name: the file names its project `cadportal-monitoring`, but a `COMPOSE_PROJECT_NAME` in `.env` overrides
+  that, and then Grafana's containers join the portal's project (shown by `docker compose ls`). That works, but
+  set `PORTAL_COMPOSE_PROJECT` in `.env` to the portal's project name (for example `cadportal-staging`), or Promtail
+  finds no logs. To keep the stacks apart, start it with `docker compose -p cadportal-monitoring -f
+  docker-compose.monitoring.yml up -d`.
 - Promtail reads the Docker socket **read-only** to find the portal's containers (compose project
   `PORTAL_COMPOSE_PROJECT`, default `cadportal-prod`) and cAdvisor runs privileged to read cgroups. Both are
   standard for these tools; this is why the stack belongs on a server you control, not behind a shared host.

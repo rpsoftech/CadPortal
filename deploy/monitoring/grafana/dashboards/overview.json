@@ -229,7 +229,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "count(container_last_seen{container_label_com_docker_compose_project=\"cadportal-prod\"})"
+          "expr": "count(container_last_seen{container_label_com_docker_compose_service!=\"\"})"
         }
       ]
     },
@@ -353,7 +353,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (container_label_com_docker_compose_service) (rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_project=\"cadportal-prod\"}[5m]))",
+          "expr": "sum by (container_label_com_docker_compose_service) (rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service!=\"\"}[5m]))",
           "legendFormat": "{{container_label_com_docker_compose_service}}"
         }
       ]
@@ -393,7 +393,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (container_label_com_docker_compose_service) (container_memory_working_set_bytes{container_label_com_docker_compose_project=\"cadportal-prod\"})",
+          "expr": "sum by (container_label_com_docker_compose_service) (container_memory_working_set_bytes{container_label_com_docker_compose_service!=\"\"})",
           "legendFormat": "{{container_label_com_docker_compose_service}}"
         }
       ]
