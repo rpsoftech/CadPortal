@@ -441,29 +441,50 @@ gap in `BACKUP_AT` if you back up more than once a day), and put its URL in
 alerts you even if the whole server is gone. These URLs are secret-like and are never written to the logs
 (only the host is).
 
-### Grafana: server, containers and logs
+### Alerts to your phone (Telegram, webhook)
 
-`docker-compose.monitoring.yml` is a separate compose project (`cadportal-monitoring`): Grafana, Prometheus with
-node-exporter and cAdvisor (server and per-container CPU, memory, disk), and Loki with Promtail (the API and web
-JSON logs). `scripts/deploy.sh` never starts, stops or recreates it, and it does not change the portal stack.
+The portal can message you instead of waiting for you to look. Messages have a level: **info** (a good backup, a
+recovery), **warning** (look soon) and **critical** (needs you now). Nothing is sent while all is well, a problem
+that lasts is reported once and again after 6 hours, and a message tells you when it is over.
+
+| Who | Tells you |
+|---|---|
+| Backup service | after every good backup (info; `ALERT_BACKUP_OK=false` keeps only failures), and when a backup fails (critical; the first failure, then at most once in 6 hours) |
+| API | the database stops answering for two minutes (critical) and is back (info); 5 server errors (HTTP 5xx) within 5 minutes (warning, with the route and request id, then quiet for 30 minutes) |
+| Watchdog on the server | disk at 85% (warning) or 95% (critical), memory at 90% / 96%, a portal container stopped, unhealthy or restarting (critical), the web address not answering (critical) |
+
+**Set up Telegram (about 5 minutes).**
+1. In Telegram, talk to **@BotFather**: `/newbot`, choose a name; it gives you a token.
+2. Send any message to your new bot (or add it to a group and write there).
+3. Open `https://api.telegram.org/bot<token>/getUpdates` in a browser and read `"chat":{"id":...}`. A group's id
+   starts with `-`.
+4. In `.env` on the server: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, and `ALERT_SERVER_NAME=staging` (or
+   `production`), so messages from two servers can share one chat. Keep the token secret.
+
+A **webhook** gets a JSON POST: `{"level","server","title","message","text","time"}`. `text` is the message as
+Telegram would show it. Use it with n8n, Make, or a WhatsApp gateway you run yourself; set `ALERT_WEBHOOK_URL`.
+Telegram, the webhook, or both can be set. `ALERT_MIN_LEVEL=critical` sends only what needs you now.
+
+**Start it.** The API and the backup service read the settings when they start:
 
 ```bash
-# in .env: GRAFANA_ADMIN_PASSWORD (required), GRAFANA_ROOT_URL; see .env.example
-docker compose -f docker-compose.monitoring.yml up -d
+docker compose -f docker-compose.prod.yml up -d api backup
+scripts/watchdog.sh --test     # sends one test message from the server
 ```
 
-- Only Grafana is published, on `127.0.0.1:3000`. For a public address add the `grafana.` block from
-  `deploy/Caddyfile.example` (and set `GRAFANA_ROOT_URL` and `GRAFANA_COOKIE_SECURE=true`). Sign-up and anonymous
-  access are off; log in as `GRAFANA_ADMIN_USER`.
-- The dashboard "CAD portal overview" (folder CAD portal) is provisioned from
-  `deploy/monitoring/grafana/dashboards/overview.json`; edit the file, not the screen (it is read-only there).
-- Promtail reads the Docker socket **read-only** to find the portal's containers (compose project
-  `PORTAL_COMPOSE_PROJECT`, default `cadportal-prod`) and cAdvisor runs privileged to read cgroups. Both are
-  standard for these tools; this is why the stack belongs on a server you control, not behind a shared host.
-- Retention: Prometheus `PROMETHEUS_RETENTION` (30 days), Loki 30 days (`deploy/monitoring/loki.yml`). Data lives in
-  the named volumes `grafana-data`, `prometheus-data`, `loki-data`; `docker compose ... down` keeps them, `down -v`
-  deletes them.
-- Not covered: alerts. Uptime and backup alerts stay with the heartbeat monitors above.
+**The watchdog** is a script (`scripts/watchdog.sh`) that looks at the server from the inside, because a container
+cannot see the host's disk. Run it every 5 minutes with the systemd timer in `deploy/systemd`:
+
+```bash
+sudo cp deploy/systemd/cadportal-watchdog.{service,timer} /etc/systemd/system/   # edit User and paths first
+sudo systemctl daemon-reload && sudo systemctl enable --now cadportal-watchdog.timer
+```
+
+Thresholds are `WATCHDOG_DISK_WARN/CRIT` and `WATCHDOG_MEM_WARN/CRIT` in `.env`. The watchdog reads only the names it
+needs from `.env`; if `COMPOSE_PROJECT_NAME` is set there it looks at that project's containers.
+
+**What alerts cannot do:** if the whole server loses power or its network, nothing on it can send a message. Keep
+the outside heartbeat (`HEARTBEAT_URL`, `BACKUP_HEARTBEAT_URL`, above) for that: it alerts when the pings *stop*.
 
 ### Forgotten passwords
 

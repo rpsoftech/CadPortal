@@ -29,6 +29,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rpsoftech/cad-portal/backend/internal/alert"
 	"github.com/rpsoftech/cad-portal/backend/internal/backup"
 	"github.com/rpsoftech/cad-portal/backend/internal/db"
 	"github.com/rpsoftech/cad-portal/backend/internal/heartbeat"
@@ -207,16 +208,30 @@ func newRunner(ctx context.Context) (*backup.Runner, *pgxpool.Pool, error) {
 		Rec: dbRecorder{db.New(pool)}, Dest: dest, Dump: backup.PgDump(dbURL), Verify: backup.PgVerify,
 		Recipient: rcpt, Policy: pol, TmpDir: env("BACKUP_TMP_DIR", os.TempDir()), Logf: log.Printf,
 	}
-	if beat != "" {
-		// The classic dead man's switch: told only after a GOOD backup, so the monitor raises the alarm when
-		// backups stop or fail, even if this whole server is gone.
-		r.AfterRun = func(ctx context.Context, res backup.Result) {
-			if !res.OK {
-				return
-			}
+	notifier, err := alert.FromEnv(os.Getenv)
+	if err != nil {
+		pool.Close()
+		return nil, nil, err
+	}
+	if notifier.Enabled() {
+		log.Printf("alerts on: %s", strings.Join(notifier.Channels(), ", "))
+	}
+	tellOK := !strings.EqualFold(env("ALERT_BACKUP_OK", "true"), "false")
+	failures := alert.Cooldown{Every: 6 * time.Hour}
+	r.AfterRun = func(ctx context.Context, res backup.Result) {
+		if res.OK && beat != "" {
+			// The classic dead man's switch: told only after a GOOD backup, so the monitor raises the alarm when
+			// backups stop or fail, even if this whole server is gone.
 			if err := heartbeat.Ping(ctx, beat); err != nil {
 				log.Printf("%v", err)
 			}
+		}
+		l, title, body, send := backupMessage(res, tellOK, &failures, time.Now())
+		if !send {
+			return
+		}
+		if err := notifier.Send(ctx, l, title, body); err != nil {
+			log.Printf("%v", err)
 		}
 	}
 	src, err := sourceStore()
@@ -434,4 +449,35 @@ func keygen() error {
 	fmt.Fprintln(os.Stderr, "\nKeep the AGE-SECRET-KEY line OFFLINE (password manager, printed copy). Without it no dump can be opened.")
 	fmt.Fprintf(os.Stderr, "Put only the public key in .env:  BACKUP_AGE_RECIPIENT=%s\n", id.Recipient())
 	return nil
+}
+
+// backupMessage decides what to tell a person after a run. A good backup is good news (info) unless it is
+// switched off with ALERT_BACKUP_OK=false, and it also ends a run of failures. A failed backup is critical;
+// because a failing backup is retried (1, 2, 4, 8, 16, then every 30 minutes) only the first failure, and one
+// more every six hours while it keeps failing, is sent.
+func backupMessage(res backup.Result, tellOK bool, failures *alert.Cooldown, now time.Time) (l alert.Level, title, body string, send bool) {
+	if res.OK {
+		failures.Reset("failed")
+		if !tellOK {
+			return 0, "", "", false
+		}
+		body = "Database dump: " + alert.Bytes(res.DBBytes) + "."
+		switch {
+		case res.FilesSkipped:
+			body += " Files were not copied (no vault bucket is configured here)."
+		case res.FilesCopied == 0:
+			body += fmt.Sprintf(" No new files (%d in the vault).", res.FilesTotal)
+		default:
+			body += fmt.Sprintf(" %d new files copied (%s), %d in the vault.", res.FilesCopied, alert.Bytes(res.FilesBytes), res.FilesTotal)
+		}
+		return alert.Info, "Backup finished", body, true
+	}
+	if !failures.Allow("failed", now) {
+		return 0, "", "", false
+	}
+	msg := res.Err
+	if r := []rune(msg); len(r) > 500 {
+		msg = string(r[:500]) + "..."
+	}
+	return alert.Critical, "Backup FAILED", msg + "\nIt is tried again soon; the portal's Backups screen shows the history.", true
 }
