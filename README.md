@@ -435,6 +435,9 @@ ping every 5 minutes with a few minutes of grace, and put its URL in `HEARTBEAT_
 it can reach its database and stays silent when it cannot, so the monitor alerts you if the server, the API
 or the database goes down. With several API instances only one of them pings per interval.
 
+To run that monitor yourself, on another server, see `deploy/uptime-kuma/README.md` (Uptime Kuma, with a compose
+file, Caddy block and the exact monitors to create); it sends its alerts through the same Telegram bot.
+
 Do the same for backups with a second check that expects a ping every 26 hours (a little over the longest
 gap in `BACKUP_AT` if you back up more than once a day), and put its URL in
 `BACKUP_HEARTBEAT_URL`. The backup service pings only after a *good* backup, so a backup that stops or fails
