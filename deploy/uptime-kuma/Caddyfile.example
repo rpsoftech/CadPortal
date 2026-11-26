@@ -1,0 +1,6 @@
+# TLS for Uptime Kuma (Caddy 2) on the monitoring server. Replace the hostname and point its DNS record at this
+# server; ports 80 and 443 must reach it. Kuma uses WebSockets, which Caddy proxies without extra settings.
+status.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3001
+}

@@ -1,0 +1,26 @@
+# Uptime Kuma: the outside watcher for the portal. Run it on a DIFFERENT server (another provider or region), so it
+# still works, and still messages you, when the portal's server is down. See README.md in this folder.
+#
+#   docker compose up -d
+#
+# It listens on 127.0.0.1:3001 only: put Caddy in front of it for TLS (Caddyfile.example).
+name: uptime-kuma
+
+services:
+  kuma:
+    image: louislam/uptime-kuma:1.23.16
+    restart: unless-stopped
+    volumes:
+      - kuma-data:/app/data     # settings, monitors and history: back this volume up
+    ports:
+      - "${KUMA_BIND:-127.0.0.1}:${KUMA_PORT:-3001}:3001"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  kuma-data:
